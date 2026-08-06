@@ -1,3 +1,4 @@
+import { XIcon } from "@phosphor-icons/react";
 import { useCallback, useState, type KeyboardEvent } from "react";
 
 interface TagInputProps {
@@ -40,20 +41,20 @@ export function TagInput({ id, value, onChange }: Readonly<TagInputProps>) {
   );
 
   return (
-    <div className="mt-1 flex flex-wrap items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm focus-within:ring-1 focus-within:ring-slate-400">
+    <div className="mt-1 flex flex-wrap items-center gap-2 rounded-sm border border-border bg-surface px-4 py-2.5 text-sm focus-within:ring-2 focus-within:ring-citrus-500 focus-within:ring-offset-2 focus-within:ring-offset-surface">
       {value.map((tag) => (
         <span
           key={tag}
-          className="flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-slate-700"
+          className="flex items-center gap-1 rounded-full bg-teal-50 px-2 py-0.5 capitalize text-teal-700 dark:bg-teal-500/15 dark:text-teal-300"
         >
           {tag}
           <button
             type="button"
             onClick={() => removeTag(tag)}
             aria-label={`Remove ${tag}`}
-            className="text-slate-400 hover:text-slate-600"
+            className="relative text-teal-600 hover:text-teal-800 before:absolute before:-inset-2.5 before:content-[''] dark:text-teal-300 dark:hover:text-teal-100"
           >
-            ×
+            <XIcon size={12} weight="bold" />
           </button>
         </span>
       ))}
@@ -64,7 +65,7 @@ export function TagInput({ id, value, onChange }: Readonly<TagInputProps>) {
         onKeyDown={handleKeyDown}
         onBlur={commitDraft}
         placeholder={value.length === 0 ? "Add a tag…" : ""}
-        className="min-w-24 flex-1 border-none p-0 text-sm outline-none focus:ring-0"
+        className="min-w-24 flex-1 border-none bg-transparent p-0 text-sm text-ink outline-none placeholder:text-ink-faint focus:ring-0"
       />
     </div>
   );

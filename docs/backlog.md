@@ -28,6 +28,18 @@ choice was made). This is just a todo list.
 
 ## Completed
 
+- **2026-08-06** — Restyled the app to match
+  [design-system.md](design-system.md): tokens (colors, type, radius, glass,
+  dark mode), then a follow-up critical design review against the real
+  running app that found the token pass alone still read as CRUD, and fixed
+  the recipe card/detail/form *structure* (photo-forward card grid, hero
+  photo on the detail page, checklist/step-card ingredients & steps,
+  de-emphasized delete, grouped form sections with placeholders, capitalized
+  tag chips, fixed near-invisible input borders). See
+  [decisions.md](decisions.md#2026-08-06-design-system-defined-citrus-pop-glassyrounded-motion-forward)
+  and the critical-review entry immediately below it. `pnpm lint`/`test`/
+  `build` all pass; verified live against the real backend + seeded demo
+  data, light and dark, desktop and mobile widths.
 - **2026-08-06** — MVP frontend group finished: `react-router-dom` for routing
   (classic `<Routes>`/`<Route>` API, not the v6.4+ data router — plain
   component routing + `useEffect` data fetching was the more incremental step
