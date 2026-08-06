@@ -1,0 +1,56 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-nosh}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nosh}
+      POSTGRES_DB: ${POSTGRES_DB:-nosh}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nosh}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile.dev
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-nosh}:${POSTGRES_PASSWORD:-nosh}@postgres:5432/${POSTGRES_DB:-nosh}
+      PORT: 3001
+    ports:
+      - "3001:3001"
+    volumes:
+      - .:/repo
+      - /repo/node_modules
+      - /repo/backend/node_modules
+      - /repo/frontend/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile.dev
+    restart: unless-stopped
+    environment:
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:3001}
+    ports:
+      - "5173:5173"
+    volumes:
+      - .:/repo
+      - /repo/node_modules
+      - /repo/backend/node_modules
+      - /repo/frontend/node_modules
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
