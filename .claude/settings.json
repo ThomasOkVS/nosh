@@ -41,7 +41,6 @@
       "Bash(git push --force*)",
       "Bash(git clean*)",
       "Read(.env)",
-      "Read(.env.*)",
       "Read(**/*.pem)",
       "Read(**/*.key)",
       "Bash(curl *)",

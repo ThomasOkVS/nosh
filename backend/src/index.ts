@@ -1,8 +1,14 @@
 import { createApp } from "./app";
+import { env } from "./config/env";
+import { createPool } from "./db/pool";
 
-const port = process.env.PORT ?? 3001;
-const app = createApp();
+const pool = createPool(env.databaseUrl);
+const app = createApp({
+  pool,
+  sessionSecret: env.sessionSecret,
+  uploadsDir: env.uploadsDir,
+});
 
-app.listen(port, () => {
-  console.log(`Nosh backend listening on port ${port}`);
+app.listen(env.port, () => {
+  console.log(`Nosh backend listening on port ${env.port}`);
 });

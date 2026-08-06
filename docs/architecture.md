@@ -78,20 +78,41 @@ get their own migrations when built, rather than speculative columns now.
 ## Search
 
 Postgres full-text search (`tsvector`/`tsquery`) over `recipes.title`,
-`ingredients.name`, `steps.instruction`, and `tags.name`, combined via a
-generated/indexed column on `recipes`. Chosen over plain `LIKE` queries for
+`ingredients.name`, `steps.instruction`, and `tags.name`, materialized into an
+indexed `recipes.search_vector` column. Chosen over plain `LIKE` queries for
 relevance ranking, and over a dedicated search engine (Elasticsearch/Meilisearch)
 because it needs no extra infrastructure and comfortably handles a personal-scale
 recipe collection. Faceted filters (tag, cook time, etc.) can be added as plain
 `WHERE` clauses alongside the full-text query later.
 
+Since the search corpus spans four tables, `search_vector` can't be a single
+`GENERATED ALWAYS AS` column (Postgres generated columns only see their own
+row) — see
+[decisions.md#2026-08-06-full-text-search-implemented-via-triggers-not-a-single-generated-column](decisions.md).
+It's kept up to date by triggers instead: a `BEFORE INSERT OR UPDATE` trigger
+on `recipes` sets it from the recipe's own `title`/`description`, and
+`AFTER INSERT OR UPDATE OR DELETE` triggers on `ingredients`, `steps`, and
+`recipe_tags` call a shared `recompute_recipe_search_vector(recipe_id)`
+function that rebuilds the full vector (title, description, ingredient names,
+step instructions, tag names, each `setweight`-ranked) whenever anything
+underneath a recipe changes. The search endpoint itself is then a plain
+`search_vector @@ plainto_tsquery(...)` lookup against the GIN index — no
+joins or aggregation at query time.
+
 ## Auth
 
 Full username/password accounts (not a shared passphrase), because the schema is
 already multi-user-ready and because it's the more transferable pattern to learn.
-Passwords hashed with argon2 or bcrypt; sessions or JWTs for the API. No rate
-limiting/lockout for v1 — Tailscale-only network exposure is the accepted primary
-defense; revisit if Nosh is ever exposed beyond the tailnet.
+Passwords are hashed with argon2. Auth uses server-side sessions (`express-session`,
+backed by Postgres via `connect-pg-simple`, httpOnly cookie) rather than JWTs, so
+logout actually revokes access — see
+[decisions.md#2026-08-06-backend-mvp-db-access-auth-mechanism-and-supporting-libraries](decisions.md).
+No rate limiting/lockout for v1 — Tailscale-only network exposure is the accepted
+primary defense; revisit if Nosh is ever exposed beyond the tailnet.
+
+Database access throughout the backend is raw SQL via `pg` (node-postgres) —
+deliberately no ORM or query builder, to keep the Postgres learning goal front
+and center.
 
 ## Future: recipe import
 

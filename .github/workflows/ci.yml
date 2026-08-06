@@ -8,6 +8,24 @@ on:
 jobs:
   lint-test-build:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: nosh
+          POSTGRES_PASSWORD: nosh
+          POSTGRES_DB: nosh_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U nosh"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgres://nosh:nosh@localhost:5432/nosh_test
+      TEST_DATABASE_URL: postgres://nosh:nosh@localhost:5432/nosh_test
+      SESSION_SECRET: ci-secret
     steps:
       - uses: actions/checkout@v4
 
@@ -21,6 +39,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - run: pnpm lint
+
+      - run: pnpm --filter backend migrate up
 
       - run: pnpm test
 
