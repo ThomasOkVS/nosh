@@ -8,33 +8,66 @@ describe("auth routes", () => {
 
     const signupRes = await agent
       .post("/auth/signup")
-      .send({ email: "alice@example.com", password: "correct-horse" });
+      .send({ email: "alice@example.com", username: "alice", password: "correct-horse" });
 
     expect(signupRes.status).toBe(201);
-    expect(signupRes.body).toEqual({ id: expect.any(Number), email: "alice@example.com" });
+    expect(signupRes.body).toEqual({
+      id: expect.any(Number),
+      email: "alice@example.com",
+      username: "alice",
+    });
 
     const meRes = await agent.get("/auth/me");
     expect(meRes.status).toBe(200);
-    expect(meRes.body.email).toBe("alice@example.com");
+    expect(meRes.body.username).toBe("alice");
   });
 
   it("rejects signup with a duplicate email", async () => {
     const app = createTestApp();
     await request(app)
       .post("/auth/signup")
-      .send({ email: "bob@example.com", password: "correct-horse" });
+      .send({ email: "bob@example.com", username: "bob", password: "correct-horse" });
 
     const res = await request(app)
       .post("/auth/signup")
-      .send({ email: "bob@example.com", password: "another-password" });
+      .send({ email: "bob@example.com", username: "bobby", password: "another-password" });
 
     expect(res.status).toBe(409);
   });
 
-  it("rejects signup with too short a password", async () => {
+  it("rejects signup with a duplicate username", async () => {
+    const app = createTestApp();
+    await request(app)
+      .post("/auth/signup")
+      .send({ email: "bob@example.com", username: "bob", password: "correct-horse" });
+
+    const res = await request(app)
+      .post("/auth/signup")
+      .send({ email: "bobby@example.com", username: "bob", password: "another-password" });
+
+    expect(res.status).toBe(409);
+  });
+
+  it("accepts a short password (no minimum length enforced)", async () => {
     const res = await request(createTestApp())
       .post("/auth/signup")
-      .send({ email: "carol@example.com", password: "short" });
+      .send({ email: "carol@example.com", username: "carol", password: "hi" });
+
+    expect(res.status).toBe(201);
+  });
+
+  it("rejects signup with an empty password", async () => {
+    const res = await request(createTestApp())
+      .post("/auth/signup")
+      .send({ email: "carol@example.com", username: "carol", password: "" });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects signup with an invalid username", async () => {
+    const res = await request(createTestApp())
+      .post("/auth/signup")
+      .send({ email: "carol@example.com", username: "ca", password: "correct-horse" });
 
     expect(res.status).toBe(400);
   });
@@ -43,12 +76,12 @@ describe("auth routes", () => {
     const app = createTestApp();
     await request(app)
       .post("/auth/signup")
-      .send({ email: "dave@example.com", password: "correct-horse" });
+      .send({ email: "dave@example.com", username: "dave", password: "correct-horse" });
 
     const agent = request.agent(app);
     const loginRes = await agent
       .post("/auth/login")
-      .send({ email: "dave@example.com", password: "correct-horse" });
+      .send({ username: "dave", password: "correct-horse" });
 
     expect(loginRes.status).toBe(200);
 
@@ -60,19 +93,19 @@ describe("auth routes", () => {
     const app = createTestApp();
     await request(app)
       .post("/auth/signup")
-      .send({ email: "erin@example.com", password: "correct-horse" });
+      .send({ email: "erin@example.com", username: "erin", password: "correct-horse" });
 
     const res = await request(app)
       .post("/auth/login")
-      .send({ email: "erin@example.com", password: "wrong-password" });
+      .send({ username: "erin", password: "wrong-password" });
 
     expect(res.status).toBe(401);
   });
 
-  it("rejects login for an unknown email", async () => {
+  it("rejects login for an unknown username", async () => {
     const res = await request(createTestApp())
       .post("/auth/login")
-      .send({ email: "nobody@example.com", password: "whatever123" });
+      .send({ username: "nobody", password: "whatever123" });
 
     expect(res.status).toBe(401);
   });
@@ -87,7 +120,7 @@ describe("auth routes", () => {
     const agent = request.agent(app);
     await agent
       .post("/auth/signup")
-      .send({ email: "frank@example.com", password: "correct-horse" });
+      .send({ email: "frank@example.com", username: "frank", password: "correct-horse" });
 
     const logoutRes = await agent.post("/auth/logout");
     expect(logoutRes.status).toBe(204);

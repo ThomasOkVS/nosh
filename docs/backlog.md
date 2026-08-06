@@ -15,22 +15,47 @@ choice was made). This is just a todo list.
 
 ## Backlog
 
-### MVP — frontend
-- [ ] App shell + routing
-- [ ] Login / signup screens
-- [ ] Recipe list + search UI
-- [ ] Recipe detail view
-- [ ] Recipe create/edit form
-- [ ] PWA manifest + service worker (installable)
-
 ### Deployment
 - [ ] Write Nosh's `docker-compose.yml` for the homelab (see
       [deployment.md](deployment.md)'s "Not yet written" section)
 - [ ] First-deploy runbook
 - [ ] Publish images to a registry Watchtower can poll
+- [ ] Confirm the frontend's dev container actually works on Windows dev
+      machines before writing dev-workflow docs — see
+      [decisions.md](decisions.md#2026-08-06-frontend-dev-container-unreliable-on-windows-run-frontend-outside-docker-locally)
+      for the unresolved Docker-Desktop-on-Windows networking issue and the
+      current workaround (run frontend via `pnpm dev`, not Docker)
 
 ## Completed
 
+- **2026-08-06** — MVP frontend group finished: `react-router-dom` for routing
+  (classic `<Routes>`/`<Route>` API, not the v6.4+ data router — plain
+  component routing + `useEffect` data fetching was the more incremental step
+  given no data-fetching library exists yet), a small hand-rolled `api/`
+  fetch client (base URL + `credentials: "include"` + typed `ApiError`, no
+  TanStack Query/SWR) and a React Context-based `AuthProvider` (checks
+  `GET /auth/me` on mount) with a `RequireAuth` route guard. Pages: login,
+  signup, recipe list with debounced full-text search, recipe detail
+  (ingredients/steps/tags/images, edit/delete), and a shared create/edit form
+  with plain controlled-component array editors for ingredients and steps (no
+  react-hook-form) plus per-image upload/delete once a recipe has an id.
+  Installable PWA via `vite-plugin-pwa` (Workbox-generated service worker,
+  `generateSW` mode — precaches the built app shell only, never the API) and
+  a single SVG app icon (`sizes: "any"`, no raster PNG set or
+  `apple-touch-icon` — acceptable gap for a Tailscale-only homelab app).
+  Required a backend change: added `cors` middleware (credentials-enabled,
+  restricted to the frontend's origin via a new `FRONTEND_ORIGIN` env var)
+  since the frontend and backend run on different ports/origins — see
+  [decisions.md](decisions.md#2026-08-06-cors-added-to-the-backend-for-the-frontends-cross-origin-session-cookie).
+  Added Vitest + React Testing Library coverage (mocked `fetch`, no MSW) for
+  the API client, the auth guard, both auth forms, list/search, and the
+  ingredient/step array editors. Verified: `pnpm lint`, `pnpm build`, and the
+  full frontend `pnpm test` all pass; the dev server was manually checked in a
+  browser (routing/redirect behavior, manifest, and service worker
+  registration all confirmed) but the full signup→create→search→delete
+  golden path was **not** exercised end-to-end — this sandbox has no
+  Docker/Postgres available, so the backend couldn't actually run. Do that
+  walkthrough locally before considering this fully verified.
 - **2026-08-06** — MVP backend group finished: node-postgres (`pg`, raw SQL,
   no ORM) for DB access; `node-pg-migrate` migrations for the full MVP schema
   (users, recipes, ingredients, steps, tags, recipe_tags, recipe_images);

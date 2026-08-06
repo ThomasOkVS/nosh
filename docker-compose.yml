@@ -27,6 +27,8 @@ services:
       TEST_DATABASE_URL: postgres://${POSTGRES_USER:-nosh}:${POSTGRES_PASSWORD:-nosh}@postgres:5432/nosh_test
       SESSION_SECRET: ${SESSION_SECRET:-dev-secret-change-me}
       UPLOADS_DIR: /repo/backend/uploads
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:5173}
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-true}
       PORT: 3001
     ports:
       - "3001:3001"

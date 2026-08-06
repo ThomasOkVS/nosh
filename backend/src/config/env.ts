@@ -13,4 +13,6 @@ export const env = {
   databaseUrl: required("DATABASE_URL"),
   sessionSecret: process.env.SESSION_SECRET ?? "dev-secret-change-me",
   uploadsDir: process.env.UPLOADS_DIR ?? path.resolve(process.cwd(), "uploads"),
+  frontendOrigin: process.env.FRONTEND_ORIGIN ?? "http://localhost:5173",
+  seedDemoData: process.env.SEED_DEMO_DATA === "true",
 };
