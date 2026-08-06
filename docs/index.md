@@ -67,6 +67,10 @@ Full details: [architecture.md](architecture.md).
   hardware, OS, container management, monitoring, backups, and update mechanism.
   Also tracks what's genuinely not written yet (Compose file, first-deploy
   runbook) rather than guessing at it early. Maintained by the project owner.
+- **[dev-commands.md](dev-commands.md)** — cheat sheet of the commands you
+  actually type day to day (running the stack, tests, migrations, demo data,
+  troubleshooting). Update it whenever a command changes rather than letting
+  it drift.
 - **[../CLAUDE.md](../CLAUDE.md)** — lives at the repo root, not in `docs/`, but
   is part of this set: instructions AI coding assistance on this repo must
   follow (workflow, code standards, documentation upkeep).

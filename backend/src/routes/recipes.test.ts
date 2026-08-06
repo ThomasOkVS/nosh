@@ -8,7 +8,8 @@ async function signedInAgent(
   email: string,
 ): Promise<ReturnType<typeof request.agent>> {
   const agent = request.agent(app);
-  await agent.post("/auth/signup").send({ email, password: "correct-horse" });
+  const username = email.split("@")[0]!;
+  await agent.post("/auth/signup").send({ email, username, password: "correct-horse" });
   return agent;
 }
 

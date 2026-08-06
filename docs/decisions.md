@@ -232,6 +232,124 @@ index support, or land in a materialized view that itself needs manual
 refresh; the trigger keeps the same effect eagerly and simply); a
 `GENERATED ALWAYS AS` column (rejected — not supported across tables).
 
+## 2026-08-06: CORS added to the backend for the frontend's cross-origin session cookie {#2026-08-06-cors-added-to-the-backend-for-the-frontends-cross-origin-session-cookie}
+
+**Decision:** The backend now runs the `cors` middleware (`credentials: true`,
+`origin` restricted to a single configurable `FRONTEND_ORIGIN`, defaulting to
+`http://localhost:5173`), and the frontend's fetch wrapper always sends
+`credentials: "include"`. This supersedes the "there's no CORS" line in the
+2026-08-06 image-auth decision below, written before any frontend existed.
+
+**Why:** `docker-compose.yml` runs the frontend and backend on separate ports
+(`:5173` / `:3001`), and `architecture.md` already rules out a reverse proxy
+inside Nosh's own containers — so the browser sees them as different
+*origins*. They're still the same *site* (same hostname, whether
+`localhost` in dev or a Tailscale MagicDNS name in prod) so the existing
+`SameSite=Lax` session cookie is unaffected, but the browser blocks the
+`fetch` calls themselves without explicit CORS headers. A small, standard
+middleware was the direct fix.
+
+**Alternatives considered:** A Vite dev-server proxy to make requests
+same-origin (rejected — only solves this in dev; the deployment target still
+runs frontend/backend on separate ports/origins, so the same fix would be
+needed again in prod, whereas the CORS approach works unchanged in both);
+merging frontend and backend behind a single origin/port (rejected as a
+bigger change than this backlog item called for — worth reconsidering
+if/when the Deployment backlog group's Compose file is written).
+
+## 2026-08-06: Login switched from email to username
+
+**Decision:** Accounts now have a required, unique `username` (letters,
+numbers, underscores; 3–32 chars) alongside `email`. Login uses
+username + password instead of email + password; signup collects both.
+`GET /auth/me`, signup, and login responses all include `username`. Added via
+a migration that backfills a placeholder username (`<email-local-part>_<id>`)
+for any pre-existing rows, so it's safe to run against an already-populated
+database. The nav bar shows the username instead of the email.
+
+**Why:** Requested directly — email-only login worked but didn't match the
+"username/password accounts" framing used elsewhere in these docs, and a
+username is a nicer thing to display than an email address in the UI.
+
+**Alternatives considered:** Adding username as a display-only field while
+keeping email-based login (rejected — the whole point was to actually log in
+with a username, not just show one).
+
+## 2026-08-06: No minimum password length
+
+**Decision:** Removed the 8-character minimum on signup passwords, both in
+the backend's zod schema and the frontend form. Only a non-empty password is
+required now.
+
+**Why:** Requested directly — the maintainer wants to pick any password
+length for their own single-user, Tailscale-only instance without the app
+second-guessing it.
+
+## 2026-08-06: Demo data seed script, dev-only
+
+**Decision:** `backend/src/db/seed.ts` exports `seedDemoData(pool)`, which
+upserts a `demo@nosh.be` / username `Demo` / password `123` account and
+ensures it owns five sample recipes (a Flemish stew, a soup, a pasta dish, a
+salad, and a Belgian waffle recipe) with overlapping tags. It's idempotent —
+safe to run on every restart — matching existing rows by email (for the user)
+and by title (per recipe) rather than assuming a fresh database. Wired into
+`index.ts` to run once at startup, gated behind `SEED_DEMO_DATA=true`, which
+`docker-compose.yml` now sets by default. `env.ts` defaults this to `false`
+if the variable isn't set at all, so anything that isn't this specific dev
+Compose file (a bare `pnpm dev`, or whatever the real production Compose file
+ends up being — see the Deployment backlog group) won't seed data unless it
+explicitly opts in.
+
+**Why:** Requested directly, to get a populated app to test/demo against
+without manually recreating data every time. Idempotent-by-content (not a
+one-time guard) so it also converges an account that already exists (e.g.
+one created by hand while testing) to the intended demo credentials, rather
+than silently skipping it.
+
+**Alternatives considered:** A one-off script run manually (`pnpm seed`)
+instead of automatic on startup (rejected — the maintainer explicitly wants
+this to "always" happen when running the app for testing, not be a step to
+remember); a one-time-only guard, e.g. an `INSERT ... ON CONFLICT DO NOTHING`
+(rejected — wouldn't converge an existing demo account created with different
+credentials to the intended ones).
+
+## 2026-08-06: Frontend dev container unreliable on Windows — run frontend outside Docker locally
+
+**Decision:** On the maintainer's Windows development machine, the frontend's
+Docker container (Vite dev server) is unreliable — the browser/curl get
+instant connection failures (`ERR_EMPTY_RESPONSE`/refused) reaching
+`localhost:5173`, regardless of which host port is used. Root-caused to
+Docker Desktop's Windows/WSL2 port-forwarding layer specifically failing for
+the Vite process (Express on `:3001` reliably works through the same
+mechanism, ruling out a general Docker Desktop or firewall problem). A full
+Quit+relaunch of Docker Desktop and killing stale `wslrelay.exe` processes
+were tried and didn't fix it; remapping the host port didn't either.
+Workaround: run Postgres + backend via `docker compose up` as normal, but run
+the frontend directly on the host with `pnpm --filter frontend dev` (falls
+back to `http://localhost:3001` for the API with no `.env` needed, and the
+backend's default `FRONTEND_ORIGIN` already matches Vite's default port).
+
+**Why:** Getting a real fix would mean digging further into Docker
+Desktop's WSL2 networking internals (this machine also runs both Tailscale
+and ZeroTier as active virtual adapters, either of which could be a
+contributing factor) for a problem that's specific to this one developer's
+Windows machine, not the app. The production target
+([deployment.md](deployment.md)) is a Linux box (ZimaOS) with no WSL2/Hyper-V
+port-forwarding involved, so this is very unlikely to affect the real
+deployment — it isn't worth more time right now.
+
+**Status:** Workaround in place, root cause not fully resolved. Revisit if it
+recurs, if it turns out to also affect other Windows dev setups, or once
+there's a real `docker-compose.yml`/dev-workflow doc to keep in sync (see the
+Deployment backlog group) — whoever writes that should confirm whether this
+is still an issue.
+
+**Alternatives considered:** A Vite dev-server proxy or single-origin setup
+(rejected — orthogonal to this specific networking failure, which affected
+the container regardless of port/origin); spending more time on root-causing
+the WSL2/Tailscale/ZeroTier interaction (rejected for now — low payoff given
+the production target is unaffected).
+
 ## 2026-08-05: Region — Belgium
 
 **Decision:** Default units, currency, and future supermarket integrations

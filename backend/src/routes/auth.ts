@@ -3,7 +3,7 @@ import type { Request } from "express";
 import { Router } from "express";
 import type { Pool } from "pg";
 import { requireAuth } from "../middleware/requireAuth";
-import { createUser, findUserByEmail, findUserById } from "../repositories/users";
+import { createUser, findUserByEmail, findUserById, findUserByUsername } from "../repositories/users";
 import { loginSchema, signupSchema } from "../validation/auth";
 
 // Regenerating the session on login/signup gives each authenticated session a
@@ -30,20 +30,25 @@ export function createAuthRouter(pool: Pool): Router {
       res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
       return;
     }
-    const { email, password } = parsed.data;
+    const { email, username, password } = parsed.data;
 
     try {
-      const existing = await findUserByEmail(pool, email);
-      if (existing) {
+      const existingEmail = await findUserByEmail(pool, email);
+      if (existingEmail) {
         res.status(409).json({ error: "Email already registered" });
+        return;
+      }
+      const existingUsername = await findUserByUsername(pool, username);
+      if (existingUsername) {
+        res.status(409).json({ error: "Username already taken" });
         return;
       }
 
       const passwordHash = await argon2.hash(password);
-      const user = await createUser(pool, email, passwordHash);
+      const user = await createUser(pool, email, username, passwordHash);
       await regenerateSession(req);
       req.session.userId = user.id;
-      res.status(201).json({ id: user.id, email: user.email });
+      res.status(201).json({ id: user.id, email: user.email, username: user.username });
     } catch (err) {
       next(err);
     }
@@ -55,19 +60,19 @@ export function createAuthRouter(pool: Pool): Router {
       res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
       return;
     }
-    const { email, password } = parsed.data;
+    const { username, password } = parsed.data;
 
     try {
-      const user = await findUserByEmail(pool, email);
+      const user = await findUserByUsername(pool, username);
       const passwordMatches = user ? await argon2.verify(user.passwordHash, password) : false;
       if (!user || !passwordMatches) {
-        res.status(401).json({ error: "Invalid email or password" });
+        res.status(401).json({ error: "Invalid username or password" });
         return;
       }
 
       await regenerateSession(req);
       req.session.userId = user.id;
-      res.json({ id: user.id, email: user.email });
+      res.json({ id: user.id, email: user.email, username: user.username });
     } catch (err) {
       next(err);
     }
@@ -97,7 +102,7 @@ export function createAuthRouter(pool: Pool): Router {
         res.status(401).json({ error: "Not authenticated" });
         return;
       }
-      res.json({ id: user.id, email: user.email });
+      res.json({ id: user.id, email: user.email, username: user.username });
     } catch (err) {
       next(err);
     }

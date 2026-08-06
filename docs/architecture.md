@@ -38,7 +38,10 @@ Rationale for each of these is in [decisions.md](decisions.md).
 
 The frontend is a single-page app that talks to the backend over a JSON REST API.
 There is no separate API gateway or reverse proxy inside Nosh's own containers —
-Tailscale is the network boundary.
+Tailscale is the network boundary. Frontend and backend run on different
+ports (different origins, but the same site/hostname), so the backend allows
+the frontend's origin via CORS with credentials enabled — see
+[decisions.md#2026-08-06-cors-added-to-the-backend-for-the-frontends-cross-origin-session-cookie](decisions.md).
 
 ## Repo / folder structure
 
