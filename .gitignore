@@ -3,6 +3,7 @@ dist/
 dist-ssr/
 build/
 coverage/
+backend/uploads/
 
 .env
 .env.*.local

@@ -3,9 +3,10 @@ RUN corepack enable
 
 WORKDIR /repo
 COPY . .
-RUN pnpm install
+RUN pnpm install && chown -R node:node /repo
 
 WORKDIR /repo/frontend
 EXPOSE 5173
 
+USER node
 CMD ["pnpm", "dev", "--", "--host"]

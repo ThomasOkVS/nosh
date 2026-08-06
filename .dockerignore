@@ -5,3 +5,9 @@ dist
 .git
 .env
 .env.*.local
+backend/uploads
+coverage
+**/coverage
+*.log
+.idea
+.claude/settings.local.json

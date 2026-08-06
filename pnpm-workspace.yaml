@@ -2,4 +2,5 @@ packages:
   - "frontend"
   - "backend"
 allowBuilds:
+  argon2: true
   esbuild: true

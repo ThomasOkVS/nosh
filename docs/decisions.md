@@ -177,6 +177,61 @@ at this stage.
 wanted pnpm); Fastify/NestJS for backend (rejected — see above); Tailwind v3
 (rejected — v4's simpler setup has no real downside for a new project).
 
+## 2026-08-06: Backend MVP — DB access, auth mechanism, and supporting libraries
+
+**Decision:** Database access is raw SQL via `pg` (node-postgres) — no ORM or
+query builder. Auth uses server-side sessions (`express-session`, backed by a
+Postgres store via `connect-pg-simple`, httpOnly cookie) rather than JWTs.
+Passwords are hashed with `argon2`. Migrations run through `node-pg-migrate`
+(JS migration files that mostly call `pgm.sql(...)` with real SQL, rather than
+its table-builder DSL, to keep the SQL itself visible). Image uploads use
+`multer` writing to local disk. Request body validation uses `zod`.
+
+**Why:** Raw `pg` was chosen over Drizzle/Prisma specifically because
+docs/index.md's learning goal is Postgres itself — an ORM would trade that
+transparency for convenience. Sessions were chosen over JWTs because they're
+actually revocable (logout works) and map onto a more classic web-auth model,
+which was judged more valuable to have built once than a stateless token
+scheme. `node-pg-migrate` avoids hand-rolling a migration runner (a solved
+problem with no learning payoff) while still requiring hand-written SQL for
+the schema itself. `multer` and `zod` are both small, standard, and directly
+address a real need (multipart file handling, request validation) rather than
+being speculative — consistent with "don't introduce unnecessary
+dependencies."
+
+**Alternatives considered:** Drizzle ORM (rejected — still worthwhile to learn
+someday, but competes with the raw-SQL learning goal now); Prisma (rejected —
+furthest from raw SQL of the three); JWT auth (rejected — harder revocation,
+no strong benefit for a server-rendered-session-friendly single-page app
+talking to its own backend); bcrypt over argon2 (no strong reason either way;
+argon2 is the more modern recommendation); hand-rolled migration runner
+(rejected — reinvents a solved problem).
+
+## 2026-08-06: Full-text search implemented via triggers, not a single generated column
+
+**Decision:** `recipes.search_vector` (tsvector, GIN-indexed) is maintained by
+triggers rather than a single Postgres `GENERATED ALWAYS AS` column. A
+`BEFORE INSERT OR UPDATE` trigger on `recipes` sets the column from the
+recipe's own `title`/`description`. Separate `AFTER INSERT OR UPDATE OR DELETE`
+triggers on `ingredients`, `steps`, and `recipe_tags` call a shared function
+that recomputes the owning recipe's `search_vector` by re-aggregating title,
+description, ingredient names, step instructions, and tag names with
+`setweight`.
+
+**Why:** This supersedes the wording in
+[architecture.md](architecture.md#search) ("combined via a generated/indexed
+column"), which isn't achievable as written — Postgres generated columns can
+only reference columns on the same row, and the search corpus here spans four
+tables. Triggers are the standard Postgres pattern for cross-table
+denormalized/materialized search columns, and keep search queries a simple
+indexed lookup on `recipes` with no query-time joins or aggregation.
+
+**Alternatives considered:** Compute `to_tsvector` at query time via joins and
+`string_agg` (rejected — would need to happen on every search request with no
+index support, or land in a materialized view that itself needs manual
+refresh; the trigger keeps the same effect eagerly and simply); a
+`GENERATED ALWAYS AS` column (rejected — not supported across tables).
+
 ## 2026-08-05: Region — Belgium
 
 **Decision:** Default units, currency, and future supermarket integrations
@@ -185,3 +240,37 @@ flexible enough to extend to neighboring EU countries later.
 
 **Why:** Matches where the project owner actually shops; stated as the primary
 region during scoping.
+
+## 2026-08-06: Recipe images served through an authenticated route, not a static mount
+
+**Decision:** Recipe images are served via `GET /recipes/:id/images/:imageId`
+(behind the same `requireAuth` + ownership check as every other recipe route),
+not via a blanket `express.static("/uploads", ...)` mount as originally built.
+Login and signup also now call `req.session.regenerate()` before setting
+`userId`, so a session ID issued before authentication can't be reused to
+inherit the authenticated session afterward (session fixation).
+
+**Why:** A security review of the MVP backend flagged that image files were
+the one piece of recipe data with no access control at all — every other
+route enforced per-user ownership, but `/uploads/<filename>` was globally
+readable by anyone who obtained the URL, with no session check. Filenames are
+unguessable (server-generated UUIDs), so this wasn't brute-forceable, but it
+was a real inconsistency in the app's own authorization model, not just a
+hardening gap. Fixed while it was still free to do (no frontend exists yet to
+depend on the old static URL shape). The same review also considered a
+hardcoded fallback `SESSION_SECRET` and missing cookie `secure`/`sameSite`
+flags; both were investigated and rejected as non-issues for this app's
+actual design (sessions are server-side via `connect-pg-simple`, so the secret
+never signs privilege data; there's no CORS and every sensitive endpoint
+requires a JSON body, which already blocks the classic CSRF vectors
+`sameSite` addresses; `secure: true` would break login outright given the
+project's documented no-TLS, Tailscale-only deployment). Session regeneration
+was added anyway as a standard, low-cost defense against session fixation,
+even though no concrete exploitation path exists in this codebase today.
+
+**Alternatives considered:** Leaving `/uploads` as a static mount and
+documenting the gap as an accepted trade-off (rejected — the fix was cheap
+enough, and free while nothing depends on the URL shape yet, that documenting
+around it wasn't worth it); setting `cookie.secure = true` (rejected — breaks
+the app under its actual no-TLS deployment model rather than improving
+security).

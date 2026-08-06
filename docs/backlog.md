@@ -15,14 +15,6 @@ choice was made). This is just a todo list.
 
 ## Backlog
 
-### MVP — backend
-- [ ] Postgres migrations for MVP schema (users, recipes, ingredients, steps,
-      tags, recipe_tags, recipe_images) — see [architecture.md](architecture.md)
-- [ ] Auth: signup, login, session/JWT handling, password hashing
-- [ ] Recipe CRUD API endpoints
-- [ ] Image upload handling (local disk volume)
-- [ ] Full-text search endpoint (Postgres `tsvector`)
-
 ### MVP — frontend
 - [ ] App shell + routing
 - [ ] Login / signup screens
@@ -39,6 +31,33 @@ choice was made). This is just a todo list.
 
 ## Completed
 
+- **2026-08-06** — MVP backend group finished: node-postgres (`pg`, raw SQL,
+  no ORM) for DB access; `node-pg-migrate` migrations for the full MVP schema
+  (users, recipes, ingredients, steps, tags, recipe_tags, recipe_images);
+  full username/password auth (argon2 hashing, `express-session` +
+  `connect-pg-simple` Postgres-backed sessions, httpOnly cookies) with
+  signup/login/logout/me; recipe CRUD with nested ingredients/steps/tags
+  (transactional create/update, ownership checks scoped to the session user);
+  image upload via `multer` to a local disk volume, served back through an
+  authenticated, ownership-checked route (not a static mount — see
+  [decisions.md](decisions.md#2026-08-06-recipe-images-served-through-an-authenticated-route-not-a-static-mount)),
+  with cleanup of files on delete; full-text search (`GET /recipes/search`)
+  backed by a trigger-maintained `search_vector` column (see
+  [decisions.md](decisions.md#2026-08-06-full-text-search-implemented-via-triggers-not-a-single-generated-column),
+  which supersedes the original "generated column" wording in
+  [architecture.md](architecture.md#search)). Added a `zod`-validated request
+  layer, a dedicated `nosh_test` Postgres database (created via
+  `postgres-init/`) so the Vitest/Supertest suite never touches dev data, and
+  a Postgres service in CI. `createApp()` now takes injected dependencies
+  (pool, session secret, uploads dir) for testability. A follow-up security
+  review (3 sub-agent findings, independently re-verified) confirmed the
+  missing image-route authorization above as a real gap and fixed it, and
+  added session regeneration on login/signup against session fixation;
+  a hardcoded fallback `SESSION_SECRET` and missing cookie `secure`/`sameSite`
+  flags were investigated and ruled out as non-issues for this app's actual
+  design (see the same decisions.md entry). Verified for real this time:
+  `pnpm lint`, `pnpm build`, and the full `pnpm test` (28 backend + 1 frontend
+  test, migrations included) all pass against a live Postgres instance.
 - **2026-08-06** — Project setup group finished: pnpm-workspace monorepo
   (`frontend/`, `backend/`); backend is Express + strict TS (CommonJS output,
   `tsx` for dev) with ESLint flat config + Prettier; frontend is Vite + React 19

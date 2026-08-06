@@ -10,6 +10,7 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nosh}"]
       interval: 5s
@@ -23,6 +24,9 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-nosh}:${POSTGRES_PASSWORD:-nosh}@postgres:5432/${POSTGRES_DB:-nosh}
+      TEST_DATABASE_URL: postgres://${POSTGRES_USER:-nosh}:${POSTGRES_PASSWORD:-nosh}@postgres:5432/nosh_test
+      SESSION_SECRET: ${SESSION_SECRET:-dev-secret-change-me}
+      UPLOADS_DIR: /repo/backend/uploads
       PORT: 3001
     ports:
       - "3001:3001"
@@ -31,6 +35,7 @@ services:
       - /repo/node_modules
       - /repo/backend/node_modules
       - /repo/frontend/node_modules
+      - uploads_data:/repo/backend/uploads
     depends_on:
       postgres:
         condition: service_healthy
@@ -54,3 +59,4 @@ services:
 
 volumes:
   postgres_data:
+  uploads_data:
