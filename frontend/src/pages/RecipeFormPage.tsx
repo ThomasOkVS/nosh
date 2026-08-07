@@ -266,6 +266,17 @@ export function RecipeFormPage() {
     return <p className={errorBannerClass}>{loadError}</p>;
   }
 
+  const dropzoneBaseClass =
+    "mt-3 flex flex-col items-center justify-center gap-1.5 rounded-lg border-2 border-dashed px-4 py-8 text-center transition-colors duration-standard ease-standard";
+  let dropzoneStateClass: string;
+  if (uploadingImage) {
+    dropzoneStateClass = "cursor-not-allowed border-border opacity-60";
+  } else if (isDraggingImage) {
+    dropzoneStateClass = "cursor-pointer border-citrus-500 bg-citrus-50 dark:bg-citrus-500/10";
+  } else {
+    dropzoneStateClass = "cursor-pointer border-border hover:border-citrus-500 hover:bg-citrus-50 dark:hover:bg-citrus-500/10";
+  }
+
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <Link to="/" className="inline-flex items-center gap-1 text-sm text-ink-muted hover:text-ink">
@@ -478,13 +489,7 @@ export function RecipeFormPage() {
               onDragOver={handleImageDragOver}
               onDragLeave={handleImageDragLeave}
               onDrop={handleImageDrop}
-              className={`mt-3 flex flex-col items-center justify-center gap-1.5 rounded-lg border-2 border-dashed px-4 py-8 text-center transition-colors duration-standard ease-standard ${
-                uploadingImage
-                  ? "cursor-not-allowed border-border opacity-60"
-                  : isDraggingImage
-                    ? "cursor-pointer border-citrus-500 bg-citrus-50 dark:bg-citrus-500/10"
-                    : "cursor-pointer border-border hover:border-citrus-500 hover:bg-citrus-50 dark:hover:bg-citrus-500/10"
-              }`}
+              className={`${dropzoneBaseClass} ${dropzoneStateClass}`}
             >
               <UploadSimpleIcon size={24} className="text-citrus-500" />
               <span className="text-sm font-medium text-ink">

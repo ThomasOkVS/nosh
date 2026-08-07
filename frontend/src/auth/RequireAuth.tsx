@@ -12,9 +12,11 @@ export function RequireAuth() {
     // weight for what's normally a near-instant check. See
     // docs/design-system.md#loading-states.
     return (
-      <div role="status" aria-label="Loading" className="flex min-h-dvh items-center justify-center bg-surface-page">
+      // <output> has an implicit "status" role, and is announced more
+      // consistently across assistive tech than role="status" on a <div>.
+      <output aria-label="Loading" className="flex min-h-dvh items-center justify-center bg-surface-page">
         <CircleNotchIcon size={28} className="animate-spin text-citrus-500" aria-hidden="true" />
-      </div>
+      </output>
     );
   }
 
