@@ -20,8 +20,8 @@ describe("RecipeFormPage", () => {
     expect(screen.getAllByPlaceholderText("Ingredient")).toHaveLength(1);
     expect(screen.getAllByPlaceholderText("Instructions")).toHaveLength(1);
 
-    fireEvent.click(screen.getByText("+ Add ingredient"));
-    fireEvent.click(screen.getByText("+ Add step"));
+    fireEvent.click(screen.getByRole("button", { name: "Add ingredient" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add step" }));
     expect(screen.getAllByPlaceholderText("Ingredient")).toHaveLength(2);
     expect(screen.getAllByPlaceholderText("Instructions")).toHaveLength(2);
 

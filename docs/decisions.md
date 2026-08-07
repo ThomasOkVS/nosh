@@ -392,3 +392,127 @@ enough, and free while nothing depends on the URL shape yet, that documenting
 around it wasn't worth it); setting `cookie.secure = true` (rejected — breaks
 the app under its actual no-TLS deployment model rather than improving
 security).
+
+## 2026-08-06: Design system defined — "Citrus Pop", glassy/rounded, motion-forward
+
+**Decision:** Adopted a full design language ([design-system.md](design-system.md))
+ahead of restyling the MVP UI, which currently uses Tailwind's default
+`slate` palette with no custom tokens. Key choices: a bold "Citrus Pop"
+orange/teal color system (gradient reserved for hero moments, flat fill for
+buttons); Plus Jakarta Sans (display) + Inter (body), both via Google Fonts
+CDN; a very-rounded shape language (`radius-full` on primary buttons);
+glassy/translucent panels for nav/modals/floating overlays (not for every
+card); Phosphor Icons in a mixed outline-default/filled-active system; rich,
+springy motion that does **not** respect `prefers-reduced-motion`, on the
+condition that motion stays purely decorative and never gates required
+functionality; contained rounded photography rather than full-bleed;
+custom illustrations for empty states (not yet produced). CLAUDE.md now
+requires all UI work to follow this doc, and to extend it first if a new
+pattern is needed.
+
+**Why:** Requested directly — the app "looks like a CRUD tool, not a premium
+consumer product." Design direction gathered via structured interview citing
+Apple (restraint/motion polish), Arc browser (glass, color confidence), and
+family.co (bold display type, vibrant gradients) as references.
+
+**Notable trade-offs accepted knowingly (not oversights):**
+- Ignoring `prefers-reduced-motion` is a deliberate call against the usual
+  accessibility default, mitigated by keeping all motion decorative-only.
+- Google Fonts CDN loading is a minor tension with Nosh's otherwise
+  self-hosted, no-third-party-dependency ethos; accepted for now, revisit if
+  it ever causes an actual (offline PWA / privacy) problem.
+
+## 2026-08-06: Critical design review — token layer wasn't enough, structure still read as CRUD
+
+**Decision:** After implementing the design system above, reviewed the real
+running app (against the actual backend + seeded demo data, not just code)
+and found the token layer alone didn't fix the "looks like a CRUD tool"
+problem — the recipe list, detail, and form pages were still structurally an
+admin scaffold. Revised, and [design-system.md](design-system.md) updated
+first per CLAUDE.md's "extend the doc before building a new pattern" rule:
+
+1. **Recipe cards**: horizontal thumbnail-left list row → photo-forward grid
+   (1/2/3 columns by breakpoint), image full-card-width on top.
+2. **Detail page**: photo moved from below three lines of metadata to a
+   full-width hero immediately after the back link, before the title.
+3. **Ingredients/Steps**: raw `<ul>`/`<ol>` → a bulleted checklist and
+   individually-carded, numbered steps.
+4. **Edit/Delete**: were two equal-weight pills (outlined + filled red)
+   flanking the title — the canonical admin-record-toolbar pairing. Delete
+   is now a low-emphasis ghost action, Edit stays the visible secondary
+   button.
+5. **Recipe form**: was a flat, unlabeled-example wall of inputs. Grouped
+   into icon-labeled sections (Basics/Ingredients/Steps/Tags/Photos), each
+   its own `bg-surface-sunken` card; every text/number field now carries an
+   example placeholder.
+6. **Tag chips** now always render capitalized, regardless of stored casing
+   — raw lowercase (`belgian`) read as an unprocessed DB value.
+7. **Input borders** were nearly invisible against their own fill in both
+   themes (`#E8E2DC` light / `rgba(255,255,255,0.08)` dark) — bumped to
+   `#DED5CA` / `rgba(255,255,255,0.14)` app-wide.
+
+**Why:** Requested directly ("review the UI as if you were a senior product
+designer... be brutally critical"). Confirms the general lesson: a color/
+type/radius/glass token pass can make a CRUD scaffold *prettier* without
+making it stop *being* a CRUD scaffold — the list-row, buried-photo,
+raw-list, and equal-weight-destructive-action patterns are structural, not
+stylistic, and needed layout changes, not just new classes.
+
+**Explicitly scoped out, tracked instead:** there's still no moment of
+delight anywhere in the app (saving a recipe just silently redirects) — a
+lightweight toast/confirmation component would need real design (motion,
+stacking, dismissal) beyond a one-off styling fix. Added to
+[backlog.md](backlog.md) rather than built unscoped.
+
+**Alternatives considered:** Leaving the list as a denser table-like view for
+a large personal collection (rejected — Nosh's target scale is dozens to low
+hundreds of recipes per docs/decisions.md's search-engine rationale, not
+thousands, so density isn't worth sacrificing the photo-forward feel for).
+
+Also added mobile-first as an explicit responsive strategy: the primary
+target device is an iPhone 15 Pro, with tablet and desktop as real but
+secondary breakpoints layered on top (see
+[design-system.md#responsive-strategy-mobile-first](design-system.md#responsive-strategy-mobile-first)) —
+44px minimum touch targets, `env(safe-area-inset-*)` padding for the
+notch/home indicator on the installed PWA, single-column mobile layouts with
+`sm:`/`md:` multi-column enhancements.
+
+**Status:** Approved, not yet implemented — see the Design group in
+[backlog.md](backlog.md).
+
+## 2026-08-06: SonarQube cleanup — deprecated icon/type imports, Dockerfile COPY finding
+
+**Decision:** Fixed all 60 SonarQube findings from a full-repo analysis:
+
+1. **`@phosphor-icons/react` icon imports** (e.g. `ArrowLeft`, `Plus`, `X`,
+   `Eye`/`EyeSlash`, etc., across every frontend component/page touched by
+   the restyle) — the library's bare icon names are `@deprecated` in favor of
+   an `*Icon`-suffixed export (`ArrowLeft` → `ArrowLeftIcon`, and so on).
+   Renamed every import and usage to the `*Icon` form; no visual or
+   behavioral change.
+2. **`FormEvent` from `react`** (`AuthLayout`, `LoginPage`, `SignupPage`,
+   `RecipeFormPage`) — `@types/react` marks it `@deprecated` with "FormEvent
+   doesn't actually exist," pointing at `SubmitEvent` for form-submit
+   handlers specifically. Replaced `FormEvent<HTMLFormElement>` with
+   `SubmitEvent<HTMLFormElement>` everywhere; same shape (`SyntheticEvent`),
+   so `.preventDefault()` etc. are unaffected.
+3. **`Dockerfile.dev` recursive `COPY . .`** (frontend and backend) — flagged
+   as "might inadvertently add sensitive data to the container." Checked
+   rather than blindly restructured: the repo-root `.dockerignore` already
+   excludes `.env`, `.env.*.local`, `.git`, and `node_modules` from the build
+   context, and Docker's ignore-pattern matching applies extensionless
+   patterns like `.env` at every depth, not just the root — so a nested
+   `frontend/.env` or `backend/.env` is covered too. The recursive copy
+   itself is required, not incidental (see
+   [decisions.md](decisions.md#project-setup-tooling-choices) — each
+   service's Dockerfile builds from the repo root so pnpm workspace
+   resolution works). Added a comment above each `COPY . .` documenting the
+   mitigation instead of restructuring around a already-covered risk.
+
+**Why:** Direct request to resolve a SonarQube report. The icon/type
+renames are pure library-recommended migrations with no behavior change;
+the Dockerfile item is a "verify, don't silence" case, matching the
+project's existing precedent of investigating security-review findings
+before changing code (see the 2026-08-06 image-auth decision above, which
+similarly ruled out `cookie.secure`/`SESSION_SECRET` findings as non-issues
+for this app's actual design rather than changing them reflexively).

@@ -63,6 +63,9 @@ Full details: [architecture.md](architecture.md).
 - **[backlog.md](backlog.md)** — concrete todo items (Backlog) and a dated log
   of what's actually been finished (Completed). Move items from one section to
   the other as work happens; don't just delete finished items.
+- **[design-system.md](design-system.md)** — the UI's visual language (color,
+  type, shape, motion, component rules). Normative for any UI change — extend
+  it first if a change needs a pattern it doesn't already cover.
 - **[deployment.md](deployment.md)** — the homelab environment Nosh runs on:
   hardware, OS, container management, monitoring, backups, and update mechanism.
   Also tracks what's genuinely not written yet (Compose file, first-deploy

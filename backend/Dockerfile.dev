@@ -2,6 +2,10 @@ FROM node:22-alpine
 RUN corepack enable
 
 WORKDIR /repo
+# Recursive copy is required so pnpm can resolve the workspace (see
+# docs/decisions.md#project-setup-tooling-choices). The repo-root
+# .dockerignore excludes .env/.env.*.local, .git, node_modules, etc. from
+# this build context.
 COPY . .
 RUN pnpm install && mkdir -p backend/uploads && chown -R node:node /repo
 

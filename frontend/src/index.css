@@ -1,1 +1,160 @@
 @import "tailwindcss";
+
+/* Tailwind v4 defaults `dark:` to `prefers-color-scheme`. We toggle a `.dark`
+   class on <html> instead (see ThemeToggle + the inline script in index.html),
+   so redefine what the `dark:` variant matches. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-display: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --radius-xl: 32px;
+
+  --color-citrus-50: #fff4ec;
+  --color-citrus-100: #ffe4d2;
+  --color-citrus-300: #ffb37a;
+  --color-citrus-400: #ff9345;
+  --color-citrus-500: #ff7a1a;
+  --color-citrus-600: #f2600a;
+  --color-citrus-700: #cb4a02;
+
+  --color-teal-50: #eafbfa;
+  --color-teal-300: #5fd4cb;
+  --color-teal-500: #12a6a0;
+  --color-teal-700: #0b6e6a;
+
+  --color-success-50: #eafbf1;
+  --color-success-500: #1e9e5a;
+  --color-warning-50: #fef8ea;
+  --color-warning-500: #e0a100;
+  --color-danger-50: #fdecec;
+  --color-danger-500: #e11d48;
+  --color-danger-700: #b0123b;
+
+  /* Semantic surface/text tokens — same var names, redefined under .dark
+     below, so components never write their own dark: overrides for these. */
+  --color-surface: #ffffff;
+  --color-surface-page: #fdfcfb;
+  --color-surface-sunken: #f5f1ed;
+  --color-border: #ded5ca;
+  --color-ink: #23201c;
+  --color-ink-muted: #6b6259;
+  --color-ink-faint: #a69c92;
+
+  --ease-standard: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --duration-micro: 120ms;
+  --duration-standard: 200ms;
+  --duration-panel: 320ms;
+  --duration-spring: 400ms;
+}
+
+:root {
+  color-scheme: light;
+}
+
+.dark {
+  color-scheme: dark;
+  --color-surface: #1d1f26;
+  --color-surface-page: #14151a;
+  --color-surface-sunken: #23252c;
+  --color-border: rgba(255, 255, 255, 0.14);
+  --color-ink: #f4f2ef;
+  --color-ink-muted: #a8a5a0;
+  --color-ink-faint: #757269;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--color-surface-page);
+  color: var(--color-ink);
+}
+
+/* Glass panels: nav, modals, floating overlays — never every card, see
+   docs/design-system.md#elevation-surfaces---glass. Plain CSS (not an
+   @utility) since it's applied as-is, no variants needed on it directly. */
+.glass {
+  background: rgba(255, 255, 255, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow: 0 8px 32px rgba(35, 32, 28, 0.08);
+}
+
+@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+  .glass {
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+  }
+}
+
+.dark .glass {
+  background: rgba(30, 32, 38, 0.55);
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+}
+
+/* Fixed-dark glass for panels floating over user photos (not app chrome) —
+   see docs/design-system.md#photo-overlay-panels. Deliberately does NOT
+   follow .dark: a photo's brightness has nothing to do with the app's
+   light/dark setting, so the panel stays dark-tinted with white text in
+   both themes to keep contrast guaranteed rather than theme-consistent. */
+.glass-photo {
+  background: rgba(20, 21, 26, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+  .glass-photo {
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+  }
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.94) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.animate-pop-in {
+  animation: pop-in var(--duration-spring) var(--ease-spring);
+}
+
+/* Modal/sheet entrance — motion-panel timing (no spring overshoot), see
+   docs/design-system.md#confirmation-dialogs. */
+@keyframes dialog-backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.animate-dialog-backdrop-in {
+  animation: dialog-backdrop-in var(--duration-panel) var(--ease-standard);
+}
+
+.animate-dialog-in {
+  animation: dialog-in var(--duration-panel) var(--ease-standard);
+}
