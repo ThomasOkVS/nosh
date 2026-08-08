@@ -15,19 +15,70 @@ choice was made). This is just a todo list.
 
 ## Backlog
 
-### Deployment
-- [ ] Write Nosh's `docker-compose.yml` for the homelab (see
-      [deployment.md](deployment.md)'s "Not yet written" section)
-- [ ] First-deploy runbook
-- [ ] Publish images to a registry Watchtower can poll
-- [ ] Confirm the frontend's dev container actually works on Windows dev
-      machines before writing dev-workflow docs — see
-      [decisions.md](decisions.md#2026-08-06-frontend-dev-container-unreliable-on-windows-run-frontend-outside-docker-locally)
-      for the unresolved Docker-Desktop-on-Windows networking issue and the
-      current workaround (run frontend via `pnpm dev`, not Docker)
+### Design polish (post-restyle follow-ups)
+- [ ] Replace native `window.alert()` for error messages (image upload/delete
+      failure, recipe delete failure) with a proper toast/inline-banner
+      component — tracked as a still-open gap in
+      [design-system.md](design-system.md#open-items); needs its own design
+      pass since an error is informational, not a blocking confirmation like
+      `ConfirmDialog`.
+- [ ] Design and add empty-state illustrations ("no recipes yet", "no search
+      results") — currently icon+copy only, an explicit interim fallback per
+      [design-system.md](design-system.md#empty-states).
+- [ ] Add a real PWA icon set (raster PNGs incl. `apple-touch-icon`) alongside
+      the current single `sizes="any"` SVG icon, for a proper iOS home-screen
+      icon — noted as an accepted gap when the PWA shipped.
+- [ ] Low priority: fix the glass-panel focus-ring `ring-offset-color`
+      mismatch on inputs over `.glass` surfaces (e.g. the login card) — see
+      [design-system.md](design-system.md#open-items); cosmetic, not an a11y
+      failure.
+
+### Post-MVP features
+Confirm scope with the project owner before starting any of these — per
+[CLAUDE.md](../CLAUDE.md), none should be built ahead of an explicit
+go-ahead. Ordered per [index.md](index.md#planned-post-mvp)'s stated
+priority.
+
+- [ ] LLM-based recipe import from URLs, Instagram Reels, and TikTok — see
+  [decisions.md](decisions.md#2026-08-05-recipe-import-via-cloud-llm-post-mvp)
+  for the already-decided approach (cloud LLM API, not local/self-hosted).
+- [ ] Nutrition info via an external nutrition database.
+- [ ] Smart unit conversions & recipe scaling.
+- [ ] Notes & ratings on recipes.
+- [ ] Recipe organization: collections and tag-based browsing.
+- [ ] Weekly meal planner.
+- [ ] Grocery list generation from planned meals (depends on the meal
+      planner above existing first).
+- [ ] Grocery list integration with Belgian supermarkets (Colruyt, Albert
+      Heijn, etc.) — depends on grocery list generation above existing
+      first.
+- [ ] Native-feeling mobile experience (MVP ships as a responsive PWA; this
+      is a further step beyond that).
 
 ## Completed
 
+- **2026-08-08** — Deployment group finished: production
+  `backend/Dockerfile`/`frontend/Dockerfile` (multi-stage, distinct from the
+  dev-only `Dockerfile.dev` of each — backend down to a `tsc`-built,
+  prod-deps-only runtime image, frontend to an `nginx`-served static build
+  with SPA fallback routing and cache-aware headers);
+  `docker-compose.prod.yml` for the homelab (pulls published GHCR images,
+  bind-mounts Postgres/uploads under `/DATA/nosh/` so Kopia's backup sweep
+  covers them — see [deployment.md](deployment.md)); a `publish` job added
+  to [ci.yml](../.github/workflows/ci.yml) that builds and pushes both
+  images to GHCR (tagged `latest` + commit SHA) on every merge to `main`,
+  which Watchtower now has something to poll; and a first-deploy runbook
+  added to [deployment.md](deployment.md) (directory setup, `.env` from the
+  new [.env.prod.example](../.env.prod.example), migration step, health
+  check, update/rollback). Also re-confirmed the Windows frontend
+  dev-container issue is still present (Docker Desktop is now available in
+  this environment, so this could actually be re-tested rather than assumed)
+  — see [decisions.md](decisions.md) for both entries. Verified for real:
+  built both production images, ran real migrations against the built
+  backend image, and hit the built frontend image's nginx server from a
+  browser (SPA routing, cache headers, PWA manifest content-type all
+  confirmed working, not just read from config) — caught and fixed a missing
+  `manifest.webmanifest` MIME type this way.
 - **2026-08-06** — Restyled the app to match
   [design-system.md](design-system.md): tokens (colors, type, radius, glass,
   dark mode), then a follow-up critical design review against the real
