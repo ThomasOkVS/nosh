@@ -3,13 +3,16 @@ import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import * as recipesApi from "../api/recipes";
 import type { Recipe } from "../api/types";
+import { ToastProvider } from "../toast/ToastProvider";
 import { RecipeFormPage } from "./RecipeFormPage";
 
 function renderPage() {
   return render(
-    <MemoryRouter initialEntries={["/recipes/new"]}>
-      <RecipeFormPage />
-    </MemoryRouter>,
+    <ToastProvider>
+      <MemoryRouter initialEntries={["/recipes/new"]}>
+        <RecipeFormPage />
+      </MemoryRouter>
+    </ToastProvider>,
   );
 }
 

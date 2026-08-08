@@ -13,6 +13,7 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Skeleton } from "../components/Skeleton";
 import { useAsync } from "../hooks/useAsync";
 import { buttonClass, errorBannerClass, sectionHeadingClass } from "../styles";
+import { useToast } from "../toast/ToastContext";
 
 /** Mirrors the loaded layout below (back link real, everything data-dependent
  * skeletonized) — see docs/design-system.md#loading-states. */
@@ -40,6 +41,7 @@ export function RecipeDetailPage() {
   const { id } = useParams<{ id: string }>();
   const recipeId = Number(id);
   const navigate = useNavigate();
+  const { showToast } = useToast();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const fetchRecipe = useCallback(() => getRecipe(recipeId), [recipeId]);
@@ -48,8 +50,8 @@ export function RecipeDetailPage() {
   const confirmDelete = useCallback(() => {
     deleteRecipe(recipeId)
       .then(() => navigate("/"))
-      .catch(() => window.alert("Failed to delete recipe"));
-  }, [recipeId, navigate]);
+      .catch(() => showToast("Failed to delete recipe"));
+  }, [recipeId, navigate, showToast]);
 
   if (loading) {
     return <RecipeDetailSkeleton />;

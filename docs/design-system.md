@@ -258,6 +258,22 @@ Accessibility: `role="alertdialog"`, `aria-modal`, Escape to cancel, click
 on backdrop to cancel, focus starts on Cancel (not the destructive action —
 never default-focus a destructive confirm).
 
+### Toasts
+
+**Added 2026-08-08.** Replaced `window.alert()` for error messages (image
+upload/delete failure, recipe delete failure — see
+[backlog.md](backlog.md)) with an app-wide `ToastProvider`/`useToast()`. Unlike
+`ConfirmDialog`, a toast is informational, not blocking: no backdrop, no
+focus trap, auto-dismisses after 6s with a manual close button for the case
+where the message is still relevant. Rendered as a `.glass` panel (per the
+Elevation section's toast use case), fixed bottom-center, inset from
+`env(safe-area-inset-bottom)`. Entrance uses `motion-panel` timing (fade +
+slight rise), not `motion-spring` — an error isn't a delight moment (see
+Motion above). `role="alert"` per toast, no wrapping `aria-live` region
+(each alert already announces on its own). Currently error-only (`danger-500`
+icon); if a future success-confirmation toast is added, extend the same
+provider rather than building a second mechanism.
+
 ### Non-glass elevation
 
 Regular cards use a soft shadow, not glass:
@@ -348,6 +364,15 @@ settles), that's a bug against this rule, not a style nitpick.
 comfortable touch targets. Focus state: 2px `citrus-500` ring with a small
 offset — must stay clearly visible against both flat and glass surroundings;
 don't let the rounded/soft aesthetic soften the focus ring itself.
+
+**Ring offset is transparent, not an opaque surface color.** `ring-offset-*`
+paints a solid color in the small gap between an input's border and its
+focus ring; an opaque value (the original `ring-offset-surface`) assumes the
+input always sits on `--color-surface`, which breaks on a `.glass` panel
+(the login card) — the offset paints a flat patch over the translucent
+glass instead of blending with it. `ring-offset-transparent` lets whatever's
+actually behind the input show through, correct on flat and glass surfaces
+alike without a per-context override.
 
 **Border must actually be visible.** A design review caught the original
 border tokens (`#E8E2DC` light / `rgba(255,255,255,0.08)` dark) reading as
@@ -452,9 +477,19 @@ per the mixed-icon rule above.
 Custom illustration (e.g. "no recipes yet", "no search results") — simple,
 friendly, warm-colored, sitting above a `display-md` headline and `body-md`
 supporting copy, with a primary button CTA where relevant ("Add your first
-recipe"). Illustrations are a separate asset task (not yet produced) — track
-in [backlog.md](backlog.md); ship icon-only as an interim fallback rather
-than blocking on illustration work.
+recipe").
+
+**Added 2026-08-08:** `EmptyRecipesIllustration` and `EmptySearchIllustration`
+(`frontend/src/components/EmptyStateIllustration.tsx`), replacing the
+icon-only interim fallback. Both are built from the app's own recipe-card
+shape (photo block + title/meta bars, tilted, per Cards above) rather than
+unrelated stock/clip-art — "no recipes yet" shows a ghost card with a
+`citrus-500` "+" badge (add your first one); "no search results" shows two
+ghost cards under a `teal-500` magnifying glass with an "x" (searched,
+nothing matched). Colors are Tailwind `fill-*`/`stroke-*` utility classes
+(not raw hex), so both track light/dark automatically like everything else
+— confirmed against real computed styles in both themes, not just visually
+assumed.
 
 ### Photography
 
@@ -609,24 +644,12 @@ contained images a bit more room on larger screens without ballooning into
 
 ## Open items
 
-- Empty-state illustrations aren't designed yet — interim fallback is
-  icon + copy only (see Empty states above).
 - Exact dark-mode accent-token lightness adjustments (e.g. `citrus-400` vs
   `citrus-500` on `dark-bg`) should be verified against real contrast
   numbers during implementation, not assumed from this doc alone.
-- **Error alerts still use native `window.alert()`** (image upload/delete
-  failure, recipe delete failure) — found in the same 2026-08-06 audit that
-  led to `ConfirmDialog` replacing `window.confirm()`, but not fixed yet:
-  confirmations and errors are different enough (a confirmation blocks and
-  needs an explicit choice; an error is often just information) that this
-  needs its own toast/inline-banner design, not a reflexive reuse of
-  `ConfirmDialog`. Same underlying gap as the "no delight moment on save"
-  item that was previously tracked in backlog.md and removed at the project
-  owner's request — revisit together if either comes back up.
-- Minor, not yet addressed: the focus ring's `ring-offset-color` on inputs
-  assumes an opaque `--color-surface` behind them; on a `.glass` panel (e.g.
-  the login card) the offset can show a faint mismatched patch right at the
-  ring's inner edge instead of blending with the glass tint. Cosmetic, not
-  a contrast/accessibility failure (the ring itself is still clearly
-  visible) — worth a proper look if it's ever visibly distracting in
-  practice.
+
+Resolved 2026-08-08 (see Toasts, Empty states, and the Inputs ring-offset
+note above): the `window.alert()` error banners, the icon-only empty-state
+fallback, and the glass-panel focus-ring offset mismatch. A real PWA icon
+set (raster PNGs + `apple-touch-icon`) was also added, closing the gap noted
+in [backlog.md](backlog.md)'s Completed log for the MVP frontend group.

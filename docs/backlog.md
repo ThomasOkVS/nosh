@@ -15,24 +15,6 @@ choice was made). This is just a todo list.
 
 ## Backlog
 
-### Design polish (post-restyle follow-ups)
-- [ ] Replace native `window.alert()` for error messages (image upload/delete
-      failure, recipe delete failure) with a proper toast/inline-banner
-      component — tracked as a still-open gap in
-      [design-system.md](design-system.md#open-items); needs its own design
-      pass since an error is informational, not a blocking confirmation like
-      `ConfirmDialog`.
-- [ ] Design and add empty-state illustrations ("no recipes yet", "no search
-      results") — currently icon+copy only, an explicit interim fallback per
-      [design-system.md](design-system.md#empty-states).
-- [ ] Add a real PWA icon set (raster PNGs incl. `apple-touch-icon`) alongside
-      the current single `sizes="any"` SVG icon, for a proper iOS home-screen
-      icon — noted as an accepted gap when the PWA shipped.
-- [ ] Low priority: fix the glass-panel focus-ring `ring-offset-color`
-      mismatch on inputs over `.glass` surfaces (e.g. the login card) — see
-      [design-system.md](design-system.md#open-items); cosmetic, not an a11y
-      failure.
-
 ### Post-MVP features
 Confirm scope with the project owner before starting any of these — per
 [CLAUDE.md](../CLAUDE.md), none should be built ahead of an explicit
@@ -57,6 +39,26 @@ priority.
 
 ## Completed
 
+- **2026-08-08** — Design polish (post-restyle follow-ups) group finished:
+  a `ToastProvider`/`useToast()` (`frontend/src/toast/`) replacing the three
+  remaining `window.alert()` error calls (recipe delete, image upload/delete)
+  with a dismissible, auto-expiring `.glass` toast — informational, not
+  blocking, unlike `ConfirmDialog`; two hand-built empty-state illustrations
+  (`EmptyRecipesIllustration`, `EmptySearchIllustration`) replacing the
+  icon+copy interim fallback, built from the app's own recipe-card shape
+  rather than generic clip-art; a real PWA icon set (192/512 PNGs, a
+  dedicated maskable-safe 512 PNG, and an `apple-touch-icon`) generated from
+  an updated brand-colored source SVG — the old `icon.svg` was still on the
+  pre-restyle slate palette, fixed as part of this; and the glass-panel
+  focus-ring mismatch fixed by making `ring-offset-color` transparent instead
+  of assuming an opaque `--color-surface`, which turned out to be the more
+  correct fix in general (not glass-specific — see
+  [design-system.md](design-system.md#inputs)). See
+  [decisions.md](decisions.md#2026-08-08-design-polish-follow-ups) for the
+  toast and icon-generation notes. `pnpm lint`/`test`/`build` all pass;
+  verified live against the real backend + seeded demo data (both empty
+  states, the toast's auto-dismiss and manual-dismiss, and the focus ring's
+  computed `box-shadow` on the glass login card, in both light and dark).
 - **2026-08-08** — Deployment group finished: production
   `backend/Dockerfile`/`frontend/Dockerfile` (multi-stage, distinct from the
   dev-only `Dockerfile.dev` of each — backend down to a `tsc`-built,

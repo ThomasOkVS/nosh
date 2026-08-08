@@ -23,8 +23,14 @@ export function buttonClass(variant: ButtonVariant = "primary"): string {
 /** Doesn't include a width — callers add `w-full` or a specific width (e.g. the
  * ingredient row's `w-20`/`flex-1`), since Tailwind resolves conflicting width
  * utilities by generated-CSS order, not by class-string order. */
+/** ring-offset-transparent (not ring-offset-surface) — an opaque offset
+ * color assumes the input always sits on --color-surface, which breaks on a
+ * .glass panel (e.g. the login card): the offset paints a solid patch over
+ * the translucent glass instead of blending with it. Transparent lets
+ * whatever's actually behind the input show through, correct on both flat
+ * and glass surfaces. See docs/design-system.md#open-items. */
 export const inputClass =
-  "rounded-sm border border-border bg-surface px-4 py-2.5 text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:ring-2 focus:ring-citrus-500 focus:ring-offset-2 focus:ring-offset-surface";
+  "rounded-sm border border-border bg-surface px-4 py-2.5 text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:ring-2 focus:ring-citrus-500 focus:ring-offset-2 focus:ring-offset-transparent";
 
 export const errorBannerClass =
   "rounded-sm bg-danger-50 px-3 py-2 text-sm text-danger-700 dark:bg-danger-500/15 dark:text-danger-500";
