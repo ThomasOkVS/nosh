@@ -50,12 +50,18 @@ nosh/
 ├── README.md
 ├── CLAUDE.md
 ├── docs/
-├── frontend/          # React + Tailwind PWA
-│   └── src/
-├── backend/           # Node.js + TypeScript API
+├── frontend/               # React + Tailwind PWA
 │   ├── src/
-│   └── migrations/    # SQL migrations for PostgreSQL
-└── docker-compose.yml # local dev + reference for Dockge deployment
+│   ├── Dockerfile.dev      # dev image (Vite dev server, bind-mounted source)
+│   ├── Dockerfile          # production image (vite build -> nginx)
+│   └── nginx.conf          # SPA fallback + cache headers for the built app
+├── backend/                # Node.js + TypeScript API
+│   ├── src/
+│   ├── migrations/         # SQL migrations for PostgreSQL
+│   ├── Dockerfile.dev      # dev image (tsx watch, bind-mounted source)
+│   └── Dockerfile          # production image (tsc build -> node dist/)
+├── docker-compose.yml      # local dev (builds Dockerfile.dev, hot reload)
+└── docker-compose.prod.yml # homelab deployment (pulls published GHCR images)
 ```
 
 ## Data model (MVP)

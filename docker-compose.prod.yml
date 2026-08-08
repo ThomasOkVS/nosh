@@ -1,0 +1,65 @@
+# Production Compose file for the homelab (see docs/deployment.md), managed
+# via Dockge. Distinct from the root docker-compose.yml, which is local-dev
+# only (Dockerfile.dev, bind-mounted source, hot reload). This one runs the
+# published images from GHCR (see .github/workflows/ci.yml) — Watchtower
+# pulls new versions of the `:latest` tag on its own schedule, so there's no
+# `build:` here at all.
+#
+# First deploy: see docs/deployment.md's "First-deploy runbook" section.
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      # Bind-mounted under /DATA (rather than a named Docker volume, which
+      # would live under /var/lib/docker/volumes/ instead) so the homelab's
+      # existing Kopia backup — which sweeps /DATA wholesale — actually
+      # covers it. See docs/deployment.md's directory layout convention.
+      - /DATA/nosh/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    image: ghcr.io/thomasokvs/nosh-backend:${TAG:-latest}
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      SESSION_SECRET: ${SESSION_SECRET}
+      UPLOADS_DIR: /repo/backend/uploads
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN}
+      # SEED_DEMO_DATA intentionally not set — env.ts defaults it to false,
+      # which is what a real deployment wants (see docs/decisions.md's
+      # demo-data-seed entry).
+      PORT: 3001
+    ports:
+      - "3001:3001"
+    volumes:
+      - /DATA/nosh/uploads:/repo/backend/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - "CMD"
+        - "node"
+        - "-e"
+        - "fetch('http://localhost:3001/auth/me').then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  frontend:
+    image: ghcr.io/thomasokvs/nosh-frontend:${TAG:-latest}
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend

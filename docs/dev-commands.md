@@ -108,3 +108,8 @@ and picks up neither.
   see the Windows workaround above and the linked decision entry.
 - **A new dependency doesn't seem to exist inside a container** — rebuild that
   service's image: `docker compose up -d --build <service>`.
+- **A service crash-loops on startup with `ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY`**
+  — its anonymous `node_modules` volume is out of sync with the lockfile, and
+  pnpm can't prompt to purge/reinstall without a TTY. Recreate the containers
+  so they get a fresh anonymous volume seeded from the image:
+  `docker compose down && docker compose up -d --build`.

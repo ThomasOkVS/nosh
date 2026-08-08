@@ -350,6 +350,40 @@ the container regardless of port/origin); spending more time on root-causing
 the WSL2/Tailscale/ZeroTier interaction (rejected for now — low payoff given
 the production target is unaffected).
 
+## 2026-08-08: Windows frontend dev container issue reconfirmed, root cause still WSL2/Docker Desktop networking
+
+**Decision:** Re-tested the 2026-08-06 finding above now that Docker Desktop is
+available in the maintainer's environment. The symptom is unchanged: with
+`docker compose up`, the backend container is reachable on `:3001` from the
+Windows host (confirmed via Node's `fetch`, not just `curl`) while the
+frontend container's Vite server is not reachable on `:5173` or
+`127.0.0.1:5173` (`fetch failed`), even though `docker exec`-ing into the
+frontend container and fetching `http://localhost:5173/` from its own
+loopback returns `200` — the server is up and correct; only the host→
+container port-forward for that specific port fails. No doc changes needed;
+this reconfirms the existing workaround (run the frontend via
+`pnpm --filter frontend dev` outside Docker) is still the right call, and the
+dev-workflow docs ([dev-commands.md](dev-commands.md)) don't need updating.
+
+**Unrelated finding along the way (also fixed in dev-commands.md):** a stale
+anonymous `node_modules` volume from a previous container run can leave
+`pnpm dev` crash-looping on startup with
+`ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY` — pnpm 11's automatic
+pre-script dependency-status check wants to purge and reinstall
+`node_modules` when it doesn't match the lockfile, but can't prompt for
+confirmation with no TTY attached, so the container never starts. Fixed with
+`docker compose down && docker compose up -d --build` (fresh containers get a
+fresh anonymous volume seeded from the image's own `node_modules`, which
+matches the lockfile it was built from). Unrelated to the WSL2 networking
+issue above — this one crash-looped *both* backend and frontend identically
+and was fully visible in `docker compose logs`, whereas the networking issue
+only affects the frontend and produces no error in the container's own logs
+at all.
+
+**Why:** [backlog.md](backlog.md)'s Deployment group explicitly called for
+confirming this before writing dev-workflow docs, rather than assuming the
+original diagnosis still holds.
+
 ## 2026-08-05: Region — Belgium
 
 **Decision:** Default units, currency, and future supermarket integrations
@@ -516,3 +550,85 @@ project's existing precedent of investigating security-review findings
 before changing code (see the 2026-08-06 image-auth decision above, which
 similarly ruled out `cookie.secure`/`SESSION_SECRET` findings as non-issues
 for this app's actual design rather than changing them reflexively).
+
+## 2026-08-08: Deployment group finished — production images, Compose file, CI publish, runbook
+
+**Decision:** Closed out the Deployment backlog group:
+
+- **`backend/Dockerfile` and `frontend/Dockerfile`** (new, alongside the
+  existing dev-only `Dockerfile.dev` of each): multi-stage production
+  builds. Backend compiles with `tsc` in a build stage, then the runtime
+  stage does a fresh `pnpm install --frozen-lockfile --prod --filter
+  backend` against just the two `package.json` files (not `pnpm deploy`,
+  which is still marked experimental in this pnpm version — a plain
+  filtered install is the same effect without relying on an experimental
+  feature) so the final image has no frontend source and no
+  devDependencies/TypeScript toolchain. Frontend builds the Vite app, then
+  serves the static output with `nginx:alpine` (config in
+  [frontend/nginx.conf](../frontend/nginx.conf)): SPA fallback
+  (`try_files ... /index.html`) for `react-router-dom`'s client-side
+  routing, `no-cache` on `index.html`/`sw.js`/`manifest.webmanifest` (they
+  aren't content-hashed, and are exactly the files that decide whether a
+  browser ever notices a new deploy), `immutable`-cached hashed assets, and
+  an explicit `application/manifest+json` MIME type (nginx's default
+  mime.types doesn't know `.webmanifest`, and PWA installability checks can
+  care about that header).
+- **`VITE_API_URL` is a build-time value, not a runtime one** — Vite inlines
+  `import.meta.env.VITE_*` into the built JS at `vite build` time (see
+  `frontend/src/api/client.ts`), so there's no server process in the
+  frontend container that could read it from a container env var the way
+  the backend reads `DATABASE_URL`. It's threaded through as a Docker build
+  arg, sourced in CI from a GitHub Actions repo variable (see the `publish`
+  job in [ci.yml](../.github/workflows/ci.yml)) rather than a secret, since
+  it's not sensitive. Discovered by actually building and running the image
+  locally rather than assuming it would "just work" like the backend's env
+  vars — see [deployment.md](deployment.md)'s runbook step 1 for the
+  one-time setup this requires before the first real deploy.
+- **`docker-compose.prod.yml`** (new, alongside the existing root
+  `docker-compose.yml`, which stays dev-only): references the published
+  GHCR images directly (`image:`, no `build:`) since Watchtower's whole
+  point is pulling pre-built images, not building on the homelab box.
+  Postgres data and uploads are bind-mounted to `/DATA/nosh/postgres` and
+  `/DATA/nosh/uploads` rather than named Docker volumes — a named volume
+  would live under `/var/lib/docker/volumes/`, which Kopia's existing
+  `/DATA`-wide backup sweep would never see. `SEED_DEMO_DATA` is
+  intentionally left unset (defaults to `false` — see the 2026-08-06
+  demo-data-seed entry above, written with exactly this file in mind).
+- **CI publish job** (extends `.github/workflows/ci.yml` rather than a
+  separate workflow file, so publishing only ever runs after the same
+  lint/test/build gate that PRs go through): builds and pushes both images
+  to GHCR on every push to `main`, tagged `latest` and the commit SHA (the
+  SHA tag is what a rollback pins `TAG` to — see the runbook). Uses the
+  repo's own `GITHUB_TOKEN` against `ghcr.io`, so no separate registry
+  credential needed. Confirmed real by actually building both images
+  locally (`docker build`), running `docker-compose.prod.yml`'s shape
+  end-to-end against throwaway local volumes, running the real migrations
+  against the built backend image, and hitting the built frontend image's
+  nginx server from the host browser (SPA routing, cache headers, and
+  manifest content-type all verified this way, not assumed from reading the
+  config).
+- **First-deploy runbook**: added directly to
+  [deployment.md](deployment.md) rather than a separate doc, since
+  docs/index.md already designates that file as the deployment doc and it
+  was previously just a stub for this. Covers the `VITE_API_URL`/GHCR
+  package-visibility one-time setup, `/DATA/nosh/` directory creation,
+  `.env` from the new [.env.prod.example](../.env.prod.example), first
+  boot order, the manual migration step, health check, and update/rollback.
+
+**Why:** These were the four concrete items in the Deployment backlog
+group. Building and actually running the images/Compose file locally (this
+sandbox has Docker available, unlike when the MVP backend/frontend groups
+were built) caught two real issues that a read-through wouldn't have: the
+`VITE_API_URL` build-time-vs-runtime distinction above, and a missing
+`manifest.webmanifest` MIME type.
+
+**Alternatives considered:** `pnpm deploy` for the backend runtime stage
+(rejected for now — genuinely the more idiomatic pnpm-for-Docker pattern,
+but still labeled experimental; revisit if a future pnpm release stabilizes
+it); baking a single hardcoded `VITE_API_URL` into the Dockerfile instead of
+threading it through as a CI variable (rejected — the maintainer's actual
+Tailscale hostname isn't something to guess at or hardcode into a file
+that's committed to a public repo); a self-hosted GitHub Actions runner on
+the homelab box instead of publish-to-registry-then-poll (rejected — already
+decided against in the 2026-08-05 CD entry above, for the same reason: no
+inbound credentials/access from GitHub to the homelab).
