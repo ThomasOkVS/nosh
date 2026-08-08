@@ -1,7 +1,8 @@
-import { CircleNotchIcon, CookingPotIcon, PlusIcon } from "@phosphor-icons/react";
+import { CircleNotchIcon, PlusIcon } from "@phosphor-icons/react";
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { listRecipes, searchRecipes } from "../api/recipes";
+import { EmptyRecipesIllustration, EmptySearchIllustration } from "../components/EmptyStateIllustration";
 import { RecipeCard, RecipeCardSkeleton } from "../components/RecipeCard";
 import { useAsync } from "../hooks/useAsync";
 import { buttonClass, errorBannerClass, inputClass } from "../styles";
@@ -64,9 +65,11 @@ export function RecipeListPage() {
       )}
       {!isInitialLoad && recipes?.length === 0 && (
         <div className="flex flex-col items-center gap-3 py-16 text-center">
-          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-citrus-50 text-citrus-500 dark:bg-citrus-500/15 dark:text-citrus-400">
-            <CookingPotIcon size={32} />
-          </div>
+          {debouncedQuery ? (
+            <EmptySearchIllustration className="h-32 w-32" />
+          ) : (
+            <EmptyRecipesIllustration className="h-32 w-32" />
+          )}
           <h2 className="font-display text-lg font-bold text-ink">
             {debouncedQuery ? "No recipes match your search" : "No recipes yet"}
           </h2>

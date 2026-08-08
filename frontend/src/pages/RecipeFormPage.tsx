@@ -24,6 +24,7 @@ import type { RecipeImage, RecipeInput } from "../api/types";
 import { Skeleton } from "../components/Skeleton";
 import { TagInput } from "../components/TagInput";
 import { buttonClass, errorBannerClass, inputClass, labelClass, sectionCardClass, sectionHeadingClass } from "../styles";
+import { useToast } from "../toast/ToastContext";
 
 interface IngredientRow {
   id: string;
@@ -80,6 +81,7 @@ export function RecipeFormPage() {
   const isEditMode = id !== undefined;
   const recipeId = Number(id);
   const navigate = useNavigate();
+  const { showToast } = useToast();
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -158,10 +160,10 @@ export function RecipeFormPage() {
       setUploadingImage(true);
       uploadRecipeImage(recipeId, file)
         .then((image) => setImages((prev) => [...prev, image]))
-        .catch(() => window.alert("Failed to upload image"))
+        .catch(() => showToast("Failed to upload image"))
         .finally(() => setUploadingImage(false));
     },
-    [recipeId],
+    [recipeId, showToast],
   );
 
   const handleImageUpload = useCallback(
@@ -204,9 +206,9 @@ export function RecipeFormPage() {
     (imageId: number) => {
       deleteRecipeImage(recipeId, imageId)
         .then(() => removeImageFromState(imageId))
-        .catch(() => window.alert("Failed to delete image"));
+        .catch(() => showToast("Failed to delete image"));
     },
-    [recipeId, removeImageFromState],
+    [recipeId, removeImageFromState, showToast],
   );
 
   const handleSubmit = useCallback(

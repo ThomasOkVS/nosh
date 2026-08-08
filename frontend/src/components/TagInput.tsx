@@ -41,7 +41,7 @@ export function TagInput({ id, value, onChange }: Readonly<TagInputProps>) {
   );
 
   return (
-    <div className="mt-1 flex flex-wrap items-center gap-2 rounded-sm border border-border bg-surface px-4 py-2.5 text-sm focus-within:ring-2 focus-within:ring-citrus-500 focus-within:ring-offset-2 focus-within:ring-offset-surface">
+    <div className="mt-1 flex flex-wrap items-center gap-2 rounded-sm border border-border bg-surface px-4 py-2.5 text-sm focus-within:ring-2 focus-within:ring-citrus-500 focus-within:ring-offset-2 focus-within:ring-offset-transparent">
       {value.map((tag) => (
         <span
           key={tag}
