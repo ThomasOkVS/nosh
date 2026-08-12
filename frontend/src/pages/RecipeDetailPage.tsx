@@ -1,6 +1,7 @@
 import {
   ArrowLeftIcon,
   ImageSquareIcon,
+  LinkIcon,
   ListChecksIcon,
   ListNumbersIcon,
   PencilSimpleIcon,
@@ -14,6 +15,23 @@ import { Skeleton } from "../components/Skeleton";
 import { useAsync } from "../hooks/useAsync";
 import { buttonClass, errorBannerClass, sectionHeadingClass } from "../styles";
 import { useToast } from "../toast/ToastContext";
+
+/**
+ * Parses a stored source URL for display, returning null rather than throwing
+ * if it isn't a usable web link. Both halves matter: `new URL()` throws on a
+ * malformed value (which would blank the whole page, since this runs during
+ * render), and the scheme check keeps a `javascript:` value out of the href.
+ */
+function parseSourceLink(sourceUrl: string | null): { href: string; hostname: string } | null {
+  if (!sourceUrl) return null;
+  try {
+    const url = new URL(sourceUrl);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    return { href: url.toString(), hostname: url.hostname };
+  } catch {
+    return null;
+  }
+}
 
 /** Mirrors the loaded layout below (back link real, everything data-dependent
  * skeletonized) — see docs/design-system.md#loading-states. */
@@ -64,6 +82,7 @@ export function RecipeDetailPage() {
   }
 
   const [heroImage, ...otherImages] = recipe.images;
+  const sourceLink = parseSourceLink(recipe.sourceUrl);
   const metaLine = [
     recipe.servings ? `${recipe.servings} servings` : null,
     recipe.prepTimeMinutes ? `${recipe.prepTimeMinutes} min prep` : null,
@@ -162,6 +181,18 @@ export function RecipeDetailPage() {
             </button>
           </div>
         </>
+      )}
+
+      {sourceLink && (
+        <a
+          href={sourceLink.href}
+          target="_blank"
+          rel="noreferrer noopener"
+          className="inline-flex items-center gap-1 text-sm text-ink-muted hover:text-ink"
+        >
+          <LinkIcon size={16} />
+          Imported from {sourceLink.hostname}
+        </a>
       )}
 
       {otherImages.length > 0 && (

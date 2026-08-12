@@ -40,6 +40,7 @@ const DEMO_RECIPES: DemoRecipe[] = [
         },
       ],
       tags: ["belgian", "stew", "comfort food", "dinner"],
+      sourceUrl: null,
     },
   },
   {
@@ -63,6 +64,7 @@ const DEMO_RECIPES: DemoRecipe[] = [
         { instruction: "Blend until smooth and stir in the cream." },
       ],
       tags: ["soup", "comfort food", "vegetarian", "dinner"],
+      sourceUrl: null,
     },
   },
   {
@@ -86,6 +88,7 @@ const DEMO_RECIPES: DemoRecipe[] = [
         { instruction: "Cook the spaghetti and toss with the sauce." },
       ],
       tags: ["pasta", "italian", "dinner", "comfort food"],
+      sourceUrl: null,
     },
   },
   {
@@ -108,6 +111,7 @@ const DEMO_RECIPES: DemoRecipe[] = [
         { instruction: "Drizzle with olive oil and toss gently." },
       ],
       tags: ["salad", "vegetarian", "healthy", "lunch"],
+      sourceUrl: null,
     },
   },
   {
@@ -130,6 +134,7 @@ const DEMO_RECIPES: DemoRecipe[] = [
         { instruction: "Cook in a waffle iron until golden, about 4 minutes each." },
       ],
       tags: ["belgian", "breakfast", "sweet"],
+      sourceUrl: null,
     },
   },
 ];

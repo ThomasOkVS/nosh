@@ -19,6 +19,11 @@ export const recipeSchema = z.object({
   ingredients: z.array(ingredientSchema).default([]),
   steps: z.array(stepSchema).default([]),
   tags: z.array(z.string().trim().min(1)).default([]),
+  // The protocol restriction matters: zod's bare `url()` accepts
+  // `javascript:alert(1)`, and this field is rendered as an `<a href>` on the
+  // detail page. React blocks javascript: hrefs today, but that shouldn't be
+  // the only thing standing between a stored value and an XSS.
+  sourceUrl: z.url({ protocol: /^https?$/ }).trim().nullable().default(null),
 });
 
 export type RecipeInput = z.infer<typeof recipeSchema>;

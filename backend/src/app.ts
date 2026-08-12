@@ -3,8 +3,10 @@ import cors from "cors";
 import express, { type Express } from "express";
 import session from "express-session";
 import type { Pool } from "pg";
+import type { GeminiExtractFn } from "./llm/geminiClient";
 import { errorHandler } from "./middleware/errorHandler";
 import { createAuthRouter } from "./routes/auth";
+import { createImportRouter } from "./routes/import";
 import { createRecipesRouter } from "./routes/recipes";
 
 const ONE_WEEK_MS = 1000 * 60 * 60 * 24 * 7;
@@ -14,10 +16,11 @@ export interface AppDeps {
   sessionSecret: string;
   uploadsDir: string;
   frontendOrigin?: string;
+  geminiExtract?: GeminiExtractFn;
 }
 
 export function createApp(deps: AppDeps): Express {
-  const { pool, sessionSecret, uploadsDir, frontendOrigin = "http://localhost:5173" } = deps;
+  const { pool, sessionSecret, uploadsDir, frontendOrigin = "http://localhost:5173", geminiExtract } = deps;
   const PgSession = connectPgSimple(session);
 
   const app = express();
@@ -48,6 +51,7 @@ export function createApp(deps: AppDeps): Express {
 
   app.use("/auth", createAuthRouter(pool));
   app.use("/recipes", createRecipesRouter(pool, uploadsDir));
+  app.use("/import", createImportRouter(geminiExtract));
 
   app.use(errorHandler);
 

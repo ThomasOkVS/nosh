@@ -15,4 +15,5 @@ export const env = {
   uploadsDir: process.env.UPLOADS_DIR ?? path.resolve(process.cwd(), "uploads"),
   frontendOrigin: process.env.FRONTEND_ORIGIN ?? "http://localhost:5173",
   seedDemoData: process.env.SEED_DEMO_DATA === "true",
+  geminiApiKey: process.env.GEMINI_API_KEY,
 };

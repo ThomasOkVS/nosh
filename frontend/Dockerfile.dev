@@ -2,11 +2,16 @@ FROM node:22-alpine
 RUN corepack enable
 
 WORKDIR /repo
-# Recursive copy is required so pnpm can resolve the workspace (see
-# docs/decisions.md#project-setup-tooling-choices). The repo-root
-# .dockerignore excludes .env/.env.*.local, .git, node_modules, etc. from
-# this build context.
-COPY . .
+
+# Only the workspace manifests are copied — not the source. docker-compose
+# bind-mounts the repo over /repo at runtime, so baking the source in would
+# be both redundant and a way for unrelated files in the build context to end
+# up in the image. Installing from manifests alone also means a source edit
+# doesn't invalidate the (slow) install layer.
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY backend/package.json backend/
+COPY frontend/package.json frontend/
+
 RUN pnpm install && chown -R node:node /repo
 
 WORKDIR /repo/frontend

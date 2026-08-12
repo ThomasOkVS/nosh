@@ -10,7 +10,7 @@ import {
   XIcon,
 } from "@phosphor-icons/react";
 import { useCallback, useEffect, useState, type ChangeEvent, type DragEvent, type SubmitEvent } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import {
   createRecipe,
@@ -21,6 +21,7 @@ import {
   uploadRecipeImage,
 } from "../api/recipes";
 import type { RecipeImage, RecipeInput } from "../api/types";
+import { AutoGrowTextarea } from "../components/AutoGrowTextarea";
 import { Skeleton } from "../components/Skeleton";
 import { TagInput } from "../components/TagInput";
 import { buttonClass, errorBannerClass, inputClass, labelClass, sectionCardClass, sectionHeadingClass } from "../styles";
@@ -44,6 +45,26 @@ function createEmptyIngredient(): IngredientRow {
 
 function createEmptyStep(): StepRow {
   return { id: crypto.randomUUID(), instruction: "" };
+}
+
+function numberFieldValue(value: number | null | undefined): string {
+  return value !== null && value !== undefined ? String(value) : "";
+}
+
+/**
+ * Router state lives in `history.state`: it survives reloads, outlives
+ * deploys, and any script can push arbitrary values into it. Validate rather
+ * than cast, or a stale/hostile entry crashes the form during render.
+ */
+function importedRecipeFrom(state: unknown): RecipeInput | null {
+  if (!state || typeof state !== "object" || !("importedRecipe" in state)) return null;
+  const candidate = (state as { importedRecipe?: unknown }).importedRecipe;
+  if (!candidate || typeof candidate !== "object") return null;
+  const recipe = candidate as Partial<RecipeInput>;
+  if (typeof recipe.title !== "string") return null;
+  if (!Array.isArray(recipe.ingredients) || !Array.isArray(recipe.steps)) return null;
+  if (!Array.isArray(recipe.tags)) return null;
+  return recipe as RecipeInput;
 }
 
 /** Shown while fetching the existing recipe in edit mode — see
@@ -83,15 +104,39 @@ export function RecipeFormPage() {
   const navigate = useNavigate();
   const { showToast } = useToast();
 
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [servings, setServings] = useState("");
-  const [prepTimeMinutes, setPrepTimeMinutes] = useState("");
-  const [cookTimeMinutes, setCookTimeMinutes] = useState("");
-  const [ingredients, setIngredients] = useState<IngredientRow[]>(() => [createEmptyIngredient()]);
-  const [steps, setSteps] = useState<StepRow[]>(() => [createEmptyStep()]);
-  const [tags, setTags] = useState<string[]>([]);
+  // Set by RecipeImportPage when it navigates here — extracted, not-yet-saved
+  // recipe data that seeds the form so the user can review and correct it
+  // before the normal save path runs. Never present in edit mode.
+  const { state } = useLocation();
+  const imported = isEditMode ? null : importedRecipeFrom(state);
+
+  const [title, setTitle] = useState(imported?.title ?? "");
+  const [description, setDescription] = useState(imported?.description ?? "");
+  const [servings, setServings] = useState(() => numberFieldValue(imported?.servings));
+  const [prepTimeMinutes, setPrepTimeMinutes] = useState(() =>
+    numberFieldValue(imported?.prepTimeMinutes),
+  );
+  const [cookTimeMinutes, setCookTimeMinutes] = useState(() =>
+    numberFieldValue(imported?.cookTimeMinutes),
+  );
+  const [ingredients, setIngredients] = useState<IngredientRow[]>(() =>
+    imported?.ingredients.length
+      ? imported.ingredients.map((ingredient) => ({
+          id: crypto.randomUUID(),
+          quantity: ingredient.quantity ?? "",
+          unit: ingredient.unit ?? "",
+          name: ingredient.name,
+        }))
+      : [createEmptyIngredient()],
+  );
+  const [steps, setSteps] = useState<StepRow[]>(() =>
+    imported?.steps.length
+      ? imported.steps.map((step) => ({ id: crypto.randomUUID(), instruction: step.instruction }))
+      : [createEmptyStep()],
+  );
+  const [tags, setTags] = useState<string[]>(imported?.tags ?? []);
   const [images, setImages] = useState<RecipeImage[]>([]);
+  const [sourceUrl, setSourceUrl] = useState<string | null>(imported?.sourceUrl ?? null);
 
   const [loading, setLoading] = useState(isEditMode);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -104,8 +149,12 @@ export function RecipeFormPage() {
     if (!isEditMode) {
       return;
     }
+    // Guards against a slower earlier request landing after a newer one (or
+    // after the form is gone) and overwriting the fields behind the user.
+    let cancelled = false;
     getRecipe(recipeId)
       .then((recipe) => {
+        if (cancelled) return;
         setTitle(recipe.title);
         setDescription(recipe.description ?? "");
         setServings(recipe.servings !== null ? String(recipe.servings) : "");
@@ -128,11 +177,18 @@ export function RecipeFormPage() {
         );
         setTags(recipe.tags);
         setImages(recipe.images);
+        setSourceUrl(recipe.sourceUrl);
       })
       .catch((err: unknown) => {
+        if (cancelled) return;
         setLoadError(err instanceof ApiError ? err.message : "Failed to load recipe");
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [isEditMode, recipeId]);
 
   const updateIngredient = useCallback((index: number, field: keyof IngredientRow, value: string) => {
@@ -234,11 +290,17 @@ export function RecipeFormPage() {
           .filter((row) => row.instruction.trim())
           .map((row) => ({ instruction: row.instruction.trim() })),
         tags,
+        sourceUrl,
       };
 
       const submit = isEditMode
         ? updateRecipe(recipeId, payload).then(() => navigate(`/recipes/${recipeId}`))
-        : createRecipe(payload).then((created) => navigate(`/recipes/${created.id}/edit`));
+        : // `replace` so Back doesn't return to the create form still holding
+          // the just-saved data — saving again from there would create a
+          // second copy. Back now goes to wherever the user came from.
+          createRecipe(payload).then((created) =>
+            navigate(`/recipes/${created.id}/edit`, { replace: true }),
+          );
 
       submit
         .catch((err: unknown) => {
@@ -255,6 +317,7 @@ export function RecipeFormPage() {
       ingredients,
       steps,
       tags,
+      sourceUrl,
       isEditMode,
       recipeId,
       navigate,
@@ -312,13 +375,12 @@ export function RecipeFormPage() {
             <label htmlFor="description" className={labelClass}>
               Description
             </label>
-            <textarea
+            <AutoGrowTextarea
               id="description"
               placeholder="A few sentences about this recipe…"
               value={description}
               onChange={(event) => setDescription(event.target.value)}
-              rows={2}
-              className={`mt-1 w-full ${inputClass}`}
+              className={`mt-1 min-h-[3.875rem] w-full ${inputClass}`}
             />
           </div>
           <div>
@@ -420,11 +482,10 @@ export function RecipeFormPage() {
           {steps.map((row, index) => (
             <div key={row.id} className="flex items-start gap-2">
               <span className="mt-2.5 w-5 flex-shrink-0 text-sm text-ink-faint">{index + 1}.</span>
-              <textarea
+              <AutoGrowTextarea
                 placeholder="Instructions"
                 value={row.instruction}
                 onChange={(event) => updateStep(index, event.target.value)}
-                rows={1}
                 className={`flex-1 bg-surface ${inputClass}`}
               />
               <button

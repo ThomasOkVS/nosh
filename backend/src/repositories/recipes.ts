@@ -31,6 +31,7 @@ export interface Recipe {
   servings: number | null;
   prepTimeMinutes: number | null;
   cookTimeMinutes: number | null;
+  sourceUrl: string | null;
   createdAt: Date;
   updatedAt: Date;
   ingredients: Ingredient[];
@@ -47,13 +48,14 @@ interface RecipeRow {
   servings: number | null;
   prep_time_minutes: number | null;
   cook_time_minutes: number | null;
+  source_url: string | null;
   created_at: Date;
   updated_at: Date;
 }
 
 const RECIPE_COLUMNS = `
   id, user_id, title, description, servings, prep_time_minutes, cook_time_minutes,
-  created_at, updated_at
+  source_url, created_at, updated_at
 `;
 
 async function insertIngredients(
@@ -120,6 +122,7 @@ function toRecipe(
     servings: row.servings,
     prepTimeMinutes: row.prep_time_minutes,
     cookTimeMinutes: row.cook_time_minutes,
+    sourceUrl: row.source_url,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     ingredients,
@@ -186,8 +189,8 @@ export async function createRecipe(
 ): Promise<Recipe> {
   const recipeId = await withTransaction(pool, async (client) => {
     const result = await client.query<{ id: number }>(
-      `INSERT INTO recipes (user_id, title, description, servings, prep_time_minutes, cook_time_minutes)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO recipes (user_id, title, description, servings, prep_time_minutes, cook_time_minutes, source_url)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING id`,
       [
         userId,
@@ -196,6 +199,7 @@ export async function createRecipe(
         input.servings,
         input.prepTimeMinutes,
         input.cookTimeMinutes,
+        input.sourceUrl,
       ],
     );
     const row = result.rows[0];
@@ -255,7 +259,8 @@ export async function updateRecipe(
   const updated = await withTransaction(pool, async (client) => {
     const result = await client.query(
       `UPDATE recipes
-       SET title = $2, description = $3, servings = $4, prep_time_minutes = $5, cook_time_minutes = $6
+       SET title = $2, description = $3, servings = $4, prep_time_minutes = $5, cook_time_minutes = $6,
+           source_url = $7
        WHERE id = $1
        RETURNING id`,
       [
@@ -265,6 +270,7 @@ export async function updateRecipe(
         input.servings,
         input.prepTimeMinutes,
         input.cookTimeMinutes,
+        input.sourceUrl,
       ],
     );
     if (result.rows.length === 0) {

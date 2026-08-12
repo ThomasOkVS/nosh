@@ -1,4 +1,4 @@
-import { CircleNotchIcon, PlusIcon } from "@phosphor-icons/react";
+import { CircleNotchIcon, LinkIcon, PlusIcon } from "@phosphor-icons/react";
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { listRecipes, searchRecipes } from "../api/recipes";
@@ -49,10 +49,16 @@ export function RecipeListPage() {
             />
           )}
         </div>
-        <Link to="/recipes/new" className={buttonClass("primary")}>
-          <PlusIcon size={18} weight="bold" />
-          New recipe
-        </Link>
+        <div className="flex gap-2">
+          <Link to="/recipes/import" className={buttonClass("secondary")}>
+            <LinkIcon size={18} weight="bold" />
+            Import from URL
+          </Link>
+          <Link to="/recipes/new" className={buttonClass("primary")}>
+            <PlusIcon size={18} weight="bold" />
+            New recipe
+          </Link>
+        </div>
       </div>
 
       {error && <p className={errorBannerClass}>{error}</p>}
