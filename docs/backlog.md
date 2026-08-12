@@ -21,13 +21,22 @@ Confirm scope with the project owner before starting any of these — per
 go-ahead. Ordered per [index.md](index.md#planned-post-mvp)'s stated
 priority.
 
-- [ ] LLM-based recipe import from URLs, Instagram Reels, and TikTok — see
-  [decisions.md](decisions.md#2026-08-05-recipe-import-via-cloud-llm-post-mvp)
-  for the already-decided approach (cloud LLM API, not local/self-hosted).
-- [ ] Nutrition info via an external nutrition database.
-- [ ] Smart unit conversions & recipe scaling.
-- [ ] Notes & ratings on recipes.
+- [ ] LLM-based recipe import from Instagram Reels — the remaining
+  half of the import feature (URL import shipped 2026-08-11, see Completed).
+  Reuses the existing `/import` endpoint shape and `source_url` column; the
+  hard part is fetching the source content, since these platforms actively
+  resist scraping and the recipe lives in video/captions rather than markup.
+- [ ] Auto-import the source page's photo during URL import — deferred from
+  the 2026-08-11 import work because recipe photos currently require an
+  already-saved recipe id, so this needs either that constraint lifted or a
+  post-save fetch step.
+- [ ] Auto translate imported recipes to the user's native language and preferred units of measure.
+- [ ] View tokens left / model selector for magic import
+- [ ] Smart unit conversions and recipe scaling.
 - [ ] Recipe organization: collections and tag-based browsing.
+- [ ] Notes & ratings on recipes.
+- [ ] Nutrition info via an external nutrition database.
+- [ ] Active cooking mode (ingredients can be checked of, cooking steps can be checked off, other ideas?).
 - [ ] Weekly meal planner.
 - [ ] Grocery list generation from planned meals (depends on the meal
       planner above existing first).
@@ -39,6 +48,98 @@ priority.
 
 ## Completed
 
+- **2026-08-11** — Recipe import from a URL shipped (the first half of the
+  LLM-import backlog item; Reels/TikTok stays open above). `POST /import`
+  takes a URL and returns an unsaved `RecipeInput` that pre-fills the
+  existing create form — the user reviews/corrects it and saves through the
+  normal `POST /recipes` path, so there's no second persistence path.
+  Extraction is two-stage: schema.org JSON-LD parsed out of the page first
+  (free, exact, and what most recipe sites publish), Google Gemini as the
+  fallback only when that's missing or too thin. **Gemini specifically
+  because it's the only major provider with a real permanent free tier** —
+  the app is meant to cost nothing to run; see
+  [decisions.md](decisions.md#2026-08-11-recipe-import-from-urls--gemini-free-tier-json-ld-fast-path-cheerio)
+  for that comparison, plus the `cheerio` dependency justification (added
+  deliberately against the default "no new deps" rule — regex HTML parsing
+  fails *silently* as a bad extraction) and what was deferred. Also added the
+  nullable `recipes.source_url` column end to end (migration → zod → repo →
+  both API type files → an "Imported from …" link on the detail page), built
+  now rather than later since the future Reels/TikTok work needs the same
+  column. Two follow-up fixes came out of reviewing the first real imports:
+  free-text ingredient lines are now split into quantity/unit/name (they were
+  landing wholesale in `name`, leaving Qty/Unit empty), and tags are drawn
+  from a fixed attribute vocabulary instead of the site's SEO keywords (which
+  produced things like the author's name and the dish name) — see the two
+  2026-08-11 entries in [decisions.md](decisions.md). Also made the recipe
+  form's step/description textareas grow to fit their content
+  (`components/AutoGrowTextarea.tsx`); at a fixed height, imported steps were
+  clipped mid-sentence. The Gemini fallback is now **verified live** against a
+  real key (imported Wikibooks Cookbook pages, which have recipes but no
+  JSON-LD): this turned up that the originally-chosen `gemini-2.5-flash` 404s
+  for newly-created API keys despite still appearing in the model list — now
+  pinned to `gemini-3.6-flash`, with response parsing hardened for reasoning
+  models' `thought` parts, and tag output capped/de-duplicated after the model
+  proved happy to emit nine technically-true tags. See the two later
+  2026-08-11 entries in [decisions.md](decisions.md), and
+  [dev-commands.md](dev-commands.md) for how to exercise the LLM path.
+  Finally, `/import` now streams NDJSON progress so the import page names the
+  stage it's on — measured, a JSON-LD import finishes in ~0.5s while an
+  LLM-backed one spends ~7.6s in the model call, and one undifferentiated
+  spinner over both left no way to tell a slow import from a stuck one.
+- **2026-08-11** — SonarQube pass (10 findings): the production frontend image
+  now uses `nginxinc/nginx-unprivileged` so nginx doesn't run as root
+  (container port moves 80 → 8080, in `nginx.conf` and
+  `docker-compose.prod.yml`); both `Dockerfile.dev`s stopped `COPY . .`-ing
+  the repo and copy only workspace manifests, since docker-compose bind-mounts
+  the source at runtime anyway — which also stops a source edit invalidating
+  the install layer; `ToastProvider`'s context value is memoized; zod's
+  deprecated `z.string().url()` replaced with `z.url()`; and
+  `ingredientLine.ts`'s quantity patterns are plain regex literals with
+  bounded quantifiers instead of `RegExp`-constructed `String.raw` templates.
+  Also added `.pnpm-store/` to `.gitignore`/`.dockerignore` — it had appeared
+  untracked and would otherwise land in the build context. Verified by
+  building and running both images: nginx master and workers all run as uid
+  101, and SPA fallback routing, the `manifest+json` MIME type and both cache
+  rules still work. The Gemini client is injected via `AppDeps.geminiExtract`, so tests
+  never touch the network and the app boots fine without a key — only pages
+  that actually need the fallback return 503. `pnpm lint`/`test`/`build` all
+  pass (71 backend + 36 frontend tests). Verified live against the real
+  backend: imported a BBC Good Food recipe end-to-end (JSON-LD path → form
+  pre-filled with title/servings/times/15 ingredients/steps/tags → saved →
+  detail page shows the source link), plus the failure paths (invalid URL,
+  blocked localhost URL → 400, unreachable host → 502, no-JSON-LD page with
+  no API key → 503). **Not verified live: the Gemini fallback itself** — no
+  API key was available in this environment, so that path is only covered by
+  tests with a fake client. Do one real keyed import against a site without
+  JSON-LD before considering it fully proven. Hit one real-world snag worth
+  knowing: several large recipe publishers (People Inc — allrecipes,
+  seriouseats, simplyrecipes) reject the import fetch outright with a 402
+  regardless of User-Agent, so import won't work on those.
+- **2026-08-12** — Pre-PR review pass on the import feature: a security
+  review plus two independent backend/frontend code reviews. Real fixes, not
+  just cleanup — see the 2026-08-12 entry in
+  [decisions.md](decisions.md#2026-08-12-post-implementation-review-fixes-backend-securitycorrectness-frontend-correctnessa11y)
+  for the reasoning behind each: sanitization was running *after* schema
+  validation, so a single near-miss field (an empty string where the model
+  was told `null` was fine, "Serves 0") discarded an otherwise-good import
+  entirely, silently; the SSRF guard didn't block private IP ranges or the
+  cloud metadata address and didn't survive a redirect, now closed with real
+  CIDR checks and manual redirect re-validation; the Gemini API key moved out
+  of the query string into a header, and quota/outage errors (429/5xx) are
+  now distinguished from "the page has no recipe"; `sourceUrl` is restricted
+  to http(s) (zod's bare `url()` accepts `javascript:`); and three real
+  frontend bugs — a late-resolving import could navigate the user away from
+  wherever they'd since gone, saving an imported recipe and hitting Back
+  could create a duplicate (React Router was reconciling instead of
+  remounting between `/recipes/new` and `/recipes/:id/edit`), and the stream
+  reader wasn't released on the (normal) "no recipe found" error path. Also
+  moved `AuthProvider`/`ToastProvider` off the pre-React-19
+  `<Context.Provider>` form. Verified: full lint/test/build (122 backend + 48
+  frontend tests, including new regression tests for every fix above), plus
+  live re-verification against the real backend and a real Gemini key —
+  confirmed the blocked-host guard now rejects `192.168.1.1` (previously
+  fetched), and both the JSON-LD and LLM paths still import correctly
+  end-to-end.
 - **2026-08-08** — Design polish (post-restyle follow-ups) group finished:
   a `ToastProvider`/`useToast()` (`frontend/src/toast/`) replacing the three
   remaining `window.alert()` error calls (recipe delete, image upload/delete)

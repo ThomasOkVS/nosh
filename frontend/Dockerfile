@@ -19,7 +19,13 @@ COPY . .
 RUN pnpm install --frozen-lockfile
 RUN pnpm --filter frontend build
 
-FROM nginx:1.27-alpine
+# The nginx team's unprivileged variant of the same image: identical nginx,
+# but it runs as UID 101 instead of root and its writable paths (cache, pid,
+# temp) are pre-chowned to that user. The stock `nginx` image runs its master
+# process as root, which is more privilege than serving static files needs.
+# Consequence: it listens on 8080, not 80 — ports below 1024 require root —
+# so nginx.conf and the Compose port mapping both use 8080.
+FROM nginxinc/nginx-unprivileged:1.27-alpine
 COPY --from=build /repo/frontend/dist /usr/share/nginx/html
 COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
-EXPOSE 80
+EXPOSE 8080

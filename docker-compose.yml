@@ -29,6 +29,7 @@ services:
       UPLOADS_DIR: /repo/backend/uploads
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:5173}
       SEED_DEMO_DATA: ${SEED_DEMO_DATA:-true}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       PORT: 3001
     ports:
       - "3001:3001"

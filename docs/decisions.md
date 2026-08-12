@@ -679,3 +679,303 @@ icons are safe-zone content on a full-bleed square with no pre-baked corner
 rounding, since the OS applies its own mask shape; reusing the rounded asset
 would risk the OS's circular/squircle mask clipping into the rounded
 corners already baked into the image).
+
+## 2026-08-11: Recipe import from URLs — Gemini (free tier), JSON-LD fast path, cheerio
+
+Implements the URL half of the
+[2026-08-05 recipe-import decision](#2026-08-05-recipe-import-via-cloud-llm-post-mvp),
+and narrows it: that entry left the provider open ("e.g. Anthropic/OpenAI")
+and treated schema.org parsing as a possible fast path. Both are now settled.
+
+**Provider: Google Gemini (Flash tier), not Anthropic or OpenAI.** The
+deciding constraint was that Nosh should cost nothing to run — it's a
+self-hosted, subscription-free app, so a feature that requires a paid API
+subscription undercuts the point of the project. Gemini's free tier is the
+only one of the three that is a real, permanent, no-credit-card tier
+(roughly 250–1,500 requests/day on the Flash models as of August 2026),
+which is far more headroom than a single-user homelab app will ever use.
+OpenAI's free tier is effectively unusable for this (3 requests/minute,
+GPT-3.5 only, a deposit required in practice) and Anthropic has no permanent
+free API tier at all — only starter credits, which run out. This is a
+cost decision, not a capability one; the extraction task (structured data out
+of cleaned page text) is well within what a Flash-class model does reliably.
+
+The client is a ~100-line `fetch` wrapper
+(`backend/src/llm/geminiClient.ts`), not the `@google/genai` SDK — the call
+is a single POST with a JSON body, and the rest of the backend has no
+HTTP-client dependency either. It's exposed as one injected function type
+(`GeminiExtractFn = (pageText, sourceUrl) => Promise<unknown>`), so swapping
+providers later means writing one file with the same signature and changing
+one line in `index.ts`. No provider registry or config-driven selection was
+built for a second provider that doesn't exist yet.
+
+**Two-stage extraction: schema.org JSON-LD first, Gemini only as fallback.**
+Most recipe sites publish a schema.org `Recipe` JSON-LD block, which is
+exact structured data — parsing it is faster, free, and more accurate than
+asking a model to re-derive the same fields from prose. Gemini is called only
+when that block is missing or too thin to use (no title, or no
+ingredients/steps). Either path's output goes through the same `recipeSchema`
+the recipe routes already use, so there's one validation boundary rather than
+two.
+
+**`cheerio` added as a dependency, against the default "no unnecessary
+dependencies" rule.** Regex-based HTML handling was the alternative and was
+rejected: both the JSON-LD block selection and the page-text cleanup are
+cases where regex is genuinely unreliable on real-world markup (inconsistent
+attribute order, malformed nesting, `</script>`-like strings inside inline
+JS), and a parsing bug here fails *silently* as a bad extraction rather than
+loudly as an error. Before adding it: ~27M weekly npm downloads, actively
+maintained (1.2.0 released within the past year), no known vulnerabilities in
+current versions per Snyk, and a small safe surface — pure parsing/traversal
+on `parse5`/`htmlparser2`, no network access and no script execution (unlike
+`jsdom`, which is heavier and unnecessary since nothing here needs to run
+page scripts). Worth re-checking at upgrade time rather than treating as
+settled forever.
+
+**`source_url` column added now, not deferred.** It's nullable on `recipes`,
+set only by the import path, and shown as an "Imported from …" link on the
+detail page. Built in this pass rather than a follow-up because the future
+Reels/TikTok import will need exactly the same column, and adding it while
+the import path was already being touched was cheaper than a second
+migration later.
+
+**Deliberately not built in this pass:** Instagram Reels/TikTok import (the
+remaining half of the original decision — different, much more fragile
+fetching); auto-importing the source page's photo (the existing "save the
+recipe before adding photos" constraint applies to imported recipes too, and
+lifting it means a second outbound-fetch path with its own content-type/size
+validation); and DNS-resolution-based SSRF hardening — the route ships with
+scheme and local-hostname checks only, which is proportionate for a
+single-trusted-user, Tailscale-only app but would not be if Nosh were ever
+exposed publicly.
+
+## 2026-08-11: Import tags come from a fixed vocabulary, not the site's keywords
+
+**Decision:** Imported recipes are tagged only from a fixed vocabulary of
+recipe *attributes* — dietary suitability, nutrition profile, effort, meal
+type (`backend/src/services/recipeTags.ts`, `TAG_VOCABULARY`). A site's
+schema.org `keywords` field is ignored entirely.
+
+**Why:** `keywords` is written for SEO, not for browsing. Importing BBC Good
+Food's lasagne produced eleven tags including "Angela Boggiano" (the author),
+"Beef Lasagne" (a restatement of the dish), "2 Of 5-A-Day", "Calcium" and
+"Spring". Tags are only useful if they're comparable *across* recipes — a tag
+that appears on exactly one recipe is noise in a filter list. The vocabulary
+is modelled on how meal-kit services tag meals ("high protein", "quick",
+"low calorie", "gluten free"), which is the kind of attribute worth filtering
+a collection by.
+
+**How each path gets them:**
+- **JSON-LD path** — derived deterministically, with no LLM call, from data
+  the page already publishes: `suitableForDiet` mapped onto the vocabulary,
+  per-serving `nutrition` values against fixed thresholds (≤500 kcal → "low
+  calorie", ≥25 g protein → "high protein", etc.), `recipeCategory` matched
+  against known meal types only, and total time ≤30 min → "quick".
+- **Gemini path** — the response schema constrains `tags` to a string `enum`
+  of the vocabulary, and the prompt tells the model to classify from
+  ingredients/method and return nothing rather than guess.
+- Both paths then run through `filterToVocabulary()`, so nothing outside the
+  list can reach the form regardless of what a model returns.
+
+**Consequence, accepted:** pages that publish no nutrition or diet data yield
+few tags or none. That's deliberate — the user reviews the pre-filled form
+anyway and can add their own, and no tags is more useful than eleven wrong
+ones. Thresholds are intentionally conservative for the same reason: a
+wrong tag is worse than a missing one.
+
+**Alternatives considered:** keeping `keywords` but filtering it against a
+blocklist (rejected — the junk is open-ended: author names, campaign labels,
+seasons, nutrients; a blocklist would never converge); always calling the LLM
+purely to generate tags, including on the JSON-LD fast path (rejected — spends
+free-tier quota on every import to improve one field, when nutrition data
+already answers it deterministically for the sites that publish it).
+
+## 2026-08-11: Ingredient lines are split into quantity/unit/name on import
+
+**Decision:** Free-text ingredient lines are parsed into the form's
+`quantity`/`unit`/`name` fields by
+`backend/src/services/ingredientLine.ts`, applied to the output of *both*
+extraction paths.
+
+**Why:** schema.org's `recipeIngredient` is a flat array of strings
+("2 cloves garlic (finely minced)"), so without parsing, every imported
+ingredient landed wholesale in `name` and the Qty/Unit columns imported
+empty — the user would have to re-split every line by hand, which defeats
+the point of importing. The LLM is asked to split them itself, but returns
+whole lines often enough that the same normalization is applied to its output
+too (only where both `quantity` and `unit` came back null, so genuinely-split
+ingredients are never second-guessed).
+
+**Why a units allowlist rather than "first word after the number":** in
+"2 medium sweet potatoes" the unit is genuinely absent — treating "medium"
+as one would be worse than leaving it in the name. Size adjectives are
+deliberately excluded from the list; container/natural units that recipes do
+measure in ("cloves", "rashers", "cans", "sprigs") are included. Anything
+the parser can't confidently split is left whole, since a wrong split is
+harder to spot and fix than an unsplit line.
+
+## 2026-08-11: Gemini model pinned to gemini-3.6-flash (and why the model id needs revisiting)
+
+**Decision:** The import client calls `gemini-3.6-flash` explicitly, not the
+`gemini-flash-latest` alias.
+
+**Why:** A pinned version means a Google-side model rollover can't silently
+change extraction quality underneath us. The alias would drift.
+
+**The gotcha that prompted this:** the client was first written against
+`gemini-2.5-flash`, which the model list still returns — but calling it with a
+newly-created API key fails with a 404 and "no longer available to new users".
+Google retires models for *new* keys while keeping them working for existing
+ones, so a model id that works for one developer can 404 for another. If
+import starts returning 502/422 with a Gemini error, check
+`GET https://generativelanguage.googleapis.com/v1beta/models?key=…` for what
+the key can actually call, and bump `GEMINI_MODEL`.
+
+**Also handled:** current Gemini models are reasoning models and return their
+internal thinking as extra response parts alongside the answer. The client
+filters out parts marked `thought: true` and concatenates the rest, rather
+than assuming the answer is `parts[0].text`.
+
+## 2026-08-11: Import tags are capped and de-duplicated by implication
+
+**Decision:** `filterToVocabulary()` drops tags implied by a stronger one
+(vegan ⇒ vegetarian, pescatarian) and caps the result at 5.
+
+**Why:** With only a prompt instruction, the model tagged everything
+technically true — a guacamole recipe came back with nine tags including
+"vegan", "vegetarian" *and* "pescatarian", plus "nut free" and both "snack"
+and "side". A recipe described by a dozen attributes isn't described at all;
+past a handful, tags stop being a useful way to tell recipes apart. The
+prompt now asks for at most four, most-characteristic tags, but prompts are
+guidance rather than a guarantee, so the implication pruning and the cap are
+enforced in code. With both in place the same recipe imports as
+"vegan, gluten free, quick, snack".
+
+## 2026-08-11: /import streams NDJSON progress instead of returning one JSON object
+
+**Decision:** `POST /import` responds with newline-delimited JSON — a
+`{"type":"progress","stage":…}` line per phase, then either a `result` or an
+`error` line — rather than a single JSON body. The frontend reads it with
+`response.body.getReader()` and shows the current stage.
+
+**Why:** the two extraction paths differ by more than an order of magnitude
+in duration, and only the server knows which one is running. Measured on real
+pages: a JSON-LD import finishes in ~0.5s, while a page needing the LLM
+spends ~7.6s *inside the model call alone*. A single "Fetching recipe…"
+spinner covering both leaves the user unable to tell a fast import from a
+hung one. Now the UI says "Reading the page's recipe data…" or "No recipe
+data on this page — asking the AI to read it. This can take a few seconds…",
+which also quietly teaches that the AI is a fallback, not the default path.
+
+**Consequence, accepted:** once the first byte is written the HTTP status is
+committed, so extraction failures are reported *in-band*
+(`{"type":"error","status":502,…}`) rather than as the response status. The
+status each failure would have had is carried in the message, and the client
+turns it back into the same `ApiError(status, message)` the rest of the API
+throws — so callers and error copy are unchanged. Request-level rejections
+that happen *before* streaming starts (401 unauthenticated, 400 malformed
+body) are still real HTTP statuses.
+
+**Alternatives considered:** Server-Sent Events (rejected — `EventSource`
+can't issue a POST, so it would have meant either a GET with the URL in the
+query string or the same manual stream reading anyway, with extra framing);
+inferring the stage client-side from elapsed time (rejected — it would be a
+guess presented as fact, and a slow site on the fast path would be
+mislabelled as an AI call); a separate "does this page need the LLM?"
+pre-flight endpoint (rejected — doubles the page fetch to answer something
+the extraction already knows).
+
+## 2026-08-12: Post-implementation review fixes (backend security/correctness, frontend correctness/a11y)
+
+**Context:** before opening the PR, a security review and two independent
+code reviews (backend, frontend) were run against the import feature. Several
+real defects surfaced; this entry records the ones worth explaining rather
+than leaving as bare diffs.
+
+**Sanitize before validating, not after.** `recipeSchema.safeParse` was being
+applied directly to raw LLM/JSON-LD output, and the schema is intentionally
+strict (`.min(1)` strings, `.positive()` servings). In practice Gemini
+routinely returns `""` instead of `null` on a nullable field, and pages
+publish "Serves 0" — both failed the *whole* import over one stray field, and
+discarded the failure reason in the process (replaced with the misleading
+"No recipe could be found on that page", even though one had been found).
+`filterToVocabulary`/`normalizeIngredients` existed to clean up exactly this
+kind of near-miss but ran after the parse had already rejected it, making
+them unreachable for their own reason to exist. Fixed: a `sanitizeCandidate`
+step now coerces near-misses (empty strings → null, non-positive numbers →
+null, empty ingredient/step entries dropped) *before* validation, and a
+`console.warn` of the actual zod issues replaces the silent discard.
+
+**SSRF guard hardened, and closed against redirects.** The original guard
+compared `url.hostname` against four literal strings. Verified gaps: `"::1"`
+never matched (WHATWG keeps IPv6 hosts bracketed, `"[::1]"`), no private
+range (`10/8`, `172.16/12`, `192.168/16`, `169.254/16` — including the cloud
+metadata address) was blocked at all, and `fetch`'s default `redirect:
+"follow"` meant even a perfect hostname check could be defeated by any public
+page 302-ing to an internal address. Now `isBlockedHost` checks real CIDR
+ranges via `node:net`'s `isIP`, and `fetchHtml` sets `redirect: "manual"`,
+re-validating every hop (capped at 5) so a redirect can't reach anywhere a
+direct URL couldn't. This remains a Tailscale-only-app-appropriate guard, not
+full SSRF hardening — DNS-resolution-based checking (a hostname that
+*resolves* to a private address still isn't caught) is still deferred, per
+the original 2026-08-11 entry.
+
+**Gemini: header auth, preserved error bodies, quota distinguished from "no
+recipe".** The API key moved from `?key=` (which ends up in proxy/error logs)
+to the documented `x-goog-api-key` header. A non-2xx response's body — where
+Google puts the actual reason (expired key, exhausted quota, unknown model
+id) — was being discarded in favor of a bare status code; it's now logged
+server-side. 429/5xx responses now throw a distinct `GeminiUnavailableError`
+→ 503 "try again shortly", instead of surfacing as a 422 "no recipe found",
+which was actively misleading.
+
+**Prompt injection boundary.** The page's text was concatenated directly onto
+the model instructions. Real impact was already low — structured output,
+enum-locked tags, `filterToVocabulary` re-checking, `sourceUrl` set
+server-side not by the model, and the user reviewing everything before
+save — but the untrusted content is now fenced in an explicit `<page-text>`
+block with a one-line "treat as data, not instructions" note, which costs
+nothing and removes the class of problem.
+
+**`sourceUrl` restricted to http(s).** zod 4's bare `z.url()` accepts
+`javascript:` and `data:` schemes. Not exploitable as shipped — React 19
+blocks `javascript:` hrefs — but `sourceUrl` is renderer as an `<a href>` and
+is a body field on `POST/PUT /recipes`, so it's one React-version bump away
+from being live. Now `z.url({ protocol: /^https?$/ })`.
+
+**Frontend: three real bugs, not just polish.**
+1. *Mid-import navigation.* Leaving the import page before the ~20s request
+   settles used to still navigate wherever the response landed once it
+   resolved, yanking the user out of whatever they'd moved to. Now an
+   `AbortController` is aborted on unmount (and on a new "Cancel" button),
+   and the `.then`/`.catch` check `signal.aborted` before acting.
+2. *Duplicate recipe on Back.* `/recipes/new` and `/recipes/:id/edit` render
+   the same `RecipeFormPage` component at the same route-tree position, so
+   React Router reconciles instead of remounting on navigation between them.
+   After importing and saving, browser Back landed back on `/recipes/new`
+   with every field still populated and `loading` still `false` — clicking
+   Save again created a second recipe. Fixed with `{ replace: true }` on the
+   post-save navigate (Back now skips the create form entirely) and a `key`
+   per route in `App.tsx` so the two modes — and different recipe ids under
+   `/edit` — always remount.
+3. *Stream reader never released on the expected error path.* The 422 "no
+   recipe found" response is the *normal* failure case, and it throws out of
+   the NDJSON line handler without releasing the reader — `reader.cancel()`
+   alone doesn't synchronously free the lock; `releaseLock()` does. Fixed in
+   a `finally`, alongside treating an unrecognized message type as "ignore"
+   rather than "assume it's an error with an undefined status/message".
+
+**React 19 provider syntax.** `<Context.Provider value={…}>` is the pre-19
+form; React 19 renders the context object itself as the provider. Updated
+`AuthProvider` and `ToastProvider` to `<Context value={…}>`.
+
+**Also fixed:** ISO 8601 duration parsing dropped times with a seconds
+component or a day prefix (both real, e.g. "PT1H30M15S", "P0DT1H0M") instead
+of just ignoring the extra part; `AutoGrowTextarea` didn't re-measure on
+resize (now backed by `field-sizing-content` with a `ResizeObserver`
+fallback for Safari); `RecipeDetailPage` parsed `sourceUrl` with `new URL()`
+directly in render, which would blank the whole page on a malformed stored
+value; toast auto-dismiss timers weren't cleared on unmount; the streaming
+route now aborts the underlying fetch/Gemini call when the client
+disconnects (`req.on("close")`), rather than finishing into a dead socket
+and, on the AI path, spending quota for nothing.

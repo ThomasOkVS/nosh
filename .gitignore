@@ -21,3 +21,7 @@ Thumbs.db
 
 .idea/
 .claude/settings.local.json
+
+# pnpm content-addressable store, created by some pnpm configs. Local cache,
+# never a build input.
+.pnpm-store/

@@ -1,5 +1,5 @@
 import { WarningIcon, XIcon } from "@phosphor-icons/react";
-import { useCallback, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ToastContext } from "./ToastContext";
 
 interface ToastItem {
@@ -19,6 +19,17 @@ const TOAST_DURATION_MS = 6000;
 export function ToastProvider({ children }: Readonly<{ children: ReactNode }>) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const nextId = useRef(0);
+  const timers = useRef(new Set<ReturnType<typeof setTimeout>>());
+
+  // Pending auto-dismiss timers would otherwise keep firing into a provider
+  // that no longer exists.
+  useEffect(() => {
+    const pending = timers.current;
+    return () => {
+      pending.forEach(clearTimeout);
+      pending.clear();
+    };
+  }, []);
 
   const dismiss = useCallback((id: number) => {
     setToasts((prev) => prev.filter((toast) => toast.id !== id));
@@ -28,13 +39,24 @@ export function ToastProvider({ children }: Readonly<{ children: ReactNode }>) {
     (message: string) => {
       const id = nextId.current++;
       setToasts((prev) => [...prev, { id, message }]);
-      setTimeout(() => dismiss(id), TOAST_DURATION_MS);
+      const timer = setTimeout(() => {
+        timers.current.delete(timer);
+        dismiss(id);
+      }, TOAST_DURATION_MS);
+      timers.current.add(timer);
     },
     [dismiss],
   );
 
+  // A fresh object literal here would be a new value on every render, making
+  // every consumer of the context re-render whenever a toast appears or
+  // expires — even though `showToast` itself never changes.
+  const contextValue = useMemo(() => ({ showToast }), [showToast]);
+
+  // React 19 renders the context object itself as the provider;
+  // `<ToastContext.Provider>` is the pre-19 form and is on its way out.
   return (
-    <ToastContext.Provider value={{ showToast }}>
+    <ToastContext value={contextValue}>
       {children}
       {/* pointer-events-none on the stack so it never blocks clicks on the
        * page beneath it; each toast re-enables events for itself. */}
@@ -60,6 +82,6 @@ export function ToastProvider({ children }: Readonly<{ children: ReactNode }>) {
           </div>
         ))}
       </div>
-    </ToastContext.Provider>
+    </ToastContext>
   );
 }

@@ -41,5 +41,7 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
     [user, status, login, signup, logout],
   );
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  // React 19 renders the context object itself as the provider;
+  // `<AuthContext.Provider>` is the pre-19 form and is on its way out.
+  return <AuthContext value={value}>{children}</AuthContext>;
 }

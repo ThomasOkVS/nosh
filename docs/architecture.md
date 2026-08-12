@@ -13,6 +13,7 @@ pieces, as currently intended), not just as it was first imagined.
 | Database | PostgreSQL |
 | Auth | Username/password, hashed (argon2/bcrypt), server-side sessions or JWT |
 | File storage | Local disk volume (recipe photos, uploads) |
+| Recipe import | schema.org JSON-LD parsing (`cheerio`), falling back to the Google Gemini API |
 | Deployment | Docker containers, managed via Dockge, on a home server |
 | Network | Tailscale only — no public ingress, no in-app TLS termination |
 | Repo | Monorepo on GitHub (`/frontend`, `/backend`), pnpm workspaces |
@@ -72,7 +73,9 @@ even though there is exactly one user today — see
 
 - **users** — `id`, `email`, `password_hash`, `created_at`
 - **recipes** — `id`, `user_id`, `title`, `description`, `servings`,
-  `prep_time_minutes`, `cook_time_minutes`, `created_at`, `updated_at`
+  `prep_time_minutes`, `cook_time_minutes`, `source_url`, `created_at`,
+  `updated_at`. `source_url` is null for manually-created recipes and set to
+  the originating page for imported ones — see [recipe import](#recipe-import-urls).
 - **ingredients** — `id`, `recipe_id`, `position`, `quantity`, `unit`, `name`
   (free-text per line for MVP; not normalized against a master ingredient table)
 - **steps** — `id`, `recipe_id`, `position`, `instruction`
@@ -123,14 +126,52 @@ Database access throughout the backend is raw SQL via `pg` (node-postgres) —
 deliberately no ORM or query builder, to keep the Postgres learning goal front
 and center.
 
-## Future: recipe import
+## Recipe import (URLs) {#recipe-import-urls}
 
-Post-MVP, recipe import (from URLs, Instagram Reels, TikTok) will use a cloud LLM
-API (e.g. Anthropic/OpenAI) to extract structured recipe data (ingredients, steps,
-nutrition, photo) from messy source content. Local/self-hosted LLM was considered
-and rejected for this specific feature due to the ProDesk 400 G5's limited
-hardware for running a model capable of reliable extraction from video/social
-content — see [decisions.md](decisions.md).
+`POST /import` takes `{ url }` and yields an unsaved `RecipeInput` for the
+frontend to pre-fill the normal create form with — nothing is persisted until
+the user reviews it and submits that form through the existing
+`POST /recipes` path. It responds with newline-delimited JSON (a progress line
+per phase, then a result or error line) so the UI can say which extraction
+path is running; see
+[decisions.md](decisions.md#2026-08-11-import-streams-ndjson-progress-instead-of-returning-one-json-object).
+Extraction is two-stage:
+
+1. **schema.org JSON-LD** — the page's `<script type="application/ld+json">`
+   blocks are parsed (via `cheerio`) looking for a `Recipe` node, handling the
+   common real-world shapes (bare object, array, `@graph`-wrapped,
+   `HowToStep`/`HowToSection` instructions, ISO-8601 durations). Most recipe
+   sites publish this, so the common case costs no LLM call at all.
+2. **Gemini fallback** — when there's no usable JSON-LD, the page is stripped
+   to plain text, truncated, and sent to the Gemini API with a `responseSchema`
+   constraining the output to `RecipeInput`'s shape.
+
+Either way the result is validated with the same `recipeSchema` the recipe
+routes use, `source_url` is set to the imported URL, and two normalizations
+run over both paths' output: ingredient lines are split into
+quantity/unit/name (`services/ingredientLine.ts`), and tags are restricted to
+a fixed attribute vocabulary — "high protein", "quick", "gluten free" and
+similar (`services/recipeTags.ts`) — rather than the site's SEO keywords. See
+[decisions.md](decisions.md#2026-08-11-import-tags-come-from-a-fixed-vocabulary-not-the-sites-keywords)
+for both. The Gemini client is
+injected into `createApp()` (`AppDeps.geminiExtract`) so tests substitute a
+fake and never hit the network. It's optional: with no `GEMINI_API_KEY` set,
+stage 1 still works — only pages that need the fallback return 503. Since this is the app's
+first code path that fetches a user-supplied URL, it rejects non-http(s)
+schemes and local hostnames before making any request.
+
+Photos are not imported — the existing "recipe must be saved before adding
+photos" constraint applies unchanged, so an imported recipe gets its photo
+added manually afterward.
+
+## Future: recipe import from social video
+
+Import from Instagram Reels and TikTok is still to be built. It needs genuine
+content understanding of video/caption content that static parsing can't
+provide, and the platforms actively resist scraping — it'll reuse the same
+`/import` endpoint shape and `source_url` column. Local/self-hosted LLM was
+considered and rejected for this feature due to the ProDesk 400 G5's limited
+hardware — see [decisions.md](decisions.md).
 
 ## Deployment target
 

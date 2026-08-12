@@ -47,6 +47,27 @@ describe("recipe routes", () => {
     expect(res.body.tags).toEqual(["soup", "vegetarian"]);
   });
 
+  it("defaults sourceUrl to null and round-trips it when provided", async () => {
+    const app = createTestApp();
+    const agent = await signedInAgent(app, "alice@example.com");
+
+    const manual = await agent.post("/recipes").send(samplePayload);
+    expect(manual.body.sourceUrl).toBeNull();
+
+    const imported = await agent
+      .post("/recipes")
+      .send({ ...samplePayload, sourceUrl: "https://example.com/recipe" });
+    expect(imported.body.sourceUrl).toBe("https://example.com/recipe");
+
+    const fetched = await agent.get(`/recipes/${imported.body.id}`);
+    expect(fetched.body.sourceUrl).toBe("https://example.com/recipe");
+
+    const updated = await agent
+      .put(`/recipes/${imported.body.id}`)
+      .send({ ...samplePayload, sourceUrl: null });
+    expect(updated.body.sourceUrl).toBeNull();
+  });
+
   it("rejects a recipe with no title", async () => {
     const app = createTestApp();
     const agent = await signedInAgent(app, "alice@example.com");

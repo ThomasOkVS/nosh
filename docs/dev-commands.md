@@ -37,6 +37,35 @@ pnpm --filter frontend dev
 Either way: frontend at `http://localhost:5173`, backend at
 `http://localhost:3001`.
 
+**Recipe import from a URL** needs a `GEMINI_API_KEY` in your `.env` (free
+key from https://aistudio.google.com/apikey). Without it the app runs fine
+and `POST /import` just returns 503. Import still works keyless on sites
+that publish schema.org JSON-LD recipe data — Gemini is only the fallback
+for pages that don't. After adding the key, restart the backend so it picks
+it up: `docker compose up -d backend`.
+
+### Testing the LLM fallback specifically
+
+Most recipe sites publish JSON-LD, so a normal import never reaches Gemini.
+To exercise the model, import a page that has a real recipe but no recipe
+markup — Wikibooks' Cookbook is reliable for this:
+
+```bash
+curl -s -X POST http://localhost:3001/import -H "Content-Type: application/json" -d '{"url":"https://en.wikibooks.org/wiki/Cookbook:Guacamole"}'
+```
+
+(Or just paste that URL into the import page while logged in.) To check
+whether any given page would take the fast path, search its HTML for
+`"@type": "Recipe"` — if it's there, JSON-LD handles it and Gemini is never
+called.
+
+If import fails with a Gemini error, list what your key can actually call —
+model ids get retired for *new* keys while still working for old ones:
+
+```bash
+docker compose exec backend node -e "fetch('https://generativelanguage.googleapis.com/v1beta/models?key='+process.env.GEMINI_API_KEY).then(r=>r.json()).then(d=>console.log(d.models.map(m=>m.name).join('\n')))"
+```
+
 ## Demo data
 
 The backend seeds a demo account automatically on startup

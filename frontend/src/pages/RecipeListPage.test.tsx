@@ -14,6 +14,7 @@ function makeRecipe(overrides: Partial<Recipe> = {}): Recipe {
     servings: 4,
     prepTimeMinutes: 10,
     cookTimeMinutes: 20,
+    sourceUrl: null,
     createdAt: "2026-01-01T00:00:00Z",
     updatedAt: "2026-01-01T00:00:00Z",
     ingredients: [],

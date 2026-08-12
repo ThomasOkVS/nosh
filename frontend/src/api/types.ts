@@ -32,6 +32,7 @@ export interface Recipe {
   servings: number | null;
   prepTimeMinutes: number | null;
   cookTimeMinutes: number | null;
+  sourceUrl: string | null;
   createdAt: string;
   updatedAt: string;
   ingredients: Ingredient[];
@@ -59,4 +60,5 @@ export interface RecipeInput {
   ingredients: IngredientInput[];
   steps: StepInput[];
   tags: string[];
+  sourceUrl: string | null;
 }
