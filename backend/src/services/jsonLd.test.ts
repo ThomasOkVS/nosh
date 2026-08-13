@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractJsonLdRecipe, isCompleteEnough, parseIsoDurationToMinutes } from "./jsonLd";
+import { extractJsonLdRecipe, extractMetaImageUrl, isCompleteEnough, parseIsoDurationToMinutes } from "./jsonLd";
 
 function pageWith(jsonLd: unknown): string {
   return `<html><head><script type="application/ld+json">${JSON.stringify(jsonLd)}</script></head><body></body></html>`;
@@ -121,6 +121,56 @@ describe("extractJsonLdRecipe", () => {
 
   it("returns null when no JSON-LD is present", () => {
     expect(extractJsonLdRecipe("<html><body>Just some text</body></html>")).toBeNull();
+  });
+
+  it("picks up a plain string image", () => {
+    const html = pageWith({ ...basicRecipe, image: "https://example.com/soup.jpg" });
+    expect(extractJsonLdRecipe(html)?.imageUrl).toBe("https://example.com/soup.jpg");
+  });
+
+  it("picks up the first entry of an array of images", () => {
+    const html = pageWith({
+      ...basicRecipe,
+      image: ["https://example.com/soup-1.jpg", "https://example.com/soup-2.jpg"],
+    });
+    expect(extractJsonLdRecipe(html)?.imageUrl).toBe("https://example.com/soup-1.jpg");
+  });
+
+  it("reads the url off an ImageObject", () => {
+    const html = pageWith({
+      ...basicRecipe,
+      image: { "@type": "ImageObject", url: "https://example.com/soup.jpg" },
+    });
+    expect(extractJsonLdRecipe(html)?.imageUrl).toBe("https://example.com/soup.jpg");
+  });
+
+  it("omits imageUrl entirely when the page publishes no image", () => {
+    const result = extractJsonLdRecipe(pageWith(basicRecipe));
+    expect(result).not.toHaveProperty("imageUrl");
+  });
+});
+
+describe("extractMetaImageUrl", () => {
+  it("reads og:image", () => {
+    const html = `<html><head><meta property="og:image" content="https://example.com/hero.jpg"></head></html>`;
+    expect(extractMetaImageUrl(html)).toBe("https://example.com/hero.jpg");
+  });
+
+  it("falls back to twitter:image when og:image is absent", () => {
+    const html = `<html><head><meta name="twitter:image" content="https://example.com/hero.jpg"></head></html>`;
+    expect(extractMetaImageUrl(html)).toBe("https://example.com/hero.jpg");
+  });
+
+  it("prefers og:image over twitter:image when both are present", () => {
+    const html = `<html><head>
+      <meta property="og:image" content="https://example.com/og.jpg">
+      <meta name="twitter:image" content="https://example.com/twitter.jpg">
+    </head></html>`;
+    expect(extractMetaImageUrl(html)).toBe("https://example.com/og.jpg");
+  });
+
+  it("returns null when neither is present", () => {
+    expect(extractMetaImageUrl("<html><head></head></html>")).toBeNull();
   });
 });
 

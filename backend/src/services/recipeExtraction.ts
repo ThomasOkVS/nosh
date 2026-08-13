@@ -4,7 +4,7 @@ import { GeminiExtractionError, GeminiUnavailableError } from "../llm/geminiClie
 import { recipeSchema, type RecipeInput } from "../validation/recipes";
 import { stripHtmlToText } from "./htmlText";
 import { normalizeIngredients } from "./ingredientLine";
-import { extractJsonLdRecipe, isCompleteEnough } from "./jsonLd";
+import { extractJsonLdRecipe, extractMetaImageUrl, isCompleteEnough } from "./jsonLd";
 import { filterToVocabulary } from "./recipeTags";
 import {
   detectSocialPlatform,
@@ -76,7 +76,11 @@ function isBlockedHost(rawHostname: string): boolean {
   return false;
 }
 
-function validateUrl(rawUrl: string): URL {
+/** Exported so `imageFromUrl.ts` can apply the same SSRF guard to an image
+ * URL that travels back from the browser in a request body — that URL
+ * originated from our own page scrape, but the request that carries it back
+ * doesn't prove that, so it needs the same validation as the original fetch. */
+export function validateUrl(rawUrl: string): URL {
   let url: URL;
   try {
     url = new URL(rawUrl);
@@ -196,6 +200,18 @@ async function fetchHtml(
   throw new FetchError("That page redirected too many times");
 }
 
+/** schema.org and og:image both allow a relative URL, which is meaningless
+ * once carried outside the page it came from — resolved against the page's
+ * own URL here, the one place both callers already have it. */
+function resolveImageUrl(raw: string | null | undefined, pageUrl: URL): string | null {
+  if (!raw) return null;
+  try {
+    return new URL(raw, pageUrl).toString();
+  } catch {
+    return null;
+  }
+}
+
 type RawRecord = Record<string, unknown>;
 
 function cleanString(value: unknown): string | null {
@@ -290,11 +306,16 @@ interface ExtractDeps {
   signal?: AbortSignal;
 }
 
+interface ExtractionCandidate {
+  candidate: unknown;
+  imageUrl: string | null;
+}
+
 async function extractFromSocialVideo(
   url: URL,
   deps: ExtractDeps,
   report: (stage: ImportStage) => void,
-): Promise<unknown> {
+): Promise<ExtractionCandidate> {
   if (!deps.geminiVideoExtract) {
     throw new NotConfiguredError(
       "Importing from Instagram/TikTok needs AI-assisted import, which is not configured",
@@ -303,16 +324,17 @@ async function extractFromSocialVideo(
   const downloadVideo = deps.downloadSocialVideo ?? downloadSocialVideoDefault;
 
   report("downloading-video");
-  const { videoBuffer, mimeType, caption } = await downloadVideo(url, deps.signal);
+  const { videoBuffer, mimeType, caption, thumbnailUrl } = await downloadVideo(url, deps.signal);
 
   report("analyzing-video");
   try {
-    return await deps.geminiVideoExtract(
+    const candidate = await deps.geminiVideoExtract(
       { buffer: videoBuffer, mimeType },
       caption,
       url.toString(),
       deps.signal,
     );
+    return { candidate, imageUrl: thumbnailUrl };
   } catch (err) {
     if (err instanceof GeminiUnavailableError) {
       throw new ExtractionUnavailableError(err.message);
@@ -335,7 +357,7 @@ async function extractFromWebPage(
   url: URL,
   deps: ExtractDeps,
   report: (stage: ImportStage) => void,
-): Promise<unknown> {
+): Promise<ExtractionCandidate> {
   const fetchImpl = deps.fetchImpl ?? fetch;
   // One budget for the whole page fetch including the body read, combined
   // with the caller's cancellation so either can end it.
@@ -347,8 +369,12 @@ async function extractFromWebPage(
 
   report("structured-data");
   const jsonLdResult = extractJsonLdRecipe(html);
+  // Preferred over the model even on the Gemini-fallback path below: cheaper
+  // and more reliable than asking the LLM to locate an image in page text.
+  const imageUrl = resolveImageUrl(jsonLdResult?.imageUrl ?? extractMetaImageUrl(html), url);
+
   if (isCompleteEnough(jsonLdResult)) {
-    return jsonLdResult;
+    return { candidate: jsonLdResult, imageUrl };
   }
 
   if (!deps.geminiExtract) {
@@ -359,7 +385,8 @@ async function extractFromWebPage(
   report("ai");
   const pageText = stripHtmlToText(html).slice(0, MAX_GEMINI_TEXT_LENGTH);
   try {
-    return await deps.geminiExtract(pageText, url.toString(), deps.signal);
+    const candidate = await deps.geminiExtract(pageText, url.toString(), deps.signal);
+    return { candidate, imageUrl };
   } catch (err) {
     if (err instanceof GeminiUnavailableError) {
       throw new ExtractionUnavailableError(err.message);
@@ -371,14 +398,26 @@ async function extractFromWebPage(
   }
 }
 
-export async function extractRecipeFromUrl(rawUrl: string, deps: ExtractDeps): Promise<RecipeInput> {
+export interface RecipeExtractionResult {
+  recipe: RecipeInput;
+  /** The recipe's photo, found on a best-effort basis (schema.org `image`,
+   * an og:image/twitter:image meta tag, or a yt-dlp thumbnail). Not part of
+   * `recipe` — attaching it happens as a separate step after the recipe is
+   * saved, since recipe images are keyed off an id that doesn't exist yet. */
+  imageUrl: string | null;
+}
+
+export async function extractRecipeFromUrl(
+  rawUrl: string,
+  deps: ExtractDeps,
+): Promise<RecipeExtractionResult> {
   const url = validateUrl(rawUrl);
   const report = deps.onProgress ?? (() => undefined);
 
   // No schema.org/text fast path exists for a video post — it's the only
   // extraction route those platforms have.
   const platform = detectSocialPlatform(url);
-  const candidate = platform
+  const { candidate, imageUrl } = platform
     ? await extractFromSocialVideo(url, deps, report)
     : await extractFromWebPage(url, deps, report);
 
@@ -389,5 +428,5 @@ export async function extractRecipeFromUrl(rawUrl: string, deps: ExtractDeps): P
     console.warn("Import produced data that failed validation:", parsed.error.issues);
     throw new ExtractionError("No recipe could be found on that page");
   }
-  return parsed.data;
+  return { recipe: parsed.data, imageUrl };
 }

@@ -4,7 +4,13 @@ import { deriveTags } from "./recipeTags";
 
 type PartialRecipe = Partial<
   Pick<RecipeInput, "title" | "description" | "servings" | "prepTimeMinutes" | "cookTimeMinutes" | "ingredients" | "steps" | "tags">
->;
+> & {
+  /** The recipe's photo, if schema.org published one. Not part of
+   * `RecipeInput` — recipe images are a separate DB entity, only attachable
+   * once the recipe itself has been saved — so this rides alongside the
+   * persisted fields rather than becoming one of them. */
+  imageUrl?: string;
+};
 
 /** schema.org allows a single value or an array of values for most Recipe fields. */
 function toArray<T>(value: T | T[] | undefined): T[] {
@@ -85,6 +91,26 @@ function flattenInstructions(value: unknown): string[] {
   return [];
 }
 
+/** schema.org's `image` is a string, an `ImageObject` ({ url: "..." }), or an
+ * array of either — real-world markup uses all of these. Takes the first
+ * usable candidate; picking among several isn't worth the complexity here. */
+function toImageUrl(value: unknown): string | null {
+  if (typeof value === "string" && value.trim()) return value.trim();
+  if (value && typeof value === "object") {
+    const url = (value as Record<string, unknown>).url;
+    if (typeof url === "string" && url.trim()) return url.trim();
+  }
+  return null;
+}
+
+function extractImageUrl(node: Record<string, unknown>): string | null {
+  for (const candidate of toArray<unknown>(node.image)) {
+    const url = toImageUrl(candidate);
+    if (url) return url;
+  }
+  return null;
+}
+
 function isRecipeNode(node: unknown): node is Record<string, unknown> {
   if (!node || typeof node !== "object") return false;
   const type = (node as Record<string, unknown>)["@type"];
@@ -117,6 +143,9 @@ function mapRecipeNode(node: Record<string, unknown>): PartialRecipe {
   if (typeof node.description === "string" && node.description.trim()) {
     result.description = node.description.trim();
   }
+
+  const imageUrl = extractImageUrl(node);
+  if (imageUrl !== null) result.imageUrl = imageUrl;
 
   const servings = parseYieldToServings(node.recipeYield);
   if (servings !== null) result.servings = servings;
@@ -189,6 +218,20 @@ export function extractJsonLdRecipe(html: string): PartialRecipe | null {
   }
 
   return null;
+}
+
+/**
+ * A cheap, reliable fallback for the page's hero image when schema.org
+ * didn't publish one (or wasn't used at all, i.e. the Gemini-fallback path)
+ * — `og:image`/`twitter:image` meta tags are near-universal on recipe sites,
+ * so this is preferred over asking the LLM to locate an image in page text.
+ * `cheerio` is already a dependency for the JSON-LD parse above.
+ */
+export function extractMetaImageUrl(html: string): string | null {
+  const $ = cheerio.load(html);
+  const og = $('meta[property="og:image"]').attr("content")?.trim();
+  if (og) return og;
+  return $('meta[name="twitter:image"]').attr("content")?.trim() || null;
 }
 
 /** A JSON-LD result "counts" as usable only if it has enough to build on;

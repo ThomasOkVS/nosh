@@ -19,13 +19,24 @@ import {
   searchRecipes,
   updateRecipe,
 } from "../repositories/recipes";
+import {
+  fetchImageFromUrl,
+  IMAGE_MIME_EXTENSIONS,
+  ImageFetchError,
+  ImageTooLargeError,
+  UnsupportedImageTypeError,
+} from "../services/imageFromUrl";
+import { InvalidUrlError } from "../services/recipeExtraction";
+import { importRequestSchema } from "../validation/import";
 import { recipeSchema } from "../validation/recipes";
 
-const IMAGE_MIME_EXTENSIONS: Record<string, string> = {
-  "image/jpeg": ".jpg",
-  "image/png": ".png",
-  "image/webp": ".webp",
-};
+function statusForImageFetchError(err: unknown): number {
+  if (err instanceof InvalidUrlError) return 400;
+  if (err instanceof UnsupportedImageTypeError) return 422;
+  if (err instanceof ImageTooLargeError) return 422;
+  if (err instanceof ImageFetchError) return 502;
+  return 500;
+}
 
 function parseId(raw: string | undefined): number | null {
   if (raw === undefined) {
@@ -73,7 +84,11 @@ function handleUpload(uploadMiddleware: ReturnType<ReturnType<typeof multer>["si
   };
 }
 
-export function createRecipesRouter(pool: Pool, uploadsDir: string): Router {
+export function createRecipesRouter(
+  pool: Pool,
+  uploadsDir: string,
+  fetchImpl: typeof fetch = fetch,
+): Router {
   fs.mkdirSync(uploadsDir, { recursive: true });
 
   const upload = multer({
@@ -238,6 +253,50 @@ export function createRecipesRouter(pool: Pool, uploadsDir: string): Router {
         const image = await addRecipeImage(pool, id, req.file.filename);
         res.status(201).json(image);
       } catch (err) {
+        next(err);
+      }
+    },
+  );
+
+  /**
+   * Auto-attaches the recipe's source photo right after an import is saved:
+   * `imageUrl` is discovered server-side during `/import` (schema.org
+   * `image`, an og:image meta tag, or a yt-dlp thumbnail) and handed back to
+   * the browser, which calls this once it has a real recipe id to attach to.
+   * Deliberately best-effort from the frontend's point of view — a failure
+   * here shouldn't undo an otherwise-successful save.
+   */
+  router.post(
+    "/:id/images/from-url",
+    requireRecipeOwnership(pool),
+    async (req, res, next) => {
+      const id = parseId(req.params.id);
+      if (id === null) {
+        res.status(400).json({ error: "Invalid recipe id" });
+        return;
+      }
+      const parsed = importRequestSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+        return;
+      }
+
+      try {
+        const { buffer, extension } = await fetchImageFromUrl(parsed.data.url, fetchImpl);
+        const filename = `${randomUUID()}${extension}`;
+        await fsPromises.writeFile(path.join(uploadsDir, filename), buffer);
+        const image = await addRecipeImage(pool, id, filename);
+        res.status(201).json(image);
+      } catch (err) {
+        if (
+          err instanceof InvalidUrlError ||
+          err instanceof UnsupportedImageTypeError ||
+          err instanceof ImageTooLargeError ||
+          err instanceof ImageFetchError
+        ) {
+          res.status(statusForImageFetchError(err)).json({ error: err.message });
+          return;
+        }
         next(err);
       }
     },

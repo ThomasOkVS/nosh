@@ -13,6 +13,7 @@ import { useCallback, useEffect, useState, type ChangeEvent, type DragEvent, typ
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import {
+  attachRecipeImageFromUrl,
   createRecipe,
   deleteRecipeImage,
   getRecipe,
@@ -67,6 +68,12 @@ function importedRecipeFrom(state: unknown): RecipeInput | null {
   return recipe as RecipeInput;
 }
 
+function importedImageUrlFrom(state: unknown): string | null {
+  if (!state || typeof state !== "object" || !("importedImageUrl" in state)) return null;
+  const candidate = (state as { importedImageUrl?: unknown }).importedImageUrl;
+  return typeof candidate === "string" ? candidate : null;
+}
+
 /** Shown while fetching the existing recipe in edit mode — see
  * docs/design-system.md#loading-states. New-recipe mode never hits this,
  * there's nothing to fetch. */
@@ -109,6 +116,7 @@ export function RecipeFormPage() {
   // before the normal save path runs. Never present in edit mode.
   const { state } = useLocation();
   const imported = isEditMode ? null : importedRecipeFrom(state);
+  const importedImageUrl = isEditMode ? null : importedImageUrlFrom(state);
 
   const [title, setTitle] = useState(imported?.title ?? "");
   const [description, setDescription] = useState(imported?.description ?? "");
@@ -298,9 +306,18 @@ export function RecipeFormPage() {
         : // `replace` so Back doesn't return to the create form still holding
           // the just-saved data — saving again from there would create a
           // second copy. Back now goes to wherever the user came from.
-          createRecipe(payload).then((created) =>
-            navigate(`/recipes/${created.id}/edit`, { replace: true }),
-          );
+          createRecipe(payload).then(async (created) => {
+            // Best-effort: the recipe is already saved by this point, so a
+            // failure here (blocked host, unreachable, unsupported type)
+            // shouldn't undo the save or block navigation — just tell the
+            // user to add the photo themselves.
+            if (importedImageUrl) {
+              await attachRecipeImageFromUrl(created.id, importedImageUrl).catch(() => {
+                showToast("Couldn't import the photo — add one manually");
+              });
+            }
+            navigate(`/recipes/${created.id}/edit`, { replace: true });
+          });
 
       submit
         .catch((err: unknown) => {
@@ -321,6 +338,8 @@ export function RecipeFormPage() {
       isEditMode,
       recipeId,
       navigate,
+      importedImageUrl,
+      showToast,
     ],
   );
 

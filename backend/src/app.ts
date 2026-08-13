@@ -22,6 +22,9 @@ export interface AppDeps {
   /** Overridable only so tests never shell out to the real yt-dlp binary —
    * see services/socialVideo.ts. */
   downloadSocialVideo?: SocialVideoDownloadFn;
+  /** Overridable so tests attaching a recipe photo from a URL never make a
+   * real network request — see routes/recipes.ts's `/images/from-url`. */
+  fetchImpl?: typeof fetch;
 }
 
 export function createApp(deps: AppDeps): Express {
@@ -33,6 +36,7 @@ export function createApp(deps: AppDeps): Express {
     geminiExtract,
     geminiVideoExtract,
     downloadSocialVideo,
+    fetchImpl,
   } = deps;
   const PgSession = connectPgSimple(session);
 
@@ -63,7 +67,7 @@ export function createApp(deps: AppDeps): Express {
   });
 
   app.use("/auth", createAuthRouter(pool));
-  app.use("/recipes", createRecipesRouter(pool, uploadsDir));
+  app.use("/recipes", createRecipesRouter(pool, uploadsDir, fetchImpl));
   app.use("/import", createImportRouter({ geminiExtract, geminiVideoExtract, downloadSocialVideo }));
 
   app.use(errorHandler);

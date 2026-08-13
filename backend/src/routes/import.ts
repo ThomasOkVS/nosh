@@ -54,7 +54,7 @@ export function createImportRouter(deps: ImportRouterDeps): Router {
    *
    * Message shapes, one JSON object per line:
    *   {"type":"progress","stage":"fetching"|"structured-data"|"downloading-video"|"analyzing-video"|"ai"}
-   *   {"type":"result","recipe":{…}}
+   *   {"type":"result","recipe":{…},"imageUrl":"…"|null}
    *   {"type":"error","status":502,"error":"…"}
    *
    * Failures after the first byte is sent are reported in-band with the
@@ -89,14 +89,14 @@ export function createImportRouter(deps: ImportRouterDeps): Router {
     req.on("close", () => clientGone.abort());
 
     try {
-      const recipe = await extractRecipeFromUrl(parsed.data.url, {
+      const { recipe, imageUrl } = await extractRecipeFromUrl(parsed.data.url, {
         geminiExtract,
         geminiVideoExtract,
         downloadSocialVideo,
         signal: clientGone.signal,
         onProgress: (stage) => send({ type: "progress", stage }),
       });
-      send({ type: "result", recipe });
+      send({ type: "result", recipe, imageUrl });
     } catch (err) {
       if (clientGone.signal.aborted) return;
       const status = statusForError(err);

@@ -130,7 +130,7 @@ describe("ImportDialog", () => {
 
   it("navigates to the create form with the extracted recipe when left open", async () => {
     const recipe = { title: "Tomato Soup" } as RecipeInput;
-    vi.spyOn(importApi, "importRecipeFromUrl").mockResolvedValue(recipe);
+    vi.spyOn(importApi, "importRecipeFromUrl").mockResolvedValue({ recipe, imageUrl: null });
 
     renderApp();
     openAndSubmit();
@@ -160,7 +160,7 @@ describe("ImportDialog", () => {
   });
 
   it("keeps running after being dismissed, then announces completion with a toast", async () => {
-    let resolveImport!: (recipe: RecipeInput) => void;
+    let resolveImport!: (result: importApi.ImportResult) => void;
     vi.spyOn(importApi, "importRecipeFromUrl").mockImplementation(
       () => new Promise((resolve) => (resolveImport = resolve)),
     );
@@ -172,7 +172,7 @@ describe("ImportDialog", () => {
     // Dialog is gone, but nothing was cancelled or navigated yet.
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 
-    resolveImport({ title: "Fajitas" } as RecipeInput);
+    resolveImport({ recipe: { title: "Fajitas" } as RecipeInput, imageUrl: null });
 
     const reviewButton = await screen.findByRole("button", { name: "Review" });
     expect(screen.getByText(/ready to review/i)).toBeInTheDocument();

@@ -48,11 +48,13 @@ function renderPage() {
   );
 }
 
-/** Mirrors how RecipeImportPage hands extracted data to the create form. */
-function renderImported(importedRecipe: RecipeInput) {
+/** Mirrors how the import flow hands extracted data to the create form. */
+function renderImported(importedRecipe: RecipeInput, importedImageUrl: string | null = null) {
   return render(
     <ToastProvider>
-      <MemoryRouter initialEntries={[{ pathname: "/recipes/new", state: { importedRecipe } }]}>
+      <MemoryRouter
+        initialEntries={[{ pathname: "/recipes/new", state: { importedRecipe, importedImageUrl } }]}
+      >
         <RecipeFormPage />
       </MemoryRouter>
     </ToastProvider>,
@@ -157,6 +159,56 @@ describe("RecipeFormPage", () => {
         }),
       ),
     );
+  });
+
+  it("attaches the imported photo once the recipe is saved", async () => {
+    vi.spyOn(recipesApi, "createRecipe").mockResolvedValue({ id: 7 } as Recipe);
+    const attach = vi
+      .spyOn(recipesApi, "attachRecipeImageFromUrl")
+      .mockResolvedValue({ id: 1, filePath: "x.jpg", position: 0 });
+
+    renderImported(
+      {
+        title: "Imported Soup",
+        description: null,
+        servings: null,
+        prepTimeMinutes: null,
+        cookTimeMinutes: null,
+        ingredients: [{ quantity: null, unit: null, name: "tomatoes" }],
+        steps: [{ instruction: "Simmer" }],
+        tags: [],
+        sourceUrl: "https://example.com/recipe",
+      },
+      "https://example.com/soup.jpg",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Save recipe" }));
+
+    await waitFor(() => expect(attach).toHaveBeenCalledWith(7, "https://example.com/soup.jpg"));
+  });
+
+  it("toasts but still saves when the imported photo fails to attach", async () => {
+    vi.spyOn(recipesApi, "createRecipe").mockResolvedValue({ id: 7 } as Recipe);
+    vi.spyOn(recipesApi, "attachRecipeImageFromUrl").mockRejectedValue(new Error("blocked"));
+
+    renderImported(
+      {
+        title: "Imported Soup",
+        description: null,
+        servings: null,
+        prepTimeMinutes: null,
+        cookTimeMinutes: null,
+        ingredients: [{ quantity: null, unit: null, name: "tomatoes" }],
+        steps: [{ instruction: "Simmer" }],
+        tags: [],
+        sourceUrl: "https://example.com/recipe",
+      },
+      "https://example.com/soup.jpg",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Save recipe" }));
+
+    expect(await screen.findByText("Couldn't import the photo — add one manually")).toBeInTheDocument();
   });
 
   it("remounts (does not carry over state) when routing from the create form to an edit form", async () => {

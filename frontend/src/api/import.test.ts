@@ -34,13 +34,32 @@ describe("importRecipeFromUrl", () => {
       .mockResolvedValue(ndjsonResponse([line({ type: "result", recipe })]));
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(importRecipeFromUrl("https://example.com/recipe")).resolves.toEqual(recipe);
+    await expect(importRecipeFromUrl("https://example.com/recipe")).resolves.toEqual({
+      recipe,
+      imageUrl: null,
+    });
 
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toContain("/import");
     expect(init.method).toBe("POST");
     expect(init.credentials).toBe("include");
     expect(init.body).toBe(JSON.stringify({ url: "https://example.com/recipe" }));
+  });
+
+  it("returns the imageUrl alongside the recipe when present", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        ndjsonResponse([
+          line({ type: "result", recipe: { title: "Soup" }, imageUrl: "https://example.com/soup.jpg" }),
+        ]),
+      ),
+    );
+
+    await expect(importRecipeFromUrl("https://example.com/recipe")).resolves.toEqual({
+      recipe: { title: "Soup" },
+      imageUrl: "https://example.com/soup.jpg",
+    });
   });
 
   it("reports each progress stage in order", async () => {
@@ -74,7 +93,7 @@ describe("importRecipeFromUrl", () => {
     const stages: ImportStage[] = [];
     await expect(
       importRecipeFromUrl("https://example.com/recipe", (stage) => stages.push(stage)),
-    ).resolves.toEqual(recipe);
+    ).resolves.toEqual({ recipe, imageUrl: null });
     expect(stages).toEqual(["fetching"]);
   });
 
@@ -130,7 +149,10 @@ describe("importRecipeFromUrl", () => {
       ),
     );
 
-    await expect(importRecipeFromUrl("https://example.com/x")).resolves.toEqual({ title: "Soup" });
+    await expect(importRecipeFromUrl("https://example.com/x")).resolves.toEqual({
+      recipe: { title: "Soup" },
+      imageUrl: null,
+    });
   });
 
   it("gives a distinct message for an ok response with no body", async () => {

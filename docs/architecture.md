@@ -160,9 +160,10 @@ stage 1 still works — only pages that need the fallback return 503. Since this
 first code path that fetches a user-supplied URL, it rejects non-http(s)
 schemes and local hostnames before making any request.
 
-Photos are not imported — the existing "recipe must be saved before adding
-photos" constraint applies unchanged, so an imported recipe gets its photo
-added manually afterward.
+The recipe's source photo is auto-imported too (schema.org `image`, falling
+back to an `og:image`/`twitter:image` meta tag) — see
+[Recipe photo auto-import](#recipe-photo-auto-import) below, which covers
+both import paths since it hangs off the same `/import` response.
 
 ## Recipe import (Instagram Reels / TikTok)
 
@@ -201,6 +202,40 @@ the video. **Not verified live against a real TikTok URL** — the same
 `yt-dlp` extractor and pipeline handle both platforms, but only Instagram
 was actually exercised. Do a real TikTok import before considering this
 fully proven for that platform.
+
+## Recipe photo auto-import {#recipe-photo-auto-import}
+
+Both import paths above discover the recipe's photo alongside its data and
+report it as a separate `imageUrl` field on the `/import` NDJSON result
+(never as part of `RecipeInput` — recipe images are their own DB entity, keyed
+off a recipe id that doesn't exist until the recipe is saved, so this rides
+alongside the persisted fields rather than becoming one of them):
+
+- **URL import** — schema.org's `image` property if JSON-LD was usable,
+  otherwise an `og:image`/`twitter:image` meta tag (`jsonLd.ts`'s
+  `extractMetaImageUrl`) — checked even on the Gemini-fallback path, since
+  it's cheaper and more reliable than asking the model to locate an image in
+  page text. Resolved to an absolute URL against the page's own URL.
+- **Instagram/TikTok import** — `yt-dlp`'s own `thumbnail` field from the
+  metadata call already made for duration/caption, so no extra request.
+
+The frontend carries `imageUrl` through the same router-state handoff as the
+pre-filled recipe (`importedImageUrl`), and once the user reviews and saves
+normally through `POST /recipes`, calls a new
+`POST /recipes/:id/images/from-url` with it — the earliest point a recipe id
+exists to attach an image to. That route
+(`services/imageFromUrl.ts`) reuses `recipeExtraction.ts`'s SSRF guard
+(`validateUrl`, exported for this) and manual redirect re-validation, since
+this URL travels back from the browser in a request body and isn't provably
+the same one the server discovered. Content-type is checked against the same
+`IMAGE_MIME_EXTENSIONS` allowlist the manual multipart upload uses, and size
+is capped at the same 5MB.
+
+This is deliberately best-effort from the frontend's point of view: the
+recipe is already saved by the time this call runs, so a failure (404,
+blocked host, unsupported type, oversized) is swallowed with a toast
+("Couldn't import the photo — add one manually") rather than surfaced as a
+save error.
 
 ## Deployment target
 

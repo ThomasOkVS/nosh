@@ -12,6 +12,9 @@ export interface ActiveImport {
   dismissed: boolean;
   status: "running" | "done" | "error";
   recipe?: RecipeInput;
+  /** The recipe's photo, found during import — attached automatically once
+   * the form is saved and a real recipe id exists to attach it to. */
+  imageUrl?: string | null;
   errorMessage?: string;
 }
 

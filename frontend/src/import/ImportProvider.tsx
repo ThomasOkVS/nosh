@@ -47,9 +47,9 @@ export function ImportProvider({ children }: Readonly<{ children: ReactNode }>) 
       },
       controller.signal,
     )
-      .then((recipe) => {
+      .then(({ recipe, imageUrl }) => {
         if (controller.signal.aborted) return;
-        setActive((prev) => (prev ? { ...prev, status: "done", recipe } : prev));
+        setActive((prev) => (prev ? { ...prev, status: "done", recipe, imageUrl } : prev));
       })
       .catch((err: unknown) => {
         if (controller.signal.aborted) return;
@@ -102,12 +102,18 @@ export function ImportProvider({ children }: Readonly<{ children: ReactNode }>) 
     if (active.status === "done") {
       if (active.dismissed) {
         const recipe = active.recipe;
+        const imageUrl = active.imageUrl;
         showToast(`Your recipe from ${hostnameOf(active.url)} is ready to review.`, {
           variant: "success",
-          action: { label: "Review", onClick: () => navigate("/recipes/new", { state: { importedRecipe: recipe } }) },
+          action: {
+            label: "Review",
+            onClick: () => navigate("/recipes/new", { state: { importedRecipe: recipe, importedImageUrl: imageUrl } }),
+          },
         });
       } else {
-        navigate("/recipes/new", { state: { importedRecipe: active.recipe } });
+        navigate("/recipes/new", {
+          state: { importedRecipe: active.recipe, importedImageUrl: active.imageUrl },
+        });
         setDialogOpen(false);
       }
       setActive(null);
