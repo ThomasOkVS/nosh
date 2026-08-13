@@ -30,7 +30,14 @@ services:
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:5173}
       SEED_DEMO_DATA: ${SEED_DEMO_DATA:-true}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_TEXT_MODEL: ${GEMINI_TEXT_MODEL:-}
+      GEMINI_VIDEO_MODEL: ${GEMINI_VIDEO_MODEL:-}
       PORT: 3001
+      # Same Docker Desktop bind-mount issue as the frontend's Vite config
+      # (see vite.config.ts) — tsx watch is chokidar-based under the hood
+      # and chokidar reads this env var directly regardless of caller.
+      CHOKIDAR_USEPOLLING: "true"
+      CHOKIDAR_INTERVAL: "300"
     ports:
       - "3001:3001"
     volumes:

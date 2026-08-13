@@ -16,7 +16,11 @@ RUN pnpm install --frozen-lockfile
 RUN pnpm --filter backend build
 
 FROM node:22-alpine
-RUN corepack enable
+# corepack enable, then yt-dlp (+ ffmpeg, pulled in as its dependency) for
+# Reels/TikTok import — see the matching comment in Dockerfile.dev for why
+# it's installed from Alpine's package repo rather than upstream's
+# standalone binary.
+RUN corepack enable && apk add --no-cache yt-dlp
 WORKDIR /repo
 # Only the two package.json files pnpm needs to resolve the workspace and
 # install backend's production dependencies — no source, so nothing here

@@ -3,6 +3,8 @@ import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import * as recipesApi from "../api/recipes";
 import type { Recipe } from "../api/types";
+import { ImportProvider } from "../import/ImportProvider";
+import { ToastProvider } from "../toast/ToastProvider";
 import { RecipeListPage } from "./RecipeListPage";
 
 function makeRecipe(overrides: Partial<Recipe> = {}): Recipe {
@@ -28,7 +30,11 @@ function makeRecipe(overrides: Partial<Recipe> = {}): Recipe {
 function renderPage() {
   return render(
     <MemoryRouter>
-      <RecipeListPage />
+      <ToastProvider>
+        <ImportProvider>
+          <RecipeListPage />
+        </ImportProvider>
+      </ToastProvider>
     </MemoryRouter>,
   );
 }

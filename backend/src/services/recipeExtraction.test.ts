@@ -6,6 +6,8 @@ import {
   FetchError,
   InvalidUrlError,
   NotConfiguredError,
+  VideoTooLargeError,
+  VideoUnavailableError,
 } from "./recipeExtraction";
 
 const RECIPE_JSON_LD = {
@@ -216,5 +218,99 @@ describe("extractRecipeFromUrl", () => {
       InvalidUrlError,
     );
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+});
+
+describe("extractRecipeFromUrl — Instagram/TikTok video path", () => {
+  const FAKE_VIDEO = { videoBuffer: Buffer.from("fake"), mimeType: "video/mp4", caption: "1kg tomatoes" };
+
+  it("skips the HTML fetch entirely and goes straight to video download + Gemini", async () => {
+    const fetchImpl = vi.fn();
+    const downloadSocialVideo = vi.fn().mockResolvedValue(FAKE_VIDEO);
+    const geminiVideoExtract = vi.fn().mockResolvedValue({
+      title: "Tomato Soup",
+      ingredients: [{ quantity: "1", unit: "kg", name: "tomatoes" }],
+      steps: [{ instruction: "Simmer" }],
+    });
+    const stages: string[] = [];
+
+    const result = await extractRecipeFromUrl("https://www.instagram.com/p/abc123/", {
+      fetchImpl,
+      downloadSocialVideo,
+      geminiVideoExtract,
+      onProgress: (stage) => stages.push(stage),
+    });
+
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(downloadSocialVideo).toHaveBeenCalledTimes(1);
+    expect(geminiVideoExtract).toHaveBeenCalledWith(
+      { buffer: FAKE_VIDEO.videoBuffer, mimeType: FAKE_VIDEO.mimeType },
+      FAKE_VIDEO.caption,
+      "https://www.instagram.com/p/abc123/",
+      undefined,
+    );
+    expect(stages).toEqual(["downloading-video", "analyzing-video"]);
+    expect(result.title).toBe("Tomato Soup");
+    expect(result.sourceUrl).toBe("https://www.instagram.com/p/abc123/");
+  });
+
+  it("recognizes TikTok URLs the same way", async () => {
+    const downloadSocialVideo = vi.fn().mockResolvedValue(FAKE_VIDEO);
+    const geminiVideoExtract = vi.fn().mockResolvedValue({
+      title: "Noodles",
+      ingredients: [{ quantity: null, unit: null, name: "noodles" }],
+      steps: [{ instruction: "Boil" }],
+    });
+
+    const result = await extractRecipeFromUrl("https://www.tiktok.com/@chef/video/123", {
+      downloadSocialVideo,
+      geminiVideoExtract,
+    });
+    expect(result.title).toBe("Noodles");
+  });
+
+  it("throws NotConfiguredError without downloading anything when no video-capable Gemini is set", async () => {
+    const downloadSocialVideo = vi.fn();
+
+    await expect(
+      extractRecipeFromUrl("https://www.instagram.com/p/abc123/", { downloadSocialVideo }),
+    ).rejects.toThrow(NotConfiguredError);
+    expect(downloadSocialVideo).not.toHaveBeenCalled();
+  });
+
+  it("propagates VideoUnavailableError from a failed download without calling Gemini", async () => {
+    const downloadSocialVideo = vi.fn().mockRejectedValue(new VideoUnavailableError("private"));
+    const geminiVideoExtract = vi.fn();
+
+    await expect(
+      extractRecipeFromUrl("https://www.instagram.com/p/abc123/", {
+        downloadSocialVideo,
+        geminiVideoExtract,
+      }),
+    ).rejects.toThrow(VideoUnavailableError);
+    expect(geminiVideoExtract).not.toHaveBeenCalled();
+  });
+
+  it("propagates VideoTooLargeError from a failed download", async () => {
+    const downloadSocialVideo = vi.fn().mockRejectedValue(new VideoTooLargeError("too long"));
+
+    await expect(
+      extractRecipeFromUrl("https://www.instagram.com/p/abc123/", {
+        downloadSocialVideo,
+        geminiVideoExtract: vi.fn(),
+      }),
+    ).rejects.toThrow(VideoTooLargeError);
+  });
+
+  it("throws ExtractionError when the video yields no usable recipe", async () => {
+    const downloadSocialVideo = vi.fn().mockResolvedValue(FAKE_VIDEO);
+    const geminiVideoExtract = vi.fn().mockResolvedValue({ title: "" });
+
+    await expect(
+      extractRecipeFromUrl("https://www.instagram.com/p/abc123/", {
+        downloadSocialVideo,
+        geminiVideoExtract,
+      }),
+    ).rejects.toThrow(ExtractionError);
   });
 });

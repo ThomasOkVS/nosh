@@ -39,6 +39,8 @@ services:
       # which is what a real deployment wants (see docs/decisions.md's
       # demo-data-seed entry).
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_TEXT_MODEL: ${GEMINI_TEXT_MODEL:-}
+      GEMINI_VIDEO_MODEL: ${GEMINI_VIDEO_MODEL:-}
       PORT: 3001
     ports:
       - "3001:3001"

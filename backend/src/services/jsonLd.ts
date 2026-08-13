@@ -12,19 +12,48 @@ function toArray<T>(value: T | T[] | undefined): T[] {
   return Array.isArray(value) ? value : [value];
 }
 
-function parseIsoDurationToMinutes(duration: unknown): number | null {
+// Matches just the "<n>D" date portion (the part of an ISO 8601 duration
+// before a "T", if any) — e.g. the "0D" in "P0DT1H0M".
+const DAY_PATTERN = /^(\d+)D$/;
+// Matches the "T..." time portion on its own. Seconds are matched so they
+// don't break the pattern ("PT1H30M15S" is common from real recipe
+// plugins), then discarded as noise — this function only reports whole
+// minutes.
+const TIME_PATTERN = /^T(?:(\d+)H)?(?:(\d+)M)?(?:\d+(?:\.\d+)?S)?$/;
+
+/**
+ * Splitting on "T" first, then matching the date and time halves with their
+ * own small pattern, keeps each regex simple enough to read (and to statically
+ * analyze) on its own — one combined pattern covering both halves needs a
+ * day-group nested inside an optional time-group nested inside further
+ * optional hour/minute/second groups.
+ */
+export function parseIsoDurationToMinutes(duration: unknown): number | null {
   if (typeof duration !== "string") return null;
-  // ISO 8601 duration. Real recipe plugins emit day prefixes ("P0DT1H0M")
-  // and seconds ("PT1H30M15S") often enough that matching only hours and
-  // minutes silently drops the time from those pages entirely. Seconds are
-  // captured so they don't break the match, then ignored as noise.
-  const match = /^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:\d+(?:\.\d+)?S)?)?$/.exec(
-    duration.trim(),
-  );
-  if (!match) return null;
-  const days = Number(match[1] ?? 0);
-  const hours = Number(match[2] ?? 0);
-  const minutes = Number(match[3] ?? 0);
+  const trimmed = duration.trim();
+  if (!trimmed.startsWith("P")) return null;
+
+  const body = trimmed.slice(1);
+  const splitAtT = body.indexOf("T");
+  const datePart = splitAtT === -1 ? body : body.slice(0, splitAtT);
+  const timePart = splitAtT === -1 ? "" : body.slice(splitAtT);
+
+  let days = 0;
+  if (datePart) {
+    const dayMatch = DAY_PATTERN.exec(datePart);
+    if (!dayMatch) return null;
+    days = Number(dayMatch[1]);
+  }
+
+  let hours = 0;
+  let minutes = 0;
+  if (timePart) {
+    const timeMatch = TIME_PATTERN.exec(timePart);
+    if (!timeMatch) return null;
+    hours = Number(timeMatch[1] ?? 0);
+    minutes = Number(timeMatch[2] ?? 0);
+  }
+
   const total = days * 24 * 60 + hours * 60 + minutes;
   return total > 0 ? total : null;
 }

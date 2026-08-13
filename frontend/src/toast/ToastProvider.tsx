@@ -1,20 +1,24 @@
-import { WarningIcon, XIcon } from "@phosphor-icons/react";
+import { CheckCircleIcon, WarningIcon, XIcon } from "@phosphor-icons/react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ToastContext } from "./ToastContext";
+import { ToastContext, type ToastAction, type ToastOptions, type ToastVariant } from "./ToastContext";
 
 interface ToastItem {
   id: number;
   message: string;
+  variant: ToastVariant;
+  action?: ToastAction;
 }
 
 const TOAST_DURATION_MS = 6000;
 
 /**
- * App-wide error toasts — replaces window.alert() per
- * docs/design-system.md#open-items. Toasts are informational, not blocking
- * (unlike ConfirmDialog), so they auto-dismiss and never trap focus; a manual
- * dismiss button covers the case where the message is still relevant after
- * the timeout.
+ * App-wide toasts — replaces window.alert() per docs/design-system.md#open-items.
+ * Toasts are informational, not blocking (unlike ConfirmDialog), so they
+ * auto-dismiss and never trap focus; a manual dismiss button covers the case
+ * where the message is still relevant after the timeout. Started error-only;
+ * `success` (with an optional action button) was added for background
+ * import completion rather than building a second mechanism, per
+ * docs/design-system.md#toasts.
  */
 export function ToastProvider({ children }: Readonly<{ children: ReactNode }>) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
@@ -36,9 +40,12 @@ export function ToastProvider({ children }: Readonly<{ children: ReactNode }>) {
   }, []);
 
   const showToast = useCallback(
-    (message: string) => {
+    (message: string, options?: ToastOptions) => {
       const id = nextId.current++;
-      setToasts((prev) => [...prev, { id, message }]);
+      setToasts((prev) => [
+        ...prev,
+        { id, message, variant: options?.variant ?? "error", action: options?.action },
+      ]);
       const timer = setTimeout(() => {
         timers.current.delete(timer);
         dismiss(id);
@@ -67,10 +74,32 @@ export function ToastProvider({ children }: Readonly<{ children: ReactNode }>) {
             role="alert"
             className="glass animate-toast-in pointer-events-auto flex w-full max-w-sm items-center gap-3 rounded-lg p-3"
           >
-            <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-danger-50 text-danger-500 dark:bg-danger-500/15">
-              <WarningIcon size={18} weight="fill" />
+            <div
+              className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full ${
+                toast.variant === "success"
+                  ? "bg-success-500/15 text-success-500"
+                  : "bg-danger-50 text-danger-500 dark:bg-danger-500/15"
+              }`}
+            >
+              {toast.variant === "success" ? (
+                <CheckCircleIcon size={18} weight="fill" />
+              ) : (
+                <WarningIcon size={18} weight="fill" />
+              )}
             </div>
             <p className="flex-1 text-sm text-ink">{toast.message}</p>
+            {toast.action && (
+              <button
+                type="button"
+                onClick={() => {
+                  toast.action?.onClick();
+                  dismiss(toast.id);
+                }}
+                className="flex-shrink-0 text-sm font-medium text-citrus-600 hover:underline dark:text-citrus-400"
+              >
+                {toast.action.label}
+              </button>
+            )}
             <button
               type="button"
               onClick={() => dismiss(toast.id)}

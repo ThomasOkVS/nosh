@@ -2,6 +2,7 @@ import { SignOutIcon } from "@phosphor-icons/react";
 import { useCallback } from "react";
 import { Link, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/useAuth";
+import { ImportDialog } from "../import/ImportDialog";
 import { ThemeToggle } from "./ThemeToggle";
 
 export function Layout() {
@@ -40,6 +41,10 @@ export function Layout() {
       <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
         <Outlet />
       </main>
+      {/* Mounted once here, not per-page, so a dismissed (backgrounded)
+        * import's dialog can be reopened from any route and the completion
+        * toast fires regardless of which page the user has since moved to. */}
+      <ImportDialog />
     </div>
   );
 }

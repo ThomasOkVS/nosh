@@ -21,17 +21,12 @@ Confirm scope with the project owner before starting any of these — per
 go-ahead. Ordered per [index.md](index.md#planned-post-mvp)'s stated
 priority.
 
-- [ ] LLM-based recipe import from Instagram Reels — the remaining
-  half of the import feature (URL import shipped 2026-08-11, see Completed).
-  Reuses the existing `/import` endpoint shape and `source_url` column; the
-  hard part is fetching the source content, since these platforms actively
-  resist scraping and the recipe lives in video/captions rather than markup.
 - [ ] Auto-import the source page's photo during URL import — deferred from
   the 2026-08-11 import work because recipe photos currently require an
   already-saved recipe id, so this needs either that constraint lifted or a
   post-save fetch step.
-- [ ] Auto translate imported recipes to the user's native language and preferred units of measure.
 - [ ] View tokens left / model selector for magic import
+- [ ] Auto translate imported recipes to the user's native language and preferred units of measure.
 - [ ] Smart unit conversions and recipe scaling.
 - [ ] Recipe organization: collections and tag-based browsing.
 - [ ] Notes & ratings on recipes.
@@ -48,6 +43,35 @@ priority.
 
 ## Completed
 
+- **2026-08-12** — LLM-based recipe import from Instagram Reels/TikTok
+  shipped (the remaining half of the original import backlog item; URL
+  import shipped 2026-08-11). Same `/import` endpoint and `source_url`
+  column, dispatching on hostname before doing anything else: `yt-dlp`
+  fetches the video + caption, both go to Gemini in one multimodal call, and
+  the result rejoins the same normalization pipeline URL import uses. A live
+  side-by-side comparison after hitting the free tier's daily request cap on
+  Flash led to using a separate, cheaper model for the video path
+  specifically (`gemini-3.5-flash-lite`, 25x the daily quota, no quality
+  loss on the one real video tested) — both models are now env-overridable
+  rather than hardcoded. See
+  [decisions.md](decisions.md#2026-08-12-instagram-reelstiktok-import--yt-dlp--gemini-flash-lite)
+  for the full reasoning, including why oEmbed/caption-only extraction was
+  ruled out (a real test Reel's caption had ingredients but zero steps —
+  only the video had them) and the size/duration caps chosen. `pnpm
+  lint`/`test`/`build` pass on both packages. **Verified live end-to-end
+  against a real Instagram Reel** (import → pre-filled form, including the
+  steps recovered purely from video → save → detail page's source link).
+  **Not verified against a real TikTok URL** — same extractor and pipeline,
+  but only Instagram was actually exercised; confirm before relying on that
+  platform.
+- **2026-08-12** — Fixed the Windows frontend dev container issue that had
+  been worked around since 2026-08-06. Root cause was a `frontend/Dockerfile.dev`
+  bug (`CMD ["pnpm", "dev", "--", "--host"]` — the extra `--` wasn't stripped
+  by pnpm's shorthand form, so Vite never actually received `--host` and
+  silently bound to loopback only), not the Windows/WSL2 Docker networking
+  layer the original investigation suspected. `docker compose up` alone now
+  works reliably; the `pnpm --filter frontend dev` workaround is no longer
+  needed. See [decisions.md](decisions.md#2026-08-12-windows-frontend-dev-container-issue--actually-root-caused-and-fixed).
 - **2026-08-11** — Recipe import from a URL shipped (the first half of the
   LLM-import backlog item; Reels/TikTok stays open above). `POST /import`
   takes a URL and returns an unsaved `RecipeInput` that pre-fills the

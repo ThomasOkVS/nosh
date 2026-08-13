@@ -2,10 +2,10 @@ import { BrowserRouter, Navigate, Route, Routes, useParams } from "react-router-
 import { AuthProvider } from "./auth/AuthProvider";
 import { RequireAuth } from "./auth/RequireAuth";
 import { Layout } from "./components/Layout";
+import { ImportProvider } from "./import/ImportProvider";
 import { LoginPage } from "./pages/LoginPage";
 import { RecipeDetailPage } from "./pages/RecipeDetailPage";
 import { RecipeFormPage } from "./pages/RecipeFormPage";
-import { RecipeImportPage } from "./pages/RecipeImportPage";
 import { RecipeListPage } from "./pages/RecipeListPage";
 import { SignupPage } from "./pages/SignupPage";
 import { ToastProvider } from "./toast/ToastProvider";
@@ -22,25 +22,28 @@ function App() {
     <ToastProvider>
       <BrowserRouter>
         <AuthProvider>
-          <Routes>
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/signup" element={<SignupPage />} />
-            <Route element={<RequireAuth />}>
-              <Route element={<Layout />}>
-                <Route path="/" element={<RecipeListPage />} />
-                {/* The `key`s force a remount when moving between create and
-                  * edit (and between two different recipes). Both routes
-                  * render the same component at the same tree position, so
-                  * without them React reconciles instead and the previous
-                  * recipe's form state carries over into the next one. */}
-                <Route path="/recipes/new" element={<RecipeFormPage key="new" />} />
-                <Route path="/recipes/import" element={<RecipeImportPage />} />
-                <Route path="/recipes/:id" element={<RecipeDetailPage />} />
-                <Route path="/recipes/:id/edit" element={<KeyedRecipeFormPage />} />
+          {/* Needs router context (navigates on a completed import) — nested
+            * here rather than outside BrowserRouter. */}
+          <ImportProvider>
+            <Routes>
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/signup" element={<SignupPage />} />
+              <Route element={<RequireAuth />}>
+                <Route element={<Layout />}>
+                  <Route path="/" element={<RecipeListPage />} />
+                  {/* The `key`s force a remount when moving between create and
+                    * edit (and between two different recipes). Both routes
+                    * render the same component at the same tree position, so
+                    * without them React reconciles instead and the previous
+                    * recipe's form state carries over into the next one. */}
+                  <Route path="/recipes/new" element={<RecipeFormPage key="new" />} />
+                  <Route path="/recipes/:id" element={<RecipeDetailPage />} />
+                  <Route path="/recipes/:id/edit" element={<KeyedRecipeFormPage />} />
+                </Route>
               </Route>
-            </Route>
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </ImportProvider>
         </AuthProvider>
       </BrowserRouter>
     </ToastProvider>

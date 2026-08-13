@@ -13,6 +13,18 @@ function TriggerButton({ message = "Failed to delete recipe" }: Readonly<{ messa
   );
 }
 
+function SuccessTriggerButton({ onAction }: Readonly<{ onAction: () => void }>) {
+  const { showToast } = useToast();
+  return (
+    <button
+      type="button"
+      onClick={() => showToast("Ready to review", { variant: "success", action: { label: "Review", onClick: onAction } })}
+    >
+      Trigger success
+    </button>
+  );
+}
+
 function renderWithProvider(message?: string) {
   return render(
     <ToastProvider>
@@ -72,5 +84,22 @@ describe("ToastProvider", () => {
     fireEvent.click(screen.getByRole("button", { name: "Trigger" }));
 
     expect(screen.getAllByRole("alert")).toHaveLength(2);
+  });
+
+  it("runs the action and dismisses when a success toast's action is clicked", () => {
+    const onAction = vi.fn();
+    render(
+      <ToastProvider>
+        <SuccessTriggerButton onAction={onAction} />
+      </ToastProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Trigger success" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("Ready to review");
+
+    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+
+    expect(onAction).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });

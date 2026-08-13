@@ -2,27 +2,55 @@ import type { RecipeInput } from "../validation/recipes";
 
 type Ingredient = RecipeInput["ingredients"][number];
 
+/** A plain integer or decimal, anchored at the start of whatever's passed in
+ * — the one number shape every quantity pattern below is built from. */
+const NUMBER_PATTERN = /^\d+(?:[.,]\d+)?/;
+
+type QuantityMatcher = (rest: string) => string | null;
+
+function fromPattern(pattern: RegExp): QuantityMatcher {
+  return (rest) => pattern.exec(rest)?.[1] ?? null;
+}
+
+/**
+ * Matches "<number> <separator> <number>" (a multi-pack like "2 x 400g", or
+ * a range like "2-3"/"2 to 3") by finding each half with `NUMBER_PATTERN`
+ * and the separator with its own tiny pattern, rather than one regex with a
+ * decimal-number group duplicated on both sides of the separator — fewer
+ * quantified groups for a human (or a linter) to reason about at once, same
+ * matched result.
+ */
+function matchNumberPair(separator: RegExp): QuantityMatcher {
+  return (rest) => {
+    const first = NUMBER_PATTERN.exec(rest);
+    if (!first) return null;
+    const afterFirst = rest.slice(first[0].length);
+    const sep = separator.exec(afterFirst);
+    if (!sep) return null;
+    const afterSep = afterFirst.slice(sep[0].length);
+    const second = NUMBER_PATTERN.exec(afterSep);
+    if (!second) return null;
+    return rest.slice(0, first[0].length + sep[0].length + second[0].length);
+  };
+}
+
 /**
  * Ordered most-specific-first — "1 1/2 cups" must match the mixed-number
- * pattern before the plain-number one grabs just the "1".
- *
- * Written as literals (rather than composed from a shared number fragment)
- * so they're statically checkable, and using an optional single space rather
- * than `\s*`: `parseIngredientLine` collapses runs of whitespace before
- * matching, so one space is all that can occur — and avoiding the unbounded
- * quantifier keeps matching linear instead of backtracking.
+ * matcher before the plain-number one grabs just the "1". Using an optional
+ * single space rather than `\s*` throughout: `parseIngredientLine` collapses
+ * runs of whitespace before matching, so one space is all that can occur.
  */
-const QUANTITY_PATTERNS = [
+const QUANTITY_MATCHERS: QuantityMatcher[] = [
   // "2 x 400g", common in UK recipe sites for multi-pack quantities
-  /^(\d+(?:[.,]\d+)? ?[x×] ?\d+(?:[.,]\d+)?)/,
+  matchNumberPair(/^ ?[x×] ?/),
   // mixed numbers: "1 1/2", "1 ½"
-  /^(\d+ \d+\/\d+)/,
-  /^(\d+ ?[¼½¾⅐⅑⅒⅓⅔⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞])/,
+  fromPattern(/^(\d+ \d+\/\d+)/),
+  fromPattern(/^(\d+ ?[¼½¾⅐⅑⅒⅓⅔⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞])/),
   // ranges: "2-3", "2 to 3"
-  /^(\d+(?:[.,]\d+)? ?(?:[-–—]|to) ?\d+(?:[.,]\d+)?)/,
-  /^(\d+\/\d+)/,
-  /^([¼½¾⅐⅑⅒⅓⅔⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞])/,
-  /^(\d+(?:[.,]\d+)?)/,
+  matchNumberPair(/^ ?(?:[-–—]|to) ?/),
+  fromPattern(/^(\d+\/\d+)/),
+  fromPattern(/^([¼½¾⅐⅑⅒⅓⅔⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞])/),
+  (rest) => NUMBER_PATTERN.exec(rest)?.[0] ?? null,
 ];
 
 /**
@@ -78,11 +106,11 @@ export function parseIngredientLine(line: string): Ingredient {
   let quantity: string | null = null;
   let rest = trimmed;
 
-  for (const pattern of QUANTITY_PATTERNS) {
-    const match = pattern.exec(rest);
-    if (match?.[1]) {
-      quantity = match[1].trim();
-      rest = rest.slice(match[0].length).trim();
+  for (const matcher of QUANTITY_MATCHERS) {
+    const matched = matcher(rest);
+    if (matched) {
+      quantity = matched.trim();
+      rest = rest.slice(matched.length).trim();
       break;
     }
   }

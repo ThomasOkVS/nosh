@@ -18,4 +18,4 @@ WORKDIR /repo/frontend
 EXPOSE 5173
 
 USER node
-CMD ["pnpm", "dev", "--", "--host"]
+CMD ["pnpm", "dev", "--host"]

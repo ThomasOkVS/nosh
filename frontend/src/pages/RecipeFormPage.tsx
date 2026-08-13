@@ -104,7 +104,7 @@ export function RecipeFormPage() {
   const navigate = useNavigate();
   const { showToast } = useToast();
 
-  // Set by RecipeImportPage when it navigates here — extracted, not-yet-saved
+  // Set by ImportProvider when a completed import navigates here — extracted, not-yet-saved
   // recipe data that seeds the form so the user can review and correct it
   // before the normal save path runs. Never present in edit mode.
   const { state } = useLocation();

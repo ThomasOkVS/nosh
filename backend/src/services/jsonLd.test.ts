@@ -1,9 +1,35 @@
 import { describe, expect, it } from "vitest";
-import { extractJsonLdRecipe, isCompleteEnough } from "./jsonLd";
+import { extractJsonLdRecipe, isCompleteEnough, parseIsoDurationToMinutes } from "./jsonLd";
 
 function pageWith(jsonLd: unknown): string {
   return `<html><head><script type="application/ld+json">${JSON.stringify(jsonLd)}</script></head><body></body></html>`;
 }
+
+describe("parseIsoDurationToMinutes", () => {
+  it.each([
+    ["PT10M", 10],
+    ["PT1H30M", 90],
+    // Real recipe plugins emit both of these often enough that they need
+    // dedicated coverage, not just incidental exercise via a fixture.
+    ["P0DT1H0M", 60], // day prefix
+    ["PT1H30M15S", 90], // seconds component, ignored rather than breaking the match
+    ["P1DT2H", 1560], // non-zero day prefix
+    ["PT45S", null], // seconds-only, no minutes/hours to report
+    ["PT0M", null], // parses fine but totals zero, same as "no duration"
+  ])("%s -> %s minutes", (duration, expected) => {
+    expect(parseIsoDurationToMinutes(duration)).toBe(expected);
+  });
+
+  it.each(["P1Y", "not a duration", "PT", "P"])("rejects %s", (duration) => {
+    expect(parseIsoDurationToMinutes(duration)).toBeNull();
+  });
+
+  it("rejects non-string input", () => {
+    expect(parseIsoDurationToMinutes(null)).toBeNull();
+    expect(parseIsoDurationToMinutes(undefined)).toBeNull();
+    expect(parseIsoDurationToMinutes(42)).toBeNull();
+  });
+});
 
 const basicRecipe = {
   "@context": "https://schema.org",

@@ -5,5 +5,3 @@ import { z } from "zod";
 export const importRequestSchema = z.object({
   url: z.url().trim(),
 });
-
-export type ImportRequest = z.infer<typeof importRequestSchema>;

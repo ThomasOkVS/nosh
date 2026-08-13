@@ -1,7 +1,8 @@
 import type { Express } from "express";
 import request from "supertest";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { GeminiExtractFn } from "../llm/geminiClient";
+import type { GeminiExtractFn, GeminiVideoExtractFn } from "../llm/geminiClient";
+import { VideoTooLargeError, VideoUnavailableError, type SocialVideoDownloadFn } from "../services/socialVideo";
 import { createTestApp } from "../test/app";
 
 async function signedInAgent(
@@ -17,6 +18,18 @@ async function signedInAgent(
 function fakeGemini(recipe: unknown): GeminiExtractFn {
   return vi.fn().mockResolvedValue(recipe);
 }
+
+function fakeGeminiVideo(recipe: unknown): GeminiVideoExtractFn {
+  return vi.fn().mockResolvedValue(recipe);
+}
+
+function fakeVideoDownload(
+  result: { videoBuffer: Buffer; mimeType: string; caption: string | null } | Error,
+): SocialVideoDownloadFn {
+  return result instanceof Error ? vi.fn().mockRejectedValue(result) : vi.fn().mockResolvedValue(result);
+}
+
+const FAKE_VIDEO = { videoBuffer: Buffer.from("fake"), mimeType: "video/mp4", caption: "caption text" };
 
 /** The route always fetches via the global `fetch` (no per-request injection
  * point, unlike `recipeExtraction`'s own unit tests) — stub it globally here
@@ -156,5 +169,75 @@ describe("import routes", () => {
     const res = await agent.post("/import").send({ url: "http://localhost/recipe" });
     expect(parseNdjson(res.text).at(-1)).toMatchObject({ type: "error", status: 400 });
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  describe("social video import (Instagram/TikTok)", () => {
+    it("downloads the video and streams downloading-video/ai progress before the result", async () => {
+      const downloadSocialVideo = fakeVideoDownload(FAKE_VIDEO);
+      const geminiVideoExtract = fakeGeminiVideo({
+        title: "Fajitas",
+        ingredients: [{ quantity: "200", unit: "g", name: "chicken thigh" }],
+        steps: [{ instruction: "Bake at 200C for 20 minutes" }],
+      });
+      const app = createTestApp({ downloadSocialVideo, geminiVideoExtract });
+      const agent = await signedInAgent(app, "importreel@example.com");
+
+      const res = await agent.post("/import").send({ url: "https://www.instagram.com/p/abc123/" });
+      expect(res.status).toBe(200);
+
+      const messages = parseNdjson(res.text);
+      expect(messages.filter((m) => m.type === "progress").map((m) => m.stage)).toEqual([
+        "downloading-video",
+        "analyzing-video",
+      ]);
+      const result = messages.at(-1)!;
+      expect(result.type).toBe("result");
+      expect(result.recipe!.title).toBe("Fajitas");
+      expect(result.recipe!.sourceUrl).toBe("https://www.instagram.com/p/abc123/");
+      expect(geminiVideoExtract).toHaveBeenCalledWith(
+        { buffer: FAKE_VIDEO.videoBuffer, mimeType: FAKE_VIDEO.mimeType },
+        FAKE_VIDEO.caption,
+        "https://www.instagram.com/p/abc123/",
+        expect.anything(),
+      );
+    });
+
+    it("works the same for a TikTok URL", async () => {
+      const downloadSocialVideo = fakeVideoDownload(FAKE_VIDEO);
+      const geminiVideoExtract = fakeGeminiVideo({ title: "Noodles", ingredients: [], steps: [] });
+      const app = createTestApp({ downloadSocialVideo, geminiVideoExtract });
+      const agent = await signedInAgent(app, "importtiktok@example.com");
+
+      const res = await agent.post("/import").send({ url: "https://www.tiktok.com/@chef/video/123" });
+      expect(parseNdjson(res.text).at(-1)!.recipe!.title).toBe("Noodles");
+    });
+
+    it("reports a 503 in-band when no AI is configured, without downloading anything", async () => {
+      const downloadSocialVideo = fakeVideoDownload(FAKE_VIDEO);
+      const app = createTestApp({ downloadSocialVideo });
+      const agent = await signedInAgent(app, "importreelnokey@example.com");
+
+      const res = await agent.post("/import").send({ url: "https://www.instagram.com/p/abc123/" });
+      expect(parseNdjson(res.text).at(-1)).toMatchObject({ type: "error", status: 503 });
+      expect(downloadSocialVideo).not.toHaveBeenCalled();
+    });
+
+    it("reports a 502 in-band when the post can't be fetched (private/deleted/blocked)", async () => {
+      const downloadSocialVideo = fakeVideoDownload(new VideoUnavailableError("nope"));
+      const app = createTestApp({ downloadSocialVideo, geminiVideoExtract: fakeGeminiVideo({}) });
+      const agent = await signedInAgent(app, "importreelprivate@example.com");
+
+      const res = await agent.post("/import").send({ url: "https://www.instagram.com/p/abc123/" });
+      expect(parseNdjson(res.text).at(-1)).toMatchObject({ type: "error", status: 502 });
+    });
+
+    it("reports a 422 in-band when the video is too long/large", async () => {
+      const downloadSocialVideo = fakeVideoDownload(new VideoTooLargeError("too long"));
+      const app = createTestApp({ downloadSocialVideo, geminiVideoExtract: fakeGeminiVideo({}) });
+      const agent = await signedInAgent(app, "importreeltoolong@example.com");
+
+      const res = await agent.post("/import").send({ url: "https://www.instagram.com/p/abc123/" });
+      expect(parseNdjson(res.text).at(-1)).toMatchObject({ type: "error", status: 422 });
+    });
   });
 });

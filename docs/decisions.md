@@ -979,3 +979,155 @@ value; toast auto-dismiss timers weren't cleared on unmount; the streaming
 route now aborts the underlying fetch/Gemini call when the client
 disconnects (`req.on("close")`), rather than finishing into a dead socket
 and, on the AI path, spending quota for nothing.
+
+## 2026-08-12: Windows frontend dev container issue — actually root-caused and fixed
+
+**Decision:** Supersedes the 2026-08-06 and 2026-08-08 entries below (kept
+for history, not deleted per this doc's convention). The frontend container
+*is* reliably reachable on Windows via plain `docker compose up` — the
+Windows/WSL2 port-forwarding layer was never actually at fault. The real bug
+was in `frontend/Dockerfile.dev`'s `CMD ["pnpm", "dev", "--", "--host"]`:
+that extra `--` doesn't get stripped by `pnpm`'s shorthand `pnpm <script>`
+form the way it does with `pnpm run <script> -- <args>`, so Vite received a
+literal `--` positional argument followed by `--host` as a second
+positional — neither parsed as the `--host` flag. Vite silently fell back to
+binding `::1`/loopback only, which Docker's port-forwarding (on any
+platform, not just Windows) cannot deliver external traffic to. Fixed by
+dropping the redundant `--`: `CMD ["pnpm", "dev", "--host"]`.
+
+**Why it looked like a Windows/WSL2 networking bug:** the browser's *first*
+request (the document) and a few already-`Cache-Control`/service-worker-cached
+assets (the PWA's `devOptions.enabled: true` precaches the app shell) kept
+succeeding, since those never actually needed a live connection to the
+loopback-bound Vite process — only requests that genuinely required the dev
+server (`@vite/client`, `main.tsx`, HMR) failed, with Firefox reporting that
+as `NS_ERROR_NET_RESET` rather than a clean connection-refused. That
+partial-failure pattern read as network flakiness, not a misconfigured bind
+address, and the 2026-08-06 investigation's evidence (Express on `:3001`
+worked, Vite on `:5173` didn't) was consistent with *either* explanation —
+it just happened to point at the wrong one.
+
+**Why the fix wasn't found sooner:** the original investigation tested
+Docker Desktop restarts, stale `wslrelay.exe` processes, and host port
+remapping — all environment-layer fixes — without checking what address the
+process inside the container was actually bound to. `docker compose logs`
+would have shown it immediately: Vite's own startup banner prints
+`➜ Network: use --host to expose` when `--host` isn't active, versus
+`➜ Network: http://<container-ip>:5173/` when it is.
+
+**Status:** Fixed and verified live — `docker compose up`, no separate
+`pnpm --filter frontend dev` step, module scripts all load, login and the
+recipe list work end-to-end in a real browser. `docs/dev-commands.md`'s
+Windows workaround section is removed accordingly.
+
+## 2026-08-12: Instagram Reels/TikTok import — yt-dlp + Gemini Flash-Lite
+
+**Decision:** The remaining half of the 2026-08-05 LLM-import decision is
+built: `yt-dlp` fetches a Reel/TikTok's video and caption, and both go to
+Gemini in one multimodal call. `yt-dlp` is installed from Alpine's own
+package repo (`apk add yt-dlp`, which pulls in Python + ffmpeg as
+dependencies) rather than upstream's standalone PyInstaller binary, which is
+glibc-built and unreliable on musl-based Alpine — confirmed by testing the
+binary directly in a throwaway `node:22-alpine` container before committing
+to the approach.
+
+**Why not caption/oEmbed-only (no video download):** tried it, in effect — a
+real test Reel's caption had the full ingredient list but *no steps at
+all*; only watching the video recovered them (oven temp, timing, technique).
+A metadata-only approach would work for some creators and produce a
+title-and-ingredients-only recipe for others, silently, which is worse than
+the current all-or-nothing failure mode.
+
+**Why not a hand-rolled scraper:** same reasoning as the `cheerio` JSON-LD
+parser one layer down — Instagram/TikTok's page structure and anti-bot
+measures change often enough that a hand-rolled fetch would fail silently
+and need constant chasing. `yt-dlp` is maintained specifically to track
+those changes across a huge number of sites.
+
+**Video delivery: stdout capture, not a temp file.** `yt-dlp -o -` streams
+the video straight to a `Buffer` (`--merge-output-format mp4` forces a
+single container so the caller never has to sniff the format). Verified this
+produces byte-identical output to the file-based approach before switching —
+simpler code, no temp-directory cleanup, and it splits cleanly into two
+independently fakeable functions (metadata call, video call) for tests
+without ever shelling out for real.
+
+**Caps: 3 minutes, 18MB, `height<=480`.** Checked via metadata *before*
+downloading any video bytes, so an over-long clip is rejected without
+spending bandwidth on it. 18MB leaves headroom under Gemini's inline-data
+request-size ceiling once base64 overhead (~33%) and the prompt are
+accounted for — the real Reel tested was already 13.9MB at this resolution,
+so this is tighter than it looks for a multi-minute clip; File API support
+(no size ceiling in the same way) would be needed to relax it, deliberately
+not built now.
+
+**Model split, and why Flash-Lite for video specifically:** `GEMINI_TEXT_MODEL`
+and `GEMINI_VIDEO_MODEL` are separate, both overridable via env var (no
+longer a hardcoded constant — the second time in one day the pinned model
+needed reconsidering). Defaults: `gemini-3.6-flash` for text,
+`gemini-3.5-flash-lite` for video. Chosen after hitting the free tier's
+daily request cap on Flash mid-development and running the *same* real
+video through both models side by side: Flash-Lite matched or slightly
+exceeded Flash on step recovery (8 granular steps vs. 6, same substance),
+correctly left `servings`/`prepTimeMinutes` null rather than guessing a
+plausible-sounding value the way Flash did, ran in ~15s vs. ~52s, and gets a
+25x daily quota (500 vs. 20) — video's per-request token cost (~6,000+
+tokens just for a short clip) makes that quota difference matter far more
+than a model-tier difference that didn't show up in output quality on this
+test.
+
+**ToS trade-off, acknowledged not resolved:** downloading video via an
+unofficial tool is against both platforms' terms, one step further than
+parsing a page's own published markup (the URL-import path). Accepted for
+the same reason as the rest of this app's posture — single-user,
+self-hosted, Tailscale-only — but worth being explicit that this is a
+different risk category than schema.org parsing, not just a bigger version
+of it.
+
+**Status:** Verified live end-to-end against a real Instagram Reel,
+including a caption with no steps at all — see
+[architecture.md](architecture.md#recipe-import-instagram-reels--tiktok).
+**Not verified against a real TikTok URL** — same extractor and pipeline,
+but only Instagram was actually exercised before shipping. Revisit and
+confirm before relying on the TikTok path.
+
+## 2026-08-12: Neither dev server was live-reloading on Windows — polling fixes both
+
+**Decision:** Both `frontend/vite.config.ts` (`server.watch.usePolling`) and
+`docker-compose.yml`'s backend service (`CHOKIDAR_USEPOLLING=true`,
+`CHOKIDAR_INTERVAL=300`) now force polling-based file watching. Neither dev
+server was actually picking up source edits made while the containers were
+already running — confirmed for both by editing a file and watching for a
+reload that never came (`docker compose logs` showed no `[vite] hmr update`
+or `[tsx] change in ...` line), then confirming the fix by repeating the
+same test until the reload appeared.
+
+**Why this had gone unnoticed:** most edits during this session were
+verified via one-shot `docker compose exec ... pnpm build/test` commands,
+which read files fresh at invocation and would pass regardless of whether
+the long-running dev server had reloaded. The gap only became visible when
+testing a change through the actual browser/running app after a stretch of
+edits with no container rebuild in between — the UI kept showing stale
+code. The same root cause as the 2026-08-12 entry above (Docker Desktop's
+Windows bind mount doesn't reliably deliver filesystem change *events* into
+the container, even though file *content* syncs immediately and correctly)
+— just hitting a different mechanism this time: chokidar's native watcher
+instead of Vite's own port binding. Polling doesn't depend on those events
+at all; it just re-stats files on an interval, which works over any bind
+mount regardless of whether events propagate.
+
+**Why not investigate further:** this is a well-documented, well-understood
+Docker Desktop Windows/WSL2 limitation (not specific to this app), and
+polling is the standard, officially-recommended remedy for exactly this
+case — not worth root-causing further for a single developer's local setup,
+consistent with how the earlier `--host` investigation was scoped.
+
+**Status:** Fixed and verified for both services. Worth remembering:
+**any code change made without an explicit rebuild during this session's
+earlier work should be treated as unverified against the live running
+app** if it wasn't also covered by a one-shot `pnpm test`/`build` — those
+never lied, but a manual browser check in between two edits might have been
+looking at stale code. Nothing found to actually be wrong when spot-checked
+after the fix, but this is why "verified live" claims earlier in this file
+are trustworthy only to the extent they were paired with a rebuild or came
+before the gap between rebuilds grew long.
