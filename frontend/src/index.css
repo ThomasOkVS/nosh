@@ -151,12 +151,17 @@ body {
   }
 }
 
-.animate-dialog-backdrop-in {
-  animation: dialog-backdrop-in var(--duration-panel) var(--ease-standard);
-}
-
 .animate-dialog-in {
   animation: dialog-in var(--duration-panel) var(--ease-standard);
+}
+
+/* Native <dialog>'s ::backdrop is generated content — can't be targeted by a
+   className, so its entrance animation and dimming live here instead of on
+   an actual DOM node the way the old hand-rolled backdrop button had it. */
+dialog::backdrop {
+  background: rgb(0 0 0 / 0.6);
+  backdrop-filter: blur(4px);
+  animation: dialog-backdrop-in var(--duration-panel) var(--ease-standard);
 }
 
 /* Toast entrance — same non-spring timing as the dialog above; an error

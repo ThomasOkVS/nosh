@@ -2,7 +2,8 @@ import { createApp } from "./app";
 import { env } from "./config/env";
 import { createPool } from "./db/pool";
 import { seedDemoData } from "./db/seed";
-import { createGeminiExtractor } from "./llm/geminiClient";
+import { createGeminiExtractor, createGeminiVideoExtractor } from "./llm/geminiClient";
+import { downloadSocialVideo } from "./services/socialVideo";
 
 const pool = createPool(env.databaseUrl);
 
@@ -16,7 +17,13 @@ async function start(): Promise<void> {
     sessionSecret: env.sessionSecret,
     uploadsDir: env.uploadsDir,
     frontendOrigin: env.frontendOrigin,
-    geminiExtract: env.geminiApiKey ? createGeminiExtractor(env.geminiApiKey) : undefined,
+    geminiExtract: env.geminiApiKey
+      ? createGeminiExtractor(env.geminiApiKey, env.geminiTextModel)
+      : undefined,
+    geminiVideoExtract: env.geminiApiKey
+      ? createGeminiVideoExtractor(env.geminiApiKey, env.geminiVideoModel)
+      : undefined,
+    downloadSocialVideo,
   });
 
   app.listen(env.port, () => {

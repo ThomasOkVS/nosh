@@ -1,11 +1,16 @@
 import { isIP } from "node:net";
-import type { GeminiExtractFn } from "../llm/geminiClient";
+import type { GeminiExtractFn, GeminiVideoExtractFn } from "../llm/geminiClient";
 import { GeminiExtractionError, GeminiUnavailableError } from "../llm/geminiClient";
 import { recipeSchema, type RecipeInput } from "../validation/recipes";
 import { stripHtmlToText } from "./htmlText";
 import { normalizeIngredients } from "./ingredientLine";
 import { extractJsonLdRecipe, isCompleteEnough } from "./jsonLd";
 import { filterToVocabulary } from "./recipeTags";
+import {
+  detectSocialPlatform,
+  downloadSocialVideo as downloadSocialVideoDefault,
+  type SocialVideoDownloadFn,
+} from "./socialVideo";
 
 export class InvalidUrlError extends Error {}
 export class FetchError extends Error {}
@@ -18,6 +23,12 @@ export class NotConfiguredError extends Error {}
  * distinguishing so the user is told to retry rather than that their page has
  * no recipe on it. */
 export class ExtractionUnavailableError extends ExtractionError {}
+
+export {
+  DownloaderUnavailableError,
+  VideoTooLargeError,
+  VideoUnavailableError,
+} from "./socialVideo";
 
 const FETCH_TIMEOUT_MS = 15_000;
 const MAX_HTML_BYTES = 2_000_000;
@@ -255,16 +266,23 @@ function sanitizeCandidate(candidate: unknown): RawRecord {
 
 /**
  * Which part of the import is currently running. Reported to the caller so
- * the UI can say what it's waiting on — the two paths differ enormously in
- * how long they take (structured data is near-instant; the LLM is seconds),
- * so "loading" alone doesn't tell the user whether to expect a wait.
+ * the UI can say what it's waiting on — these phases differ enormously in
+ * how long they take (structured data is near-instant; the LLM is seconds;
+ * video is tens of seconds), so "loading" alone doesn't tell the user
+ * whether to expect a wait.
  */
-export type ImportStage = "fetching" | "structured-data" | "ai";
+export type ImportStage = "fetching" | "structured-data" | "downloading-video" | "analyzing-video" | "ai";
 
 interface ExtractDeps {
   /** Optional: the schema.org path works without it, most recipe sites
    * publish that data, and the app must still boot with no API key. */
   geminiExtract?: GeminiExtractFn;
+  /** Optional for the same reason: a Reels/TikTok import has no fast path at
+   * all, so this being unset just means that platform can't be imported. */
+  geminiVideoExtract?: GeminiVideoExtractFn;
+  /** Real implementation is always available (yt-dlp ships in the image) —
+   * overridable only so tests never shell out. */
+  downloadSocialVideo?: SocialVideoDownloadFn;
   fetchImpl?: typeof fetch;
   onProgress?: (stage: ImportStage) => void;
   /** Aborts the outbound work when the client goes away, so a navigation
@@ -272,11 +290,53 @@ interface ExtractDeps {
   signal?: AbortSignal;
 }
 
-export async function extractRecipeFromUrl(rawUrl: string, deps: ExtractDeps): Promise<RecipeInput> {
-  const url = validateUrl(rawUrl);
-  const fetchImpl = deps.fetchImpl ?? fetch;
-  const report = deps.onProgress ?? (() => undefined);
+async function extractFromSocialVideo(
+  url: URL,
+  deps: ExtractDeps,
+  report: (stage: ImportStage) => void,
+): Promise<unknown> {
+  if (!deps.geminiVideoExtract) {
+    throw new NotConfiguredError(
+      "Importing from Instagram/TikTok needs AI-assisted import, which is not configured",
+    );
+  }
+  const downloadVideo = deps.downloadSocialVideo ?? downloadSocialVideoDefault;
 
+  report("downloading-video");
+  const { videoBuffer, mimeType, caption } = await downloadVideo(url, deps.signal);
+
+  report("analyzing-video");
+  try {
+    return await deps.geminiVideoExtract(
+      { buffer: videoBuffer, mimeType },
+      caption,
+      url.toString(),
+      deps.signal,
+    );
+  } catch (err) {
+    if (err instanceof GeminiUnavailableError) {
+      throw new ExtractionUnavailableError(err.message);
+    }
+    if (err instanceof GeminiExtractionError) {
+      throw new ExtractionError(err.message);
+    }
+    throw err;
+  }
+}
+
+/**
+ * The plain-URL path: schema.org JSON-LD first (near-instant, no LLM call),
+ * falling back to Gemini reading the page as text. Pulled out of
+ * `extractRecipeFromUrl` into its own function, mirroring
+ * `extractFromSocialVideo`, so the top-level dispatcher stays a flat
+ * two-way branch instead of one function carrying both paths' nesting.
+ */
+async function extractFromWebPage(
+  url: URL,
+  deps: ExtractDeps,
+  report: (stage: ImportStage) => void,
+): Promise<unknown> {
+  const fetchImpl = deps.fetchImpl ?? fetch;
   // One budget for the whole page fetch including the body read, combined
   // with the caller's cancellation so either can end it.
   const timeout = AbortSignal.timeout(FETCH_TIMEOUT_MS);
@@ -287,29 +347,40 @@ export async function extractRecipeFromUrl(rawUrl: string, deps: ExtractDeps): P
 
   report("structured-data");
   const jsonLdResult = extractJsonLdRecipe(html);
-  let candidate: unknown;
   if (isCompleteEnough(jsonLdResult)) {
-    candidate = jsonLdResult;
-  } else {
-    if (!deps.geminiExtract) {
-      throw new NotConfiguredError(
-        "That page has no structured recipe data, and AI-assisted import is not configured",
-      );
-    }
-    report("ai");
-    const pageText = stripHtmlToText(html).slice(0, MAX_GEMINI_TEXT_LENGTH);
-    try {
-      candidate = await deps.geminiExtract(pageText, url.toString(), deps.signal);
-    } catch (err) {
-      if (err instanceof GeminiUnavailableError) {
-        throw new ExtractionUnavailableError(err.message);
-      }
-      if (err instanceof GeminiExtractionError) {
-        throw new ExtractionError(err.message);
-      }
-      throw err;
-    }
+    return jsonLdResult;
   }
+
+  if (!deps.geminiExtract) {
+    throw new NotConfiguredError(
+      "That page has no structured recipe data, and AI-assisted import is not configured",
+    );
+  }
+  report("ai");
+  const pageText = stripHtmlToText(html).slice(0, MAX_GEMINI_TEXT_LENGTH);
+  try {
+    return await deps.geminiExtract(pageText, url.toString(), deps.signal);
+  } catch (err) {
+    if (err instanceof GeminiUnavailableError) {
+      throw new ExtractionUnavailableError(err.message);
+    }
+    if (err instanceof GeminiExtractionError) {
+      throw new ExtractionError(err.message);
+    }
+    throw err;
+  }
+}
+
+export async function extractRecipeFromUrl(rawUrl: string, deps: ExtractDeps): Promise<RecipeInput> {
+  const url = validateUrl(rawUrl);
+  const report = deps.onProgress ?? (() => undefined);
+
+  // No schema.org/text fast path exists for a video post — it's the only
+  // extraction route those platforms have.
+  const platform = detectSocialPlatform(url);
+  const candidate = platform
+    ? await extractFromSocialVideo(url, deps, report)
+    : await extractFromWebPage(url, deps, report);
 
   const parsed = recipeSchema.safeParse({ ...sanitizeCandidate(candidate), sourceUrl: url.toString() });
   if (!parsed.success) {

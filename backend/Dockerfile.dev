@@ -1,5 +1,11 @@
 FROM node:22-alpine
-RUN corepack enable
+# corepack enable, then yt-dlp (+ ffmpeg, pulled in as its dependency) for
+# Reels/TikTok import — installed from Alpine's own package repo rather than
+# the standalone PyInstaller binary GitHub publishes, which is glibc-built
+# and unreliable on musl-based Alpine. See docs/decisions.md for the
+# version-drift trade-off this implies (apk's yt-dlp lags upstream releases;
+# bump by rebuilding the image when platform changes break extraction).
+RUN corepack enable && apk add --no-cache yt-dlp
 
 WORKDIR /repo
 

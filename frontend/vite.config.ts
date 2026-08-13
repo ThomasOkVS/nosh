@@ -4,6 +4,17 @@ import tailwindcss from "@tailwindcss/vite";
 import { VitePWA } from "vite-plugin-pwa";
 
 export default defineConfig({
+  server: {
+    // Docker Desktop's bind mount doesn't reliably deliver filesystem change
+    // events into the container (content syncs; inotify doesn't) — chokidar
+    // falls back to silently never noticing an edit. Polling doesn't depend
+    // on those events at all, just re-stats files on an interval. Harmless
+    // outside Docker too, just a touch more CPU than native watching.
+    watch: {
+      usePolling: true,
+      interval: 300,
+    },
+  },
   plugins: [
     react(),
     tailwindcss(),

@@ -19,23 +19,43 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }: Readonly<ConfirmDialogProps>) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
 
+  // One effect, not two: `open` flipping false doesn't unmount this
+  // component (the parent keeps rendering <ConfirmDialog open={...} />,
+  // just with a different prop) — it only stops the JSX below from
+  // rendering, so a fresh <dialog> node exists every time `open` becomes
+  // true again. Splitting the "cancel" listener into its own effect keyed
+  // only on `onCancel` would miss reattaching it to that fresh node
+  // whenever `onCancel`'s reference happens to stay stable across a
+  // close/reopen.
   useEffect(() => {
-    if (!open) {
-      return;
-    }
+    const dialog = dialogRef.current;
+    if (!open || !dialog) return;
+
+    dialog.showModal();
+    // The dialog's own default focus (first focusable element) would land
+    // on Cancel anyway here, but stating it explicitly means it stays
+    // correct if the markup order ever changes — and never defaults to
+    // the destructive action.
     cancelRef.current?.focus();
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onCancel();
-      }
-    };
-    document.addEventListener("keydown", handleKeyDown);
     document.body.style.overflow = "hidden";
+
+    // The browser's own Escape handling fires a cancelable "cancel" event
+    // before closing the dialog — intercepted so Escape goes through the
+    // same onCancel callback as every other dismissal, rather than closing
+    // the native element out from under the `open` prop that controls
+    // whether it's rendered at all.
+    const handleCancel = (event: Event) => {
+      event.preventDefault();
+      onCancel();
+    };
+    dialog.addEventListener("cancel", handleCancel);
+
     return () => {
-      document.removeEventListener("keydown", handleKeyDown);
       document.body.style.overflow = "";
+      dialog.removeEventListener("cancel", handleCancel);
     };
   }, [open, onCancel]);
 
@@ -44,48 +64,41 @@ export function ConfirmDialog({
   }
 
   return (
-    <>
-      {/* Real <button>, not a div with an onClick — natively keyboard/touch
-       * operable, so the backdrop dismiss doesn't need a hand-rolled role +
-       * tabIndex + keydown listener. */}
-      <button
-        type="button"
-        aria-label="Dismiss dialog"
-        onClick={onCancel}
-        className="animate-dialog-backdrop-in fixed inset-0 z-50 bg-black/60 backdrop-blur-sm"
-      />
-      {/* Layout-only wrapper — pointer-events-none so it never intercepts
-       * clicks itself; the panel below re-enables them for its own content,
-       * and everywhere else clicks fall through to the backdrop button
-       * above. That's what lets clicking outside the panel dismiss it
-       * without stopPropagation on the panel. */}
-      <div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div
-          role="alertdialog"
-          aria-modal="true"
-          aria-labelledby="confirm-dialog-title"
-          aria-describedby="confirm-dialog-message"
-          className="glass animate-dialog-in pointer-events-auto w-full max-w-sm rounded-lg p-6"
-        >
-          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-danger-50 text-danger-500 dark:bg-danger-500/15">
-            <WarningIcon size={22} weight="fill" />
-          </div>
-          <h2 id="confirm-dialog-title" className="mt-4 font-display text-lg font-bold text-ink">
-            {title}
-          </h2>
-          <p id="confirm-dialog-message" className="mt-1 text-sm text-ink-muted">
-            {message}
-          </p>
-          <div className="mt-5 flex justify-end gap-2">
-            <button ref={cancelRef} type="button" onClick={onCancel} className={buttonClass("ghost")}>
-              Cancel
-            </button>
-            <button type="button" onClick={onConfirm} className={buttonClass("destructive")}>
-              {confirmLabel}
-            </button>
-          </div>
-        </div>
+    <dialog
+      ref={dialogRef}
+      // Overrides the native <dialog>'s implicit "dialog" role — this one
+      // specifically interrupts to demand a yes/no on a destructive action,
+      // which is what "alertdialog" is for. aria-modal is left unset: it's
+      // implied automatically for a native <dialog> opened via showModal().
+      role="alertdialog"
+      aria-labelledby="confirm-dialog-title"
+      aria-describedby="confirm-dialog-message"
+      // Clicking the backdrop lands directly on the <dialog> element itself
+      // (its content is all in descendants), so this check alone tells the
+      // backdrop and the panel's own content apart — no separate backdrop
+      // element needed.
+      onClick={(event) => {
+        if (event.target === dialogRef.current) onCancel();
+      }}
+      className="glass animate-dialog-in m-auto max-w-sm rounded-lg p-6"
+    >
+      <div className="flex h-11 w-11 items-center justify-center rounded-full bg-danger-50 text-danger-500 dark:bg-danger-500/15">
+        <WarningIcon size={22} weight="fill" />
       </div>
-    </>
+      <h2 id="confirm-dialog-title" className="mt-4 font-display text-lg font-bold text-ink">
+        {title}
+      </h2>
+      <p id="confirm-dialog-message" className="mt-1 text-sm text-ink-muted">
+        {message}
+      </p>
+      <div className="mt-5 flex justify-end gap-2">
+        <button ref={cancelRef} type="button" onClick={onCancel} className={buttonClass("ghost")}>
+          Cancel
+        </button>
+        <button type="button" onClick={onConfirm} className={buttonClass("destructive")}>
+          {confirmLabel}
+        </button>
+      </div>
+    </dialog>
   );
 }

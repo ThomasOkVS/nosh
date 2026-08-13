@@ -164,14 +164,43 @@ Photos are not imported — the existing "recipe must be saved before adding
 photos" constraint applies unchanged, so an imported recipe gets its photo
 added manually afterward.
 
-## Future: recipe import from social video
+## Recipe import (Instagram Reels / TikTok)
 
-Import from Instagram Reels and TikTok is still to be built. It needs genuine
-content understanding of video/caption content that static parsing can't
-provide, and the platforms actively resist scraping — it'll reuse the same
-`/import` endpoint shape and `source_url` column. Local/self-hosted LLM was
-considered and rejected for this feature due to the ProDesk 400 G5's limited
-hardware — see [decisions.md](decisions.md).
+Shares the same `POST /import` endpoint and `source_url` column as URL
+import above — `recipeExtraction.ts` dispatches on hostname
+(`services/socialVideo.ts`'s `detectSocialPlatform`) before doing anything
+else. There's no schema.org fast path for a video post, so this is a single
+extraction route:
+
+1. **`yt-dlp`** (shelled out to via `child_process.execFile`, installed from
+   Alpine's own package repo rather than upstream's PyInstaller binary — see
+   [decisions.md](decisions.md#2026-08-12-instagram-reelstiktok-import--yt-dlp--gemini-flash-lite))
+   fetches the post's metadata first (cheap, no video bytes — used to reject
+   an over-long video before spending bandwidth on it), then the video
+   itself, capped to `height<=480` and streamed straight to a `Buffer` over
+   stdout rather than a temp file.
+2. The video (as inline base64) plus the caption go to Gemini in one
+   multimodal call — the caption alone is often missing the actual steps
+   (many recipe creators only caption the ingredients), so the model has to
+   watch the clip to recover technique and timing, not just read text.
+
+Both extraction paths converge back on the same `sanitizeCandidate` →
+`recipeSchema` → ingredient/tag normalization pipeline URL import uses. The
+text and video paths use different Gemini models
+(`GEMINI_TEXT_MODEL`/`GEMINI_VIDEO_MODEL`, both overridable, defaulting to
+`gemini-3.6-flash`/`gemini-3.5-flash-lite`) — video's per-request token cost
+is high enough that quota matters more than model tier, and a live
+side-by-side found no quality loss from the lighter model. Local/self-hosted
+LLM was considered and rejected for this feature due to the ProDesk 400 G5's
+limited hardware — see [decisions.md](decisions.md).
+
+**Verified live against a real Instagram Reel** end-to-end (import →
+pre-filled form → save → detail page's source link), including a case where
+the caption had no steps at all and the model recovered them purely from
+the video. **Not verified live against a real TikTok URL** — the same
+`yt-dlp` extractor and pipeline handle both platforms, but only Instagram
+was actually exercised. Do a real TikTok import before considering this
+fully proven for that platform.
 
 ## Deployment target
 

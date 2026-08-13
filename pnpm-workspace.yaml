@@ -4,3 +4,10 @@ packages:
 allowBuilds:
   argon2: true
   esbuild: true
+# vitest depends on vite directly (not as a peer), so without this it can
+# resolve its own separate vite version instead of deduping against the
+# workspace's — which breaks vite-plugin-pwa/tailwindcss's TypeScript types
+# (two structurally-identical-but-distinct `Plugin`/`PluginOption` types from
+# the two installations aren't assignable to each other).
+overrides:
+  vite: ^6.4.3

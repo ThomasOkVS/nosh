@@ -54,18 +54,32 @@ describe("ConfirmDialog", () => {
     expect(onConfirm).toHaveBeenCalledTimes(1);
   });
 
-  it("calls onCancel when the backdrop is dismissed", () => {
+  it("calls onCancel when the backdrop is clicked", () => {
     const { onCancel } = renderDialog();
 
-    fireEvent.click(screen.getByRole("button", { name: "Dismiss dialog" }));
+    // A click lands on the <dialog> element itself (rather than one of its
+    // content descendants) exactly when it's on the backdrop area.
+    fireEvent.click(screen.getByRole("alertdialog"));
 
     expect(onCancel).toHaveBeenCalledTimes(1);
   });
 
-  it("calls onCancel on Escape", () => {
+  it("does not call onCancel when content inside the dialog is clicked", () => {
     const { onCancel } = renderDialog();
 
-    fireEvent.keyDown(document, { key: "Escape" });
+    fireEvent.click(screen.getByText("This can't be undone."));
+
+    expect(onCancel).not.toHaveBeenCalled();
+  });
+
+  it("calls onCancel when the native Escape/cancel event fires", () => {
+    const { onCancel } = renderDialog();
+
+    // Real browsers fire a cancelable "cancel" event on the dialog when
+    // Escape is pressed while it's modal — jsdom doesn't simulate that from
+    // a raw keydown, so the event is dispatched directly to exercise the
+    // same listener a real Escape press would trigger.
+    fireEvent(screen.getByRole("alertdialog"), new Event("cancel", { cancelable: true }));
 
     expect(onCancel).toHaveBeenCalledTimes(1);
   });

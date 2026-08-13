@@ -18,24 +18,16 @@ docker compose exec backend pnpm migrate up
 
 ## Running the app
 
-Normal — all three services in Docker:
+All three services in Docker:
 
 ```bash
 docker compose up
 ```
 
-**Windows workaround:** the frontend's Vite dev server is currently unreliable
-through Docker Desktop's Windows/WSL2 port-forwarding (see
-[decisions.md](decisions.md#2026-08-06-frontend-dev-container-unreliable-on-windows-run-frontend-outside-docker-locally)) —
-keep Postgres + backend in Docker, run the frontend directly:
-
-```bash
-docker compose up -d postgres backend
-pnpm --filter frontend dev
-```
-
-Either way: frontend at `http://localhost:5173`, backend at
-`http://localhost:3001`.
+Frontend at `http://localhost:5173`, backend at `http://localhost:3001` —
+including on Windows; see
+[decisions.md](decisions.md#2026-08-12-windows-frontend-dev-container-issue--actually-root-caused-and-fixed)
+for why this previously seemed to need a workaround.
 
 **Recipe import from a URL** needs a `GEMINI_API_KEY` in your `.env` (free
 key from https://aistudio.google.com/apikey). Without it the app runs fine
@@ -132,9 +124,24 @@ and picks up neither.
 
 ## Troubleshooting
 
-- **Frontend unreachable on Windows** (`ERR_EMPTY_RESPONSE`/connection
-  refused hitting `:5173`, even though `docker compose ps` looks healthy) —
-  see the Windows workaround above and the linked decision entry.
+- **Frontend unreachable, or module scripts fail with a network reset** —
+  check `docker compose logs frontend` for the Vite startup banner: if it
+  says `Network: use --host to expose` instead of a real container IP, Vite
+  isn't actually bound to all interfaces and nothing outside the container
+  can reach it (see
+  [decisions.md](decisions.md#2026-08-12-windows-frontend-dev-container-issue--actually-root-caused-and-fixed)
+  for the CMD bug that caused exactly this).
+- **Editing a file doesn't seem to do anything — the app keeps behaving like
+  the old code** — check `docker compose logs <service>` right after saving:
+  a real reload logs `[vite] hmr update ...` (frontend) or
+  `[tsx] change in ... Restarting...` (backend). If neither appears, the dev
+  server isn't seeing the edit at all (a Docker Desktop Windows bind-mount
+  limitation — content syncs, but the filesystem change *events* watchers
+  rely on don't). Both services already force polling to work around this
+  (`vite.config.ts`'s `server.watch`, `CHOKIDAR_USEPOLLING` in
+  `docker-compose.yml`); if it recurs, `docker compose restart <service>`
+  forces a fresh read as an immediate workaround. See
+  [decisions.md](decisions.md#2026-08-12-neither-dev-server-was-live-reloading-on-windows--polling-fixes-both).
 - **A new dependency doesn't seem to exist inside a container** — rebuild that
   service's image: `docker compose up -d --build <service>`.
 - **A service crash-loops on startup with `ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY`**

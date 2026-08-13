@@ -5,11 +5,13 @@ import { listRecipes, searchRecipes } from "../api/recipes";
 import { EmptyRecipesIllustration, EmptySearchIllustration } from "../components/EmptyStateIllustration";
 import { RecipeCard, RecipeCardSkeleton } from "../components/RecipeCard";
 import { useAsync } from "../hooks/useAsync";
+import { useImport } from "../import/ImportContext";
 import { buttonClass, errorBannerClass, inputClass } from "../styles";
 
 export function RecipeListPage() {
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
+  const { openDialog } = useImport();
 
   useEffect(() => {
     const timeout = setTimeout(() => setDebouncedQuery(query.trim()), 300);
@@ -50,10 +52,10 @@ export function RecipeListPage() {
           )}
         </div>
         <div className="flex gap-2">
-          <Link to="/recipes/import" className={buttonClass("secondary")}>
+          <button type="button" onClick={openDialog} className={buttonClass("secondary")}>
             <LinkIcon size={18} weight="bold" />
             Import from URL
-          </Link>
+          </button>
           <Link to="/recipes/new" className={buttonClass("primary")}>
             <PlusIcon size={18} weight="bold" />
             New recipe

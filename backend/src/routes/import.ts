@@ -1,24 +1,37 @@
 import { Router } from "express";
-import type { GeminiExtractFn } from "../llm/geminiClient";
+import type { GeminiExtractFn, GeminiVideoExtractFn } from "../llm/geminiClient";
 import { requireAuth } from "../middleware/requireAuth";
 import {
+  DownloaderUnavailableError,
   ExtractionError,
   ExtractionUnavailableError,
   extractRecipeFromUrl,
   FetchError,
   InvalidUrlError,
   NotConfiguredError,
+  VideoTooLargeError,
+  VideoUnavailableError,
 } from "../services/recipeExtraction";
+import type { SocialVideoDownloadFn } from "../services/socialVideo";
 import { importRequestSchema } from "../validation/import";
 
 function statusForError(err: unknown): number {
   if (err instanceof InvalidUrlError) return 400;
   if (err instanceof FetchError) return 502;
+  if (err instanceof VideoUnavailableError) return 502;
+  if (err instanceof VideoTooLargeError) return 422;
   // Checked before ExtractionError, which it extends.
   if (err instanceof ExtractionUnavailableError) return 503;
   if (err instanceof ExtractionError) return 422;
   if (err instanceof NotConfiguredError) return 503;
+  if (err instanceof DownloaderUnavailableError) return 503;
   return 500;
+}
+
+export interface ImportRouterDeps {
+  geminiExtract?: GeminiExtractFn;
+  geminiVideoExtract?: GeminiVideoExtractFn;
+  downloadSocialVideo?: SocialVideoDownloadFn;
 }
 
 /**
@@ -27,19 +40,20 @@ function statusForError(err: unknown): number {
  * frontend to pre-fill; persisting it happens through the normal recipe
  * create/update routes).
  */
-export function createImportRouter(geminiExtract: GeminiExtractFn | undefined): Router {
+export function createImportRouter(deps: ImportRouterDeps): Router {
+  const { geminiExtract, geminiVideoExtract, downloadSocialVideo } = deps;
   const router = Router();
   router.use(requireAuth);
 
   /**
    * Responds with newline-delimited JSON rather than a single object: import
    * can take anywhere from under a second (the page publishes structured
-   * recipe data) to many seconds (the page doesn't, so an LLM has to read
-   * it), and the client can only tell the user which is happening if the
-   * server says so as it goes.
+   * recipe data) to a minute or so (a Reels/TikTok video has to be
+   * downloaded and read by the model), and the client can only tell the user
+   * which is happening if the server says so as it goes.
    *
    * Message shapes, one JSON object per line:
-   *   {"type":"progress","stage":"fetching"|"structured-data"|"ai"}
+   *   {"type":"progress","stage":"fetching"|"structured-data"|"downloading-video"|"analyzing-video"|"ai"}
    *   {"type":"result","recipe":{…}}
    *   {"type":"error","status":502,"error":"…"}
    *
@@ -77,6 +91,8 @@ export function createImportRouter(geminiExtract: GeminiExtractFn | undefined): 
     try {
       const recipe = await extractRecipeFromUrl(parsed.data.url, {
         geminiExtract,
+        geminiVideoExtract,
+        downloadSocialVideo,
         signal: clientGone.signal,
         onProgress: (stage) => send({ type: "progress", stage }),
       });

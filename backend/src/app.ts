@@ -3,11 +3,12 @@ import cors from "cors";
 import express, { type Express } from "express";
 import session from "express-session";
 import type { Pool } from "pg";
-import type { GeminiExtractFn } from "./llm/geminiClient";
+import type { GeminiExtractFn, GeminiVideoExtractFn } from "./llm/geminiClient";
 import { errorHandler } from "./middleware/errorHandler";
 import { createAuthRouter } from "./routes/auth";
 import { createImportRouter } from "./routes/import";
 import { createRecipesRouter } from "./routes/recipes";
+import type { SocialVideoDownloadFn } from "./services/socialVideo";
 
 const ONE_WEEK_MS = 1000 * 60 * 60 * 24 * 7;
 
@@ -17,10 +18,22 @@ export interface AppDeps {
   uploadsDir: string;
   frontendOrigin?: string;
   geminiExtract?: GeminiExtractFn;
+  geminiVideoExtract?: GeminiVideoExtractFn;
+  /** Overridable only so tests never shell out to the real yt-dlp binary —
+   * see services/socialVideo.ts. */
+  downloadSocialVideo?: SocialVideoDownloadFn;
 }
 
 export function createApp(deps: AppDeps): Express {
-  const { pool, sessionSecret, uploadsDir, frontendOrigin = "http://localhost:5173", geminiExtract } = deps;
+  const {
+    pool,
+    sessionSecret,
+    uploadsDir,
+    frontendOrigin = "http://localhost:5173",
+    geminiExtract,
+    geminiVideoExtract,
+    downloadSocialVideo,
+  } = deps;
   const PgSession = connectPgSimple(session);
 
   const app = express();
@@ -51,7 +64,7 @@ export function createApp(deps: AppDeps): Express {
 
   app.use("/auth", createAuthRouter(pool));
   app.use("/recipes", createRecipesRouter(pool, uploadsDir));
-  app.use("/import", createImportRouter(geminiExtract));
+  app.use("/import", createImportRouter({ geminiExtract, geminiVideoExtract, downloadSocialVideo }));
 
   app.use(errorHandler);
 

@@ -70,16 +70,19 @@ function parseLeadingNumber(value: unknown): number | null {
   return match ? Number(match[0].replace(",", ".")) : null;
 }
 
+/** Either a bare string or `{ "@id": "https://schema.org/VeganDiet" }`. */
+function dietRawValue(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value && typeof value === "object" && "@id" in value) {
+    return String((value as Record<string, unknown>)["@id"]);
+  }
+  return "";
+}
+
 function dietTags(suitableForDiet: unknown): string[] {
   const values = Array.isArray(suitableForDiet) ? suitableForDiet : [suitableForDiet];
   return values.flatMap((value) => {
-    // Either a bare string or `{ "@id": "https://schema.org/VeganDiet" }`.
-    const raw =
-      typeof value === "string"
-        ? value
-        : value && typeof value === "object" && "@id" in value
-          ? String((value as Record<string, unknown>)["@id"])
-          : "";
+    const raw = dietRawValue(value);
     const key = raw.split("/").pop()?.toLowerCase() ?? "";
     const tag = DIET_TAGS[key];
     return tag ? [tag] : [];

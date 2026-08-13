@@ -2,7 +2,7 @@ import { ApiError, apiUrl } from "./client";
 import type { RecipeInput } from "./types";
 
 /** Mirrors `ImportStage` in the backend's recipeExtraction service. */
-export type ImportStage = "fetching" | "structured-data" | "ai";
+export type ImportStage = "fetching" | "structured-data" | "downloading-video" | "analyzing-video" | "ai";
 
 interface ImportMessage {
   type?: unknown;
