@@ -1194,3 +1194,62 @@ Gemini-fallback-og:image paths** — covered by unit tests with fake
 extractors, but no real Reels/TikTok or JSON-LD-less import was run through
 this specific code path in this session; worth a spot-check before treating
 those two sources as proven end-to-end.
+
+## 2026-08-13: Frontend/backend dev container crash-loop on pnpm's deps-status check — fixed via `pnpm exec`, not the `.npmrc` route
+
+**Decision:** Both `frontend/Dockerfile.dev` and `backend/Dockerfile.dev` now
+run their dev command via `pnpm exec <binary> ...` (`pnpm exec vite --host`,
+`pnpm exec tsx watch src/index.ts`) instead of `pnpm dev`/`pnpm <script>`.
+The latter goes through `pnpm run`, which triggers a pre-script "dependency
+status check" (`runDepsStatusCheck`, visible in pnpm's own stack trace) —
+this check false-positives against the bind-mounted repo in this project's
+dev containers, decides a reinstall is needed, and then tries to
+interactively confirm purging `node_modules` with no TTY available,
+crash-looping the container forever
+(`ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY`). `pnpm exec` resolves and
+runs the binary directly without going through that pre-script machinery,
+sidestepping the false positive entirely rather than working around its
+symptom.
+
+**What actually confirmed the false positive:** a plain `pnpm install` run
+by hand inside the same bind-mounted container reported "Already up to
+date" instantly — so the lockfile genuinely does match what's installed.
+`runDepsStatusCheck` is a separate, cruder check than `pnpm install`'s own
+verification, and it disagreed with that ground truth specifically when a
+bind mount was involved: the identical image, run with no bind mount at all
+(`docker run` against the built image directly), started clean with no
+check failure whatsoever. The exact mechanism inside `runDepsStatusCheck`
+that gets fooled by a bind mount wasn't root-caused further (its comparison
+isn't a simple file-mtime check — the recorded `lastValidatedTimestamp` in
+`node_modules/.pnpm-workspace-state-v1.json` was already *older* than the
+bind-mounted manifests, the opposite of what a naive mtime-staleness check
+would need to misfire) — not worth chasing given `pnpm exec` avoids the
+whole code path.
+
+**Why not the fixes pnpm's own error message suggests
+(`CI=true` / `confirmModulesPurge: false`):** tried both. `CI=true` does
+work, but only by making pnpm answer "yes" to the purge and run a full
+reinstall — on *every single container start*, adding real startup latency
+indefinitely, since the underlying false positive never gets resolved, just
+auto-approved every time. `confirmModulesPurge: false` in a root `.npmrc`
+had no effect at all (verified via `pnpm config get`, which didn't even
+show pnpm picking it up in this context) and was removed again rather than
+left in as dead configuration.
+
+**A compounding trap hit while diagnosing this:** `docker compose up
+--force-recreate` (without `-v`) does *not* discard a container's anonymous
+volumes — so several early attempts to test a fix kept reusing a
+`node_modules` volume that had been left in a partial/interrupted state by
+earlier crash-loop attempts, making a real fix look like it hadn't worked.
+`docker compose rm -f -s -v <service>` (or `down`, which removes the
+container network but not named volumes like `postgres_data`) is needed to
+get a genuinely fresh anonymous volume when recovering from this state —
+worth remembering for any future dev-container debugging in this repo.
+
+**Status:** Fixed and verified: both containers now start cleanly from a
+completely fresh `docker compose down` + `up` (no `--force-recreate`
+needed), stay up rather than crash-looping, and the frontend serves the
+real app in a browser pointed at `localhost:5173`. Backend was already
+unaffected in most manual tests during this session, but was switched to
+the same `pnpm exec` pattern for consistency and to close off the same
+failure mode before it has a chance to appear there too.
