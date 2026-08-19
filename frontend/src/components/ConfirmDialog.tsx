@@ -77,6 +77,17 @@ export function ConfirmDialog({
       // (its content is all in descendants), so this check alone tells the
       // backdrop and the panel's own content apart — no separate backdrop
       // element needed.
+      //
+      // A11y linters (incl. SonarQube) flag this as a click handler on a
+      // "non-interactive" element with no keyboard equivalent — a false
+      // positive for a native <dialog> opened via showModal(): ARIA
+      // classifies "dialog"/"alertdialog" as non-interactive "window" roles,
+      // which the linter's model can't reconcile with the element's real
+      // native modal behavior. Backdrop-click is a supplementary mouse-only
+      // convenience layered on top of a fully keyboard-accessible modal —
+      // Escape is handled via the native `cancel` event above, and the
+      // Cancel button is always reachable — not the only way to dismiss it,
+      // so there's no missing keyboard interaction to add here.
       onClick={(event) => {
         if (event.target === dialogRef.current) onCancel();
       }}

@@ -93,8 +93,12 @@ jobs:
           # frontend/Dockerfile) — set it as a repo variable
           # (Settings → Secrets and variables → Actions → Variables) once
           # the homelab's Tailscale address is known.
+          # VITE_APP_VERSION reuses the same commit SHA this build is tagged
+          # with, so the version shown in the UI always matches a real image
+          # tag.
           build-args: |
             VITE_API_URL=${{ vars.VITE_API_URL }}
+            VITE_APP_VERSION=${{ github.sha }}
           tags: |
             ghcr.io/${{ env.IMAGE_OWNER }}/nosh-frontend:latest
             ghcr.io/${{ env.IMAGE_OWNER }}/nosh-frontend:${{ github.sha }}

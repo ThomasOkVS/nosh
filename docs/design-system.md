@@ -472,6 +472,33 @@ Glass panel (see Elevation), sticky. Wordmark "Nosh" set in
 Active route indicator uses a filled Phosphor icon in `citrus-500`/`teal-500`
 per the mixed-icon rule above.
 
+### Anchored menus / popovers {#anchored-menus--popovers}
+
+**Added 2026-08-19.** `UserMenu` (`frontend/src/components/UserMenu.tsx`)
+replaced the header's bare username/theme-toggle/logout row with a single
+click target (username + `CaretDownIcon`) that opens a small anchored
+dropdown: theme toggle and log out as menu items, the running build's short
+git commit hash in a muted footer below a divider (see
+[decisions.md](decisions.md) for why a commit hash rather than a semver
+number). `animate-dialog-in` timing (no spring overshoot — a utility menu,
+not a delight moment), closes on outside click or Escape,
+`role="menu"`/`role="menuitem"`, 44px-min-height items per the mobile-first
+touch-target floor.
+
+**Needed its own glass variant, `.glass-menu`, not the standard `.glass`.**
+Standard `.glass`'s translucency (55–65% background) is tuned for panels that
+either sit over the app's own fairly uniform surface (the sticky header) or
+have their own dimmed/blurred backdrop behind them (`ConfirmDialog`/
+`ImportDialog`'s `<dialog>::backdrop`). An anchored dropdown has neither — it
+opens directly over whatever's on the page below the header, which can be a
+photo-heavy recipe grid — so standard `.glass` read as too see-through to
+stay legible there (flagged directly: "the popup background is too
+transparent"). `.glass-menu` (`frontend/src/index.css`) keeps the same blur/
+border/shadow treatment but raises the background to 92–94% opacity in both
+themes. Reuse it for any future small anchored menu/popover that floats over
+ordinary page content rather than its own backdrop; keep using plain `.glass`
+for the header itself and for backdrop-modal dialogs.
+
 ### Empty states
 
 Custom illustration (e.g. "no recipes yet", "no search results") — simple,
