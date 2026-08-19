@@ -2,19 +2,50 @@ import type { RecipeInput } from "../validation/recipes";
 
 type Ingredient = RecipeInput["ingredients"][number];
 
-/** A plain integer or decimal, anchored at the start of whatever's passed in
- * — the one number shape every quantity pattern below is built from. */
-const NUMBER_PATTERN = /^\d+(?:[.,]\d+)?/;
-
 type QuantityMatcher = (rest: string) => string | null;
 
 function fromPattern(pattern: RegExp): QuantityMatcher {
   return (rest) => pattern.exec(rest)?.[1] ?? null;
 }
 
+/** A plain integer or decimal ("2", "2.5", "2,5"), matched in two steps —
+ * the whole-number part, then an optional ".5"/",5" decimal part — rather
+ * than one regex with two quantified digit runs back to back
+ * (`/^\d+(?:[.,]\d+)?/`), which static analyzers flag as backtracking-prone
+ * even though this particular shape can't actually blow up. Same reasoning
+ * as matchNumberPair/matchFraction below: split into single-`\d+` regexes
+ * composed by hand instead of one compound pattern. */
+function matchNumber(rest: string): string | null {
+  const whole = /^\d+/.exec(rest);
+  if (!whole) return null;
+  const decimal = /^[.,]\d+/.exec(rest.slice(whole[0].length));
+  return decimal ? whole[0] + decimal[0] : whole[0];
+}
+
+/** A plain fraction ("1/2"), as two single-digit-run matches either side of
+ * a literal "/" — see matchNumber above for why not one `\d+\/\d+` regex. */
+function matchFraction(rest: string): string | null {
+  const numerator = /^\d+/.exec(rest);
+  if (!numerator) return null;
+  const afterNumerator = rest.slice(numerator[0].length);
+  if (!afterNumerator.startsWith("/")) return null;
+  const denominator = /^\d+/.exec(afterNumerator.slice(1));
+  return denominator ? `${numerator[0]}/${denominator[0]}` : null;
+}
+
+/** A mixed number ("1 1/2") — a whole number, a single space, then a
+ * fraction, reusing matchNumber/matchFraction rather than one regex with
+ * three quantified digit runs. */
+function matchMixedNumber(rest: string): string | null {
+  const whole = /^\d+ /.exec(rest);
+  if (!whole) return null;
+  const fraction = matchFraction(rest.slice(whole[0].length));
+  return fraction ? whole[0] + fraction : null;
+}
+
 /**
  * Matches "<number> <separator> <number>" (a multi-pack like "2 x 400g", or
- * a range like "2-3"/"2 to 3") by finding each half with `NUMBER_PATTERN`
+ * a range like "2-3"/"2 to 3") by finding each half with `matchNumber`
  * and the separator with its own tiny pattern, rather than one regex with a
  * decimal-number group duplicated on both sides of the separator — fewer
  * quantified groups for a human (or a linter) to reason about at once, same
@@ -22,15 +53,15 @@ function fromPattern(pattern: RegExp): QuantityMatcher {
  */
 function matchNumberPair(separator: RegExp): QuantityMatcher {
   return (rest) => {
-    const first = NUMBER_PATTERN.exec(rest);
+    const first = matchNumber(rest);
     if (!first) return null;
-    const afterFirst = rest.slice(first[0].length);
+    const afterFirst = rest.slice(first.length);
     const sep = separator.exec(afterFirst);
     if (!sep) return null;
     const afterSep = afterFirst.slice(sep[0].length);
-    const second = NUMBER_PATTERN.exec(afterSep);
+    const second = matchNumber(afterSep);
     if (!second) return null;
-    return rest.slice(0, first[0].length + sep[0].length + second[0].length);
+    return rest.slice(0, first.length + sep[0].length + second.length);
   };
 }
 
@@ -44,13 +75,13 @@ const QUANTITY_MATCHERS: QuantityMatcher[] = [
   // "2 x 400g", common in UK recipe sites for multi-pack quantities
   matchNumberPair(/^ ?[x×] ?/),
   // mixed numbers: "1 1/2", "1 ½"
-  fromPattern(/^(\d+ \d+\/\d+)/),
+  matchMixedNumber,
   fromPattern(/^(\d+ ?[¼½¾⅐⅑⅒⅓⅔⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞])/),
   // ranges: "2-3", "2 to 3"
   matchNumberPair(/^ ?(?:[-–—]|to) ?/),
-  fromPattern(/^(\d+\/\d+)/),
+  matchFraction,
   fromPattern(/^([¼½¾⅐⅑⅒⅓⅔⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞])/),
-  (rest) => NUMBER_PATTERN.exec(rest)?.[0] ?? null,
+  matchNumber,
 ];
 
 /**

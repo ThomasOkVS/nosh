@@ -59,6 +59,46 @@ async function readCappedBuffer(response: Response): Promise<Buffer> {
   return Buffer.concat(chunks);
 }
 
+async function performFetch(
+  url: URL,
+  fetchImpl: typeof fetch,
+  signal: AbortSignal,
+): Promise<Response> {
+  try {
+    return await fetchImpl(url, { redirect: "manual", signal });
+  } catch (err) {
+    if (err instanceof Error && (err.name === "AbortError" || err.name === "TimeoutError")) {
+      throw new ImageFetchError("Timed out fetching that image");
+    }
+    const message = err instanceof Error ? err.message : String(err);
+    throw new ImageFetchError(`Failed to fetch the image: ${message}`);
+  }
+}
+
+/** Resolves a 3xx response to the next URL to fetch, re-validated against
+ * the same SSRF guard as the original request so a redirect can't be used to
+ * sidestep it. Returns null when the response isn't a redirect at all. */
+async function resolveRedirect(response: Response, currentUrl: URL): Promise<URL | null> {
+  if (response.status < 300 || response.status >= 400) return null;
+
+  const location = response.headers.get("location");
+  await discard(response);
+  if (!location) {
+    throw new ImageFetchError(`The image URL returned ${response.status}`);
+  }
+  return validateUrl(new URL(location, currentUrl).toString());
+}
+
+async function extensionForContentType(response: Response): Promise<string> {
+  const contentType = (response.headers.get("content-type") ?? "").split(";")[0]?.trim() ?? "";
+  const extension = IMAGE_MIME_EXTENSIONS[contentType];
+  if (!extension) {
+    await discard(response);
+    throw new UnsupportedImageTypeError("That URL is not a supported image type");
+  }
+  return extension;
+}
+
 /**
  * Fetches an image URL discovered during recipe import (schema.org `image`,
  * an og:image/twitter:image meta tag, or a yt-dlp thumbnail) so it can be
@@ -80,27 +120,11 @@ export async function fetchImageFromUrl(
   const combinedSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
 
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-    let response: Response;
-    try {
-      response = await fetchImpl(url, { redirect: "manual", signal: combinedSignal });
-    } catch (err) {
-      if (err instanceof Error && (err.name === "AbortError" || err.name === "TimeoutError")) {
-        throw new ImageFetchError("Timed out fetching that image");
-      }
-      throw new ImageFetchError(
-        `Failed to fetch the image: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
+    const response = await performFetch(url, fetchImpl, combinedSignal);
 
-    if (response.status >= 300 && response.status < 400) {
-      const location = response.headers.get("location");
-      await discard(response);
-      if (!location) {
-        throw new ImageFetchError(`The image URL returned ${response.status}`);
-      }
-      // Re-validated on every hop, so the guard can't be sidestepped by a
-      // URL that redirects into the local network.
-      url = validateUrl(new URL(location, url).toString());
+    const redirectUrl = await resolveRedirect(response, url);
+    if (redirectUrl) {
+      url = redirectUrl;
       continue;
     }
 
@@ -109,13 +133,7 @@ export async function fetchImageFromUrl(
       throw new ImageFetchError(`The image URL returned ${response.status}`);
     }
 
-    const contentType = (response.headers.get("content-type") ?? "").split(";")[0]?.trim() ?? "";
-    const extension = IMAGE_MIME_EXTENSIONS[contentType];
-    if (!extension) {
-      await discard(response);
-      throw new UnsupportedImageTypeError("That URL is not a supported image type");
-    }
-
+    const extension = await extensionForContentType(response);
     const buffer = await readCappedBuffer(response);
     return { buffer, extension };
   }

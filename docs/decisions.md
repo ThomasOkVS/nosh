@@ -1253,3 +1253,166 @@ real app in a browser pointed at `localhost:5173`. Backend was already
 unaffected in most manual tests during this session, but was switched to
 the same `pnpm exec` pattern for consistency and to close off the same
 failure mode before it has a chance to appear there too.
+
+## 2026-08-19: Production white-screen fixed — `crypto.randomUUID()` needs a secure-context fallback
+
+**Decision:** `frontend/src/pages/RecipeFormPage.tsx` called
+`crypto.randomUUID()` directly to key ingredient/step rows. Reported live:
+after a magic import finished, the form crashed to a white screen with
+`crypto.randomUUID is not a function`. Root cause: that API is spec-restricted
+to [secure contexts](https://developer.mozilla.org/en-US/docs/Web/Security/Secure_Contexts)
+(HTTPS or `localhost`), and the homelab is served over plain HTTP via
+Tailscale MagicDNS (`http://homelab.tail43ff2b.ts.net:8080`) — a context the
+browser treats as insecure, where the function simply doesn't exist. Local
+dev never caught this because `localhost` itself counts as secure.
+
+Fixed with `frontend/src/lib/id.ts`'s `generateId()`: uses
+`crypto.randomUUID()` when present, otherwise builds a v4 UUID from
+`crypto.getRandomValues()`, which carries no secure-context restriction. Safe
+here because these ids are only used as React list keys, never sent to the
+backend — the fallback's slightly different randomness source doesn't matter.
+
+**Audited for the same class of bug elsewhere in the frontend:** no usage
+found of `navigator.clipboard`, `navigator.share`, `navigator.geolocation`,
+`navigator.mediaDevices`/`getUserMedia`, `navigator.credentials`/WebAuthn,
+`Notification`, `PushManager`, or `crypto.subtle`. `vite-plugin-pwa`'s
+`registerSW()` (`frontend/src/main.tsx`) is also secure-context-gated, but its
+generated client guards on `"serviceWorker" in navigator`, so it fails silently
+rather than crashing — meaning PWA install/offline-cache/auto-update-on-deploy
+are quietly inert on the homelab's plain-HTTP origin today, not broken.
+
+**Why this will keep recurring:** the
+[2026-08-05 deployment decision](#2026-08-05-deployment-target-and-cd-mechanism)
+above treats Tailscale-only access as the security boundary and deliberately
+skips TLS termination, so the app is expected to stay on plain HTTP
+long-term. Any future browser API gated to secure contexts will hit the same
+wall. Check MDN's "secure contexts only" note before relying on a new one;
+either add a fallback like this one or note the degradation explicitly if no
+fallback exists. Revisit by putting a TLS-terminating reverse proxy in front
+of the app if this recurs often enough to be worth the added complexity.
+
+## 2026-08-19: Header consolidated into a `UserMenu` dropdown; app version shown via build-time commit SHA
+
+**Decision:** Requested directly, now that the app is running in production:
+a visible way to tell which build is deployed. Rather than a stray version
+label bolted onto the header, the header's separate username/theme-toggle/
+logout controls were consolidated into one `UserMenu` dropdown
+(`frontend/src/components/UserMenu.tsx`) — click the username to open a menu
+with theme toggle and log out as items, and the running build's short commit
+hash in a muted footer. `ThemeToggle.tsx` was deleted; its logic moved
+directly into `UserMenu`, its only remaining caller.
+
+**Version = short git commit SHA, not a semver number.** There's no release
+process or version-bump convention in this repo — `frontend/package.json`'s
+`"version": "0.0.1"` has never been touched. The CI publish job
+([ci.yml](../.github/workflows/ci.yml)) already tags every image with
+`github.sha`, which is also what [deployment.md](deployment.md)'s rollback
+runbook pins `TAG` to — so the commit hash is the one identifier that's
+already meaningful and already tied to a real, pullable image. Threaded
+through exactly like `VITE_API_URL` above: a Docker build arg
+(`frontend/Dockerfile`), since Vite inlines `import.meta.env.VITE_*` at
+`vite build` time and there's no runtime process in the nginx container to
+read an env var from. CI passes the same `github.sha` it tags the image
+with, so the version shown in the UI always matches a real, rollback-able
+tag. Falls back to the literal string `"dev"` when the build arg isn't set
+(local `pnpm dev`), since there's no commit to pin to there.
+
+**`.glass-menu`, a higher-opacity glass variant, added for anchored
+menus.** First pass reused the standard `.glass` panel; flagged directly as
+"too transparent" once seen live. Standard `.glass` (55–65% opacity) is
+tuned for the header (sits over the app's own fairly uniform surface) and for
+backdrop-modal dialogs (`ConfirmDialog`/`ImportDialog`, which sit behind a
+dimmed/blurred `<dialog>::backdrop`). A dropdown anchored under the header has
+neither of those — it opens directly over ordinary page content, which can be
+a photo-heavy recipe grid, with no scrim of its own — so the same opacity read
+as illegible there. `.glass-menu` (`frontend/src/index.css`) keeps the same
+blur/border/shadow treatment but raises background opacity to 92–94% in both
+themes. See
+[design-system.md#anchored-menus--popovers](design-system.md#anchored-menus--popovers)
+for the full writeup and reuse guidance.
+
+**Alternatives considered:** a plain text version string always visible in
+the footer/header (rejected — adds permanent visual clutter for information
+only useful when debugging a deploy); semver bumped by hand on each release
+(rejected — would require introducing a release process this single-developer
+homelab app has no other need for, purely to have something to display).
+
+## 2026-08-19: SonarQube pass — 9 findings across 5 files
+
+**Decision:** Resolved a SonarQube scan (5 files, 9 findings). Seven were
+genuine, fixed in code; two (four findings, since each fired twice) were
+investigated and confirmed as a known false-positive category, documented
+rather than contorted around — same "verify, don't blindly restructure"
+approach as the [2026-08-06 SonarQube pass](#2026-08-06-sonarqube-cleanup-deprecated-iconpype-imports-dockerfile-copy-finding)'s
+Dockerfile finding.
+
+**`imageFromUrl.ts`: cognitive complexity 21 → under 15.** `fetchImageFromUrl`
+had a `for` loop, a `try`/`catch` with nested conditionals, and three more
+sequential `if`s each with their own nested checks, all in one function body.
+Split into three small helpers it now calls in sequence —
+`performFetch` (the try/catch and error translation), `resolveRedirect` (the
+3xx-handling branch), `extensionForContentType` (the content-type/extension
+lookup) — which lowers the parent's own score without changing the actual
+control flow or the total number of decisions in the module; cognitive
+complexity is scored per function, and extracting nested branches into
+named, single-purpose functions is the standard way to bring a function back
+under the threshold, not a workaround specific to this one.
+
+**`ingredientLine.ts`: two "super-linear regex" findings.** `NUMBER_PATTERN`
+(`/^\d+(?:[.,]\d+)?/`, an optional group wrapping a second `\d+`) and the
+mixed-number pattern (`/^(\d+ \d+\/\d+)/`, three `\d+` runs in one regex) both
+have a quantified group containing another quantified sub-pattern — the
+general shape static analyzers flag for backtracking risk, even when (as
+here) the outer quantifier's bound of 0–1 makes actual exponential blowup
+impossible. Fixed the same way `matchNumberPair` already handled an
+analogous case (per its own existing comment, predating this pass): split
+each into single-`\d+`-per-regex helpers (`matchNumber`, `matchFraction`,
+`matchMixedNumber`) composed by hand via sequential `.exec()` calls instead
+of one compound pattern. Same matching behavior, verified by the existing
+18-case test suite passing unchanged.
+
+**`socialVideo.ts`: two "Promise rejection reason should be an Error"
+findings.** Both `runYtDlpText`/`runYtDlpBuffer` did
+`reject(Object.assign(err, { stderr }))` — `err` is already an `Error`
+(`child_process.execFile`'s callback error type), and `Object.assign`
+mutates and returns that same reference, so this always rejected with a real
+`Error` at runtime. The finding is a static-analysis limitation: the
+rule can't trace that `Object.assign(err, ...)`'s return value is still
+`err`'s own type. Fixed by mutating `err` in a separate statement and calling
+`reject(err)` with the bare identifier — identical runtime behavior, but the
+reject call's argument is now unambiguously typed as `Error` to any analyzer.
+
+**`ConfirmDialog.tsx`/`ImportDialog.tsx`: four "non-interactive element with
+a click handler" findings — investigated, confirmed false positive, not
+changed.** Both dialogs detect a backdrop click by checking
+`event.target === dialogRef.current` on the `<dialog>` element's own
+`onClick` (the MDN-documented pattern for native `<dialog>` light-dismiss —
+see each component's existing comment on why no separate backdrop element
+exists). ARIA classifies explicit `role="dialog"`/`"alertdialog"` as
+non-interactive "window" roles, so a generic JSX a11y checker (this
+includes SonarQube's JS/TS rules, which mirror `eslint-plugin-jsx-a11y`)
+sees "click handler on a non-interactive element with no keyboard listener"
+— but it has no way to know that Escape is already wired up via the native
+`cancel` event in a `useEffect` elsewhere in the same component, or that a
+visible, always-reachable Cancel/Close button provides full keyboard
+dismissal. Backdrop-click is a supplementary mouse-only convenience on top
+of an already fully keyboard-accessible modal, not the sole means of
+dismissal the rule assumes is missing.
+
+Restructuring around this (e.g. turning the clickable region into an actual
+`<button>` wrapping/behind the panel) was considered and rejected: there is
+no separate backdrop DOM node to move the handler to — native `<dialog>` +
+`showModal()` renders the click-catching area as the dialog's own box (a
+browser-generated `::backdrop` click is dispatched with the dialog element
+itself as `event.target`) — so achieving this would mean inventing an
+artificial nested-button backdrop purely to satisfy a linter, adding real
+layout complexity (absolute positioning, z-index, duplicated in two files)
+against CLAUDE.md's "prefer simple, maintainable solutions" for a case that
+isn't actually inaccessible. Documented in each component with an inline
+comment explaining the reasoning to future readers; these four findings
+should be marked "Won't Fix"/"False Positive" directly in SonarQube, since
+that's outside what a code change controls.
+
+`pnpm lint`/`test`/`build` pass on both packages (190 backend + 67 frontend
+tests, all pre-existing — no new tests needed, since none of these changes
+alter observable behavior).

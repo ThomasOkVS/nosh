@@ -25,6 +25,7 @@ import type { RecipeImage, RecipeInput } from "../api/types";
 import { AutoGrowTextarea } from "../components/AutoGrowTextarea";
 import { Skeleton } from "../components/Skeleton";
 import { TagInput } from "../components/TagInput";
+import { generateId } from "../lib/id";
 import { buttonClass, errorBannerClass, inputClass, labelClass, sectionCardClass, sectionHeadingClass } from "../styles";
 import { useToast } from "../toast/ToastContext";
 
@@ -41,11 +42,11 @@ interface StepRow {
 }
 
 function createEmptyIngredient(): IngredientRow {
-  return { id: crypto.randomUUID(), quantity: "", unit: "", name: "" };
+  return { id: generateId(), quantity: "", unit: "", name: "" };
 }
 
 function createEmptyStep(): StepRow {
-  return { id: crypto.randomUUID(), instruction: "" };
+  return { id: generateId(), instruction: "" };
 }
 
 function numberFieldValue(value: number | null | undefined): string {
@@ -130,7 +131,7 @@ export function RecipeFormPage() {
   const [ingredients, setIngredients] = useState<IngredientRow[]>(() =>
     imported?.ingredients.length
       ? imported.ingredients.map((ingredient) => ({
-          id: crypto.randomUUID(),
+          id: generateId(),
           quantity: ingredient.quantity ?? "",
           unit: ingredient.unit ?? "",
           name: ingredient.name,
@@ -139,7 +140,7 @@ export function RecipeFormPage() {
   );
   const [steps, setSteps] = useState<StepRow[]>(() =>
     imported?.steps.length
-      ? imported.steps.map((step) => ({ id: crypto.randomUUID(), instruction: step.instruction }))
+      ? imported.steps.map((step) => ({ id: generateId(), instruction: step.instruction }))
       : [createEmptyStep()],
   );
   const [tags, setTags] = useState<string[]>(imported?.tags ?? []);

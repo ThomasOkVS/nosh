@@ -93,7 +93,12 @@ function runYtDlpText(args: string[], signal: AbortSignal | undefined): Promise<
       { timeout: YT_DLP_TIMEOUT_MS, maxBuffer: 5 * 1024 * 1024, signal },
       (err, stdout, stderr) => {
         if (err) {
-          reject(Object.assign(err, { stderr }));
+          // Attach stderr to `err` in place, then reject with the bare `err`
+          // identifier — some static analyzers can't tell that
+          // Object.assign(err, ...)'s return value is still that same Error
+          // instance, and flag rejecting with it as if it might not be one.
+          Object.assign(err, { stderr });
+          reject(err);
           return;
         }
         resolve(stdout);
@@ -113,7 +118,10 @@ function runYtDlpBuffer(args: string[], signal: AbortSignal | undefined): Promis
       { timeout: YT_DLP_TIMEOUT_MS, maxBuffer: MAX_VIDEO_BYTES + 5 * 1024 * 1024, encoding: "buffer", signal },
       (err, stdout, stderr) => {
         if (err) {
-          reject(Object.assign(err, { stderr: stderr?.toString() }));
+          // See runYtDlpText above: mutate then reject with the bare
+          // identifier, not Object.assign's return value.
+          Object.assign(err, { stderr: stderr?.toString() });
+          reject(err);
           return;
         }
         resolve(stdout);

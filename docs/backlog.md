@@ -21,10 +21,10 @@ Confirm scope with the project owner before starting any of these — per
 go-ahead. Ordered per [index.md](index.md#planned-post-mvp)'s stated
 priority.
 
+- [ ] Recipe organization: collections and tag-based browsing.
 - [ ] View tokens left / model selector for magic import
 - [ ] Auto translate imported recipes to the user's native language and preferred units of measure.
 - [ ] Smart unit conversions and recipe scaling.
-- [ ] Recipe organization: collections and tag-based browsing.
 - [ ] Notes & ratings on recipes.
 - [ ] Nutrition info via an external nutrition database.
 - [ ] Active cooking mode (ingredients can be checked of, cooking steps can be checked off, other ideas?).
@@ -39,6 +39,48 @@ priority.
 
 ## Completed
 
+- **2026-08-19** — Resolved a 9-finding SonarQube scan (5 files): reduced
+  `imageFromUrl.ts`'s `fetchImageFromUrl` cognitive complexity from 21 to
+  under 15 by extracting three helper functions; rewrote two
+  `ingredientLine.ts` regexes flagged for backtracking risk into
+  single-`\d+`-per-pattern helpers composed by hand; fixed two
+  `socialVideo.ts` `reject(Object.assign(err, ...))` calls to reject with the
+  bare `err` identifier instead. The remaining four findings (`ConfirmDialog`/
+  `ImportDialog`'s backdrop-click `onClick` on `<dialog>`) were investigated
+  and confirmed a false positive for native `<dialog>` light-dismiss — see
+  [decisions.md](decisions.md#2026-08-19-sonarqube-pass-9-findings-across-5-files)
+  for why, and why they should be marked won't-fix in SonarQube directly
+  rather than worked around in code. No behavior changes; `pnpm lint`/`test`/
+  `build` pass on both packages (190 backend + 67 frontend tests, all
+  pre-existing).
+- **2026-08-19** — Header consolidated into a `UserMenu` dropdown (username
+  click → theme toggle, log out, and the running build's short commit hash),
+  replacing the separate always-visible username/toggle/logout controls
+  (`ThemeToggle.tsx` deleted, folded into `UserMenu`). Version is threaded
+  through as a build-time `VITE_APP_VERSION` arg set to the same `github.sha`
+  CI already tags images with, so it always matches a real, rollback-able
+  image tag — no semver process introduced. Needed a new higher-opacity
+  `.glass-menu` variant after the first pass's standard `.glass` panel was
+  flagged live as too transparent over the recipe grid behind it. See
+  [decisions.md](decisions.md#2026-08-19-header-consolidated-into-a-usermenu-dropdown-app-version-shown-via-build-time-commit-sha)
+  and [design-system.md#anchored-menus--popovers](design-system.md#anchored-menus--popovers).
+  `pnpm lint`/`test`/`build` pass (67 frontend tests, including new
+  `UserMenu` coverage). Verified live against the running dev server, both
+  themes, desktop and mobile widths, and a real login → open menu → toggle
+  theme → log out round trip.
+- **2026-08-19** — Fixed a production white-screen crash reported live:
+  `crypto.randomUUID()` (used to key ingredient/step rows in
+  `RecipeFormPage.tsx`) is restricted to secure browser contexts and is
+  `undefined` on the homelab's plain-HTTP Tailscale origin, even though it
+  works fine under `localhost` in dev. Fixed with a `crypto.getRandomValues()`
+  fallback (`frontend/src/lib/id.ts`, no secure-context restriction). Audited
+  the rest of the frontend for the same class of bug — no other
+  secure-context-only API in use; `vite-plugin-pwa`'s service worker
+  registration is the one other instance, but it already fails silently
+  rather than crashing. See
+  [decisions.md](decisions.md#2026-08-19-production-white-screen-fixed-cryptorandomuuid-needs-a-secure-context-fallback).
+  `pnpm lint`/`test`/`build` pass (61 frontend tests, including new
+  `generateId` coverage).
 - **2026-08-13** — Auto-import the source page's photo during URL import
   (deferred from the 2026-08-11 import work). The image URL is now
   discovered during `/import` itself — schema.org `image` for JSON-LD, an

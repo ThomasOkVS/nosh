@@ -9,10 +9,17 @@
 # must be supplied as a build arg, not a container env var. See
 # docs/decisions.md for how this is wired up in CI and what to do if the
 # homelab's Tailscale address ever changes.
+#
+# VITE_APP_VERSION is the same mechanism, used to show the running commit SHA
+# in the UI (see frontend/src/components/UserMenu.tsx) — CI passes the same
+# github.sha it tags the image with, so what's displayed always matches the
+# tag a rollback would pin TAG to.
 
 FROM node:22-alpine AS build
 ARG VITE_API_URL
+ARG VITE_APP_VERSION
 ENV VITE_API_URL=$VITE_API_URL
+ENV VITE_APP_VERSION=$VITE_APP_VERSION
 RUN corepack enable
 WORKDIR /repo
 COPY . .

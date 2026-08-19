@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
 /* Tailwind v4 defaults `dark:` to `prefers-color-scheme`. We toggle a `.dark`
-   class on <html> instead (see ThemeToggle + the inline script in index.html),
-   so redefine what the `dark:` variant matches. */
+   class on <html> instead (see UserMenu's theme toggle + the inline script in
+   index.html), so redefine what the `dark:` variant matches. */
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
@@ -95,6 +95,33 @@ body {
   background: rgba(30, 32, 38, 0.55);
   border-color: rgba(255, 255, 255, 0.08);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+}
+
+/* Higher-opacity glass for small anchored menus (e.g. UserMenu) — see
+   docs/design-system.md#anchored-menus--popovers. Standard .glass's
+   translucency is tuned for panels that either sit over the app's own
+   fairly uniform surface (the sticky header) or have their own dimmed
+   backdrop behind them (ConfirmDialog/ImportDialog's <dialog>::backdrop). An
+   anchored dropdown has neither: it opens directly over whatever's on the
+   page below it — which can be a photo-heavy recipe grid — with no scrim of
+   its own, so standard .glass read as too see-through to stay legible there. */
+.glass-menu {
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  box-shadow: 0 8px 32px rgba(35, 32, 28, 0.12);
+}
+
+@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+  .glass-menu {
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+  }
+}
+
+.dark .glass-menu {
+  background: rgba(30, 32, 38, 0.92);
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
 }
 
 /* Fixed-dark glass for panels floating over user photos (not app chrome) —

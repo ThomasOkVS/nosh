@@ -134,7 +134,13 @@ export function ImportDialog() {
       ref={dialogRef}
       aria-labelledby="import-dialog-title"
       // Clicking the backdrop lands directly on the <dialog> element itself
-      // (its content is all in descendants) — same as ConfirmDialog.
+      // (its content is all in descendants) — same as ConfirmDialog, and
+      // same reasoning there for why a11y linters' "non-interactive element
+      // with a click handler" complaint here is a false positive: Escape
+      // (backgrounds the import, doesn't cancel it) is handled via the
+      // native `cancel` event above, and the close button is always
+      // reachable — backdrop-click is a supplementary mouse convenience, not
+      // the only way to dismiss this dialog.
       onClick={(event) => {
         if (event.target === dialogRef.current) closeDialog();
       }}
