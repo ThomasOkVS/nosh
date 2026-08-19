@@ -7,6 +7,7 @@ import { Router } from "express";
 import multer from "multer";
 import type { Pool } from "pg";
 import { requireAuth } from "../middleware/requireAuth";
+import { listCollectionsForRecipe } from "../repositories/collections";
 import {
   addRecipeImage,
   createRecipe,
@@ -138,9 +139,10 @@ export function createRecipesRouter(
       res.status(401).json({ error: "Not authenticated" });
       return;
     }
+    const tag = typeof req.query.tag === "string" ? req.query.tag.trim() : undefined;
 
     try {
-      const recipes = await listRecipesByUser(pool, userId);
+      const recipes = await listRecipesByUser(pool, userId, { tag });
       res.json(recipes);
     } catch (err) {
       next(err);
@@ -158,9 +160,10 @@ export function createRecipesRouter(
       res.status(400).json({ error: "Query parameter 'q' is required" });
       return;
     }
+    const tag = typeof req.query.tag === "string" ? req.query.tag.trim() : undefined;
 
     try {
-      const recipes = await searchRecipes(pool, userId, query);
+      const recipes = await searchRecipes(pool, userId, query, { tag });
       res.json(recipes);
     } catch (err) {
       next(err);
@@ -181,6 +184,21 @@ export function createRecipesRouter(
         return;
       }
       res.json(recipe);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.get("/:id/collections", requireRecipeOwnership(pool), async (req, res, next) => {
+    const id = parseId(req.params.id);
+    if (id === null) {
+      res.status(400).json({ error: "Invalid recipe id" });
+      return;
+    }
+
+    try {
+      const collections = await listCollectionsForRecipe(pool, id);
+      res.json(collections);
     } catch (err) {
       next(err);
     }

@@ -82,10 +82,29 @@ even though there is exactly one user today — see
 - **tags** — `id`, `name`
 - **recipe_tags** — `recipe_id`, `tag_id` (join table)
 - **recipe_images** — `id`, `recipe_id`, `file_path`, `position`
+- **collections** — `id`, `user_id`, `name`, `created_at`. A named,
+  user-curated grouping of recipes — see [Collections](#collections) below for
+  how this differs from tags.
+- **recipe_collections** — `recipe_id`, `collection_id` (join table)
 
-Not modeled yet, deliberately: collections, ratings/notes, nutrition facts, meal
-plans, grocery lists. These are post-MVP (see [index.md](index.md)) and will
-get their own migrations when built, rather than speculative columns now.
+Not modeled yet, deliberately: ratings/notes, nutrition facts, meal plans,
+grocery lists. These are post-MVP (see [index.md](index.md)) and will get their
+own migrations when built, rather than speculative columns now.
+
+## Collections
+
+Collections are many-to-many with recipes, structurally identical to
+`tags`/`recipe_tags` — but kept as a genuinely separate concept rather than
+folded into tags, because a collection is explicitly named and
+created/renamed/deleted by the user (`collections.user_id` gives it the same
+ownership identity `recipes` has), whereas a tag is attribute-like: free-text,
+and implicitly created/destroyed as a side effect of editing a recipe's tag
+list. Membership isn't part of `RecipeInput`/the recipe create-update payload
+— like image upload, it's a side-effecting relationship managed through its
+own endpoints (`POST`/`DELETE /collections/:id/recipes/:id`), only once a real
+recipe id exists. See
+[decisions.md](decisions.md#2026-08-19-collections-added-as-a-first-class-concept-distinct-from-tags-tag-browsing-via-a-query-param)
+for the full reasoning.
 
 ## Search
 
@@ -94,8 +113,14 @@ Postgres full-text search (`tsvector`/`tsquery`) over `recipes.title`,
 indexed `recipes.search_vector` column. Chosen over plain `LIKE` queries for
 relevance ranking, and over a dedicated search engine (Elasticsearch/Meilisearch)
 because it needs no extra infrastructure and comfortably handles a personal-scale
-recipe collection. Faceted filters (tag, cook time, etc.) can be added as plain
-`WHERE` clauses alongside the full-text query later.
+recipe collection. Tag-based browsing is implemented as an optional `tag` query
+param on `GET /recipes` and `GET /recipes/search`, combinable with the
+full-text query — an `EXISTS` subquery against `recipe_tags`/`tags` rather than
+a `JOIN`, so it can't multiply rows or disturb `ORDER BY`/`ts_rank`. Reached by
+clicking a tag chip on a recipe card or the detail page, which hands off to the
+list page pre-filtered via `/?tag=…`; there's no separate "browse all tags"
+listing UI — an early version had one (backed by a `GET /recipes/tags`
+endpoint), but it read as clutter above the recipe grid and was removed.
 
 Since the search corpus spans four tables, `search_vector` can't be a single
 `GENERATED ALWAYS AS` column (Postgres generated columns only see their own

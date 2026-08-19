@@ -11,7 +11,9 @@ import { useCallback, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { deleteRecipe, getRecipe, recipeImageUrl } from "../api/recipes";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { RecipeCollectionsEditor } from "../components/RecipeCollectionsEditor";
 import { Skeleton } from "../components/Skeleton";
+import { TagChip } from "../components/TagChip";
 import { useAsync } from "../hooks/useAsync";
 import { buttonClass, errorBannerClass, sectionHeadingClass } from "../styles";
 import { useToast } from "../toast/ToastContext";
@@ -136,9 +138,12 @@ export function RecipeDetailPage() {
             {recipe.tags.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-1">
                 {recipe.tags.map((tag) => (
-                  <span key={tag} className="rounded-full bg-white/20 px-2 py-0.5 text-xs capitalize text-white">
-                    {tag}
-                  </span>
+                  <TagChip
+                    key={tag}
+                    tag={tag}
+                    variant="overlay"
+                    onClick={(t) => navigate(`/?tag=${encodeURIComponent(t)}`)}
+                  />
                 ))}
               </div>
             )}
@@ -160,12 +165,7 @@ export function RecipeDetailPage() {
           {recipe.tags.length > 0 && (
             <div className="flex flex-wrap gap-1">
               {recipe.tags.map((tag) => (
-                <span
-                  key={tag}
-                  className="rounded-full bg-teal-50 px-2 py-0.5 text-xs capitalize text-teal-700 dark:bg-teal-500/15 dark:text-teal-300"
-                >
-                  {tag}
-                </span>
+                <TagChip key={tag} tag={tag} onClick={(t) => navigate(`/?tag=${encodeURIComponent(t)}`)} />
               ))}
             </div>
           )}
@@ -207,6 +207,8 @@ export function RecipeDetailPage() {
           ))}
         </div>
       )}
+
+      <RecipeCollectionsEditor recipeId={recipe.id} />
 
       {recipe.ingredients.length > 0 && (
         <section>

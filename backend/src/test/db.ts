@@ -6,6 +6,8 @@ const ALL_TABLES = [
   "recipe_images",
   "recipe_tags",
   "tags",
+  "recipe_collections",
+  "collections",
   "steps",
   "ingredients",
   "recipes",

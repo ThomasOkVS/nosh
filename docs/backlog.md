@@ -21,7 +21,7 @@ Confirm scope with the project owner before starting any of these — per
 go-ahead. Ordered per [index.md](index.md#planned-post-mvp)'s stated
 priority.
 
-- [ ] Recipe organization: collections and tag-based browsing.
+- [ ] Allow mobile users to close the app during import, and get a push notification once it's done
 - [ ] View tokens left / model selector for magic import
 - [ ] Auto translate imported recipes to the user's native language and preferred units of measure.
 - [ ] Smart unit conversions and recipe scaling.
@@ -39,6 +39,52 @@ priority.
 
 ## Completed
 
+- **2026-08-19** — Recipe organization: collections and tag-based browsing
+  shipped. Collections are simple named lists (many-to-many with recipes, no
+  description/cover/ordering) — a new `collections`/`recipe_collections`
+  table pair modeled on `tags`/`recipe_tags` but with their own
+  `user_id`/CRUD identity, managed via a new `/collections` router and a
+  `RecipeCollectionsEditor` on the recipe detail page (add/remove/create,
+  never through the recipe form itself). Tag-based browsing is an optional
+  `tag` query param on `GET /recipes`/`GET /recipes/search` (an `EXISTS`
+  subquery, combinable with text search), reached only by clicking a tag
+  already shown on a recipe — an earlier pass also added a standalone
+  filter-chip row above the recipe grid, but a live look at the running app
+  showed it as clutter and it was cut, along with the `GET /recipes/tags`
+  endpoint that only existed to feed it. Manual tag entry
+  (`TagInput`)/the fixed import vocabulary are both unchanged, per scope
+  agreed before starting. See
+  [decisions.md](decisions.md#2026-08-19-collections-added-as-a-first-class-concept-distinct-from-tags-tag-browsing-via-a-query-param)
+  for the collections-vs-tags reasoning and a real bug caught only by live
+  browser verification (`TagChip` needed `preventDefault`, not just
+  `stopPropagation`, to stop `RecipeCard`'s wrapping `Link` from navigating —
+  jsdom doesn't simulate that enough for the test suite to have caught it).
+  `pnpm lint`/`test`/`build` pass on both packages (205 backend + 84 frontend
+  tests). Verified live end-to-end against the running dev stack: full
+  collection CRUD, add/remove membership from both the popover's existing
+  list and the inline "new collection" path, tag-chip-driven filtering
+  (alone and combined with search), and confirmed deleting a recipe leaves
+  its collections untouched and vice versa. Also had to run a manual
+  `pnpm migrate up` against the dev database mid-session — the dev backend
+  container doesn't auto-migrate on start, so the new migration wasn't
+  applied until then; the same step will be needed on the real deploy.
+
+  **Follow-up same day**, from live user feedback: `CollectionsPage`'s
+  header/empty-state didn't match the rest of the app — the create form sat
+  left-aligned below a plain title instead of the "title left, primary
+  action right" row every other list page uses, and the empty state was a
+  single line of text instead of the icon/heading/subtext pattern
+  `RecipeListPage` established. Both fixed to match. Separately, the create
+  and rename forms (`CollectionsPage`, `RecipeCollectionsEditor`,
+  `CollectionDetailPage`) silently no-op on an empty/whitespace name with no
+  toast or visual feedback — indistinguishable from "the button doesn't do
+  anything" if clicked before typing — so their submit buttons are now
+  `disabled` until there's real input, same as the pattern already used
+  elsewhere for disabled states. (Also traced a separate red herring while
+  investigating: a click-automation tool used for verification was
+  intermittently unreliable against a non-composited browser tab and
+  produced a few false "the button did nothing" readings of its own — real
+  user clicks in an actual browser aren't affected by that.)
 - **2026-08-19** — Resolved a 9-finding SonarQube scan (5 files): reduced
   `imageFromUrl.ts`'s `fetchImageFromUrl` cognitive complexity from 21 to
   under 15 by extracting three helper functions; rewrote two

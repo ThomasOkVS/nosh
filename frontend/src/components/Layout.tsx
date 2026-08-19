@@ -10,7 +10,15 @@ export function Layout() {
           <Link to="/" className="font-display text-xl font-extrabold text-citrus-500">
             Nosh
           </Link>
-          <UserMenu />
+          <nav className="flex items-center gap-1">
+            <Link
+              to="/collections"
+              className="flex h-11 items-center rounded-full px-3 text-sm text-ink-muted transition-colors duration-standard ease-standard hover:bg-surface-sunken hover:text-ink"
+            >
+              Collections
+            </Link>
+            <UserMenu />
+          </nav>
         </div>
       </header>
       <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
