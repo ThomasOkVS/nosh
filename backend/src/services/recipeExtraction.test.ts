@@ -36,8 +36,8 @@ describe("extractRecipeFromUrl", () => {
 
     const result = await extractRecipeFromUrl("https://example.com/recipe", { fetchImpl, geminiExtract });
 
-    expect(result.title).toBe("Tomato Soup");
-    expect(result.sourceUrl).toBe("https://example.com/recipe");
+    expect(result.recipe.title).toBe("Tomato Soup");
+    expect(result.recipe.sourceUrl).toBe("https://example.com/recipe");
     expect(geminiExtract).not.toHaveBeenCalled();
   });
 
@@ -54,8 +54,8 @@ describe("extractRecipeFromUrl", () => {
     const result = await extractRecipeFromUrl("https://example.com/recipe", { fetchImpl, geminiExtract });
 
     expect(geminiExtract).toHaveBeenCalledTimes(1);
-    expect(result.title).toBe("Tomato Soup");
-    expect(result.sourceUrl).toBe("https://example.com/recipe");
+    expect(result.recipe.title).toBe("Tomato Soup");
+    expect(result.recipe.sourceUrl).toBe("https://example.com/recipe");
   });
 
   it("extracts JSON-LD with no Gemini configured", async () => {
@@ -63,7 +63,7 @@ describe("extractRecipeFromUrl", () => {
 
     const result = await extractRecipeFromUrl("https://example.com/recipe", { fetchImpl });
 
-    expect(result.title).toBe("Tomato Soup");
+    expect(result.recipe.title).toBe("Tomato Soup");
   });
 
   it("throws NotConfiguredError when the fallback is needed but no Gemini is configured", async () => {
@@ -99,7 +99,7 @@ describe("extractRecipeFromUrl", () => {
       fetchImpl,
       geminiExtract,
     });
-    expect(result.title).toBe("Tomato Soup");
+    expect(result.recipe.title).toBe("Tomato Soup");
   });
 
   it("drops off-vocabulary tags rather than failing the whole import", async () => {
@@ -115,7 +115,7 @@ describe("extractRecipeFromUrl", () => {
       fetchImpl,
       geminiExtract,
     });
-    expect(result.tags).toEqual(["vegan"]);
+    expect(result.recipe.tags).toEqual(["vegan"]);
   });
 
   it("rejects a redirect into a blocked host", async () => {
@@ -140,7 +140,7 @@ describe("extractRecipeFromUrl", () => {
       fetchImpl,
       geminiExtract: vi.fn(),
     });
-    expect(result.title).toBe("Tomato Soup");
+    expect(result.recipe.title).toBe("Tomato Soup");
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
@@ -221,8 +221,86 @@ describe("extractRecipeFromUrl", () => {
   });
 });
 
+describe("extractRecipeFromUrl — image discovery", () => {
+  it("returns the JSON-LD image, resolved against the page URL", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      htmlResponse(pageWithJsonLd({ ...RECIPE_JSON_LD, image: "/img/soup.jpg" })),
+    );
+
+    const result = await extractRecipeFromUrl("https://example.com/recipe", {
+      fetchImpl,
+      geminiExtract: vi.fn(),
+    });
+    expect(result.imageUrl).toBe("https://example.com/img/soup.jpg");
+  });
+
+  it("falls back to an og:image meta tag when JSON-LD has no image", async () => {
+    const html = `<html><head>
+        <meta property="og:image" content="https://example.com/hero.jpg">
+        <script type="application/ld+json">${JSON.stringify(RECIPE_JSON_LD)}</script>
+      </head></html>`;
+    const fetchImpl = vi.fn().mockResolvedValue(htmlResponse(html));
+
+    const result = await extractRecipeFromUrl("https://example.com/recipe", {
+      fetchImpl,
+      geminiExtract: vi.fn(),
+    });
+    expect(result.imageUrl).toBe("https://example.com/hero.jpg");
+  });
+
+  it("still finds an og:image on the Gemini-fallback path", async () => {
+    const html = `<html><head>
+        <meta property="og:image" content="https://example.com/hero.jpg">
+      </head><body><h1>Tomato Soup</h1></body></html>`;
+    const fetchImpl = vi.fn().mockResolvedValue(htmlResponse(html));
+    const geminiExtract = vi.fn().mockResolvedValue({
+      title: "Tomato Soup",
+      ingredients: [{ quantity: null, unit: null, name: "tomatoes" }],
+      steps: [{ instruction: "Simmer" }],
+    });
+
+    const result = await extractRecipeFromUrl("https://example.com/recipe", { fetchImpl, geminiExtract });
+    expect(result.imageUrl).toBe("https://example.com/hero.jpg");
+  });
+
+  it("returns null when the page has no image at all", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(htmlResponse(pageWithJsonLd(RECIPE_JSON_LD)));
+
+    const result = await extractRecipeFromUrl("https://example.com/recipe", {
+      fetchImpl,
+      geminiExtract: vi.fn(),
+    });
+    expect(result.imageUrl).toBeNull();
+  });
+
+  it("returns yt-dlp's thumbnail for a social video import", async () => {
+    const downloadSocialVideo = vi.fn().mockResolvedValue({
+      videoBuffer: Buffer.from("fake"),
+      mimeType: "video/mp4",
+      caption: null,
+      thumbnailUrl: "https://cdn.example.com/thumb.jpg",
+    });
+    const geminiVideoExtract = vi.fn().mockResolvedValue({
+      title: "Tomato Soup",
+      ingredients: [{ quantity: null, unit: null, name: "tomatoes" }],
+      steps: [{ instruction: "Simmer" }],
+    });
+
+    const result = await extractRecipeFromUrl("https://www.instagram.com/p/abc123/", {
+      downloadSocialVideo,
+      geminiVideoExtract,
+    });
+    expect(result.imageUrl).toBe("https://cdn.example.com/thumb.jpg");
+  });
+});
+
 describe("extractRecipeFromUrl — Instagram/TikTok video path", () => {
-  const FAKE_VIDEO = { videoBuffer: Buffer.from("fake"), mimeType: "video/mp4", caption: "1kg tomatoes" };
+  const FAKE_VIDEO = {
+    videoBuffer: Buffer.from("fake"),
+    mimeType: "video/mp4",
+    caption: "1kg tomatoes",
+    thumbnailUrl: null,
+  };
 
   it("skips the HTML fetch entirely and goes straight to video download + Gemini", async () => {
     const fetchImpl = vi.fn();
@@ -250,8 +328,8 @@ describe("extractRecipeFromUrl — Instagram/TikTok video path", () => {
       undefined,
     );
     expect(stages).toEqual(["downloading-video", "analyzing-video"]);
-    expect(result.title).toBe("Tomato Soup");
-    expect(result.sourceUrl).toBe("https://www.instagram.com/p/abc123/");
+    expect(result.recipe.title).toBe("Tomato Soup");
+    expect(result.recipe.sourceUrl).toBe("https://www.instagram.com/p/abc123/");
   });
 
   it("recognizes TikTok URLs the same way", async () => {
@@ -266,7 +344,7 @@ describe("extractRecipeFromUrl — Instagram/TikTok video path", () => {
       downloadSocialVideo,
       geminiVideoExtract,
     });
-    expect(result.title).toBe("Noodles");
+    expect(result.recipe.title).toBe("Noodles");
   });
 
   it("throws NotConfiguredError without downloading anything when no video-capable Gemini is set", async () => {

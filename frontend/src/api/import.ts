@@ -8,8 +8,16 @@ interface ImportMessage {
   type?: unknown;
   stage?: unknown;
   recipe?: unknown;
+  imageUrl?: unknown;
   status?: unknown;
   error?: unknown;
+}
+
+export interface ImportResult {
+  recipe: RecipeInput;
+  /** The recipe's photo, found on a best-effort basis — null when the page
+   * (or video) had no discoverable image. */
+  imageUrl: string | null;
 }
 
 /**
@@ -26,7 +34,7 @@ export async function importRecipeFromUrl(
   url: string,
   onStage?: (stage: ImportStage) => void,
   signal?: AbortSignal,
-): Promise<RecipeInput> {
+): Promise<ImportResult> {
   const response = await fetch(apiUrl("/import"), {
     method: "POST",
     credentials: "include",
@@ -52,7 +60,7 @@ export async function importRecipeFromUrl(
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-  let result: RecipeInput | null = null;
+  let result: ImportResult | null = null;
 
   const handle = (line: string): void => {
     if (!line.trim()) return;
@@ -68,7 +76,10 @@ export async function importRecipeFromUrl(
         if (typeof message.stage === "string") onStage?.(message.stage as ImportStage);
         break;
       case "result":
-        result = message.recipe as RecipeInput;
+        result = {
+          recipe: message.recipe as RecipeInput,
+          imageUrl: typeof message.imageUrl === "string" ? message.imageUrl : null,
+        };
         break;
       case "error":
         throw new ApiError(

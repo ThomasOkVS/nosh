@@ -53,6 +53,10 @@ export interface DownloadedVideo {
   videoBuffer: Buffer;
   mimeType: string;
   caption: string | null;
+  /** yt-dlp's own thumbnail URL for the post, if it reported one — lets the
+   * import flow auto-attach a photo without any extra request beyond the
+   * metadata call already made below. */
+  thumbnailUrl: string | null;
 }
 
 export type SocialVideoDownloadFn = (url: URL, signal?: AbortSignal) => Promise<DownloadedVideo>;
@@ -60,6 +64,7 @@ export type SocialVideoDownloadFn = (url: URL, signal?: AbortSignal) => Promise<
 interface YtDlpInfo {
   duration?: number;
   description?: string | null;
+  thumbnail?: string | null;
 }
 
 /** yt-dlp's stderr has the real reason (private account, deleted post,
@@ -177,5 +182,7 @@ export async function downloadSocialVideo(url: URL, signal?: AbortSignal): Promi
 
   const caption =
     typeof info.description === "string" && info.description.trim() ? info.description.trim() : null;
-  return { videoBuffer, mimeType: "video/mp4", caption };
+  const thumbnailUrl =
+    typeof info.thumbnail === "string" && info.thumbnail.trim() ? info.thumbnail.trim() : null;
+  return { videoBuffer, mimeType: "video/mp4", caption, thumbnailUrl };
 }

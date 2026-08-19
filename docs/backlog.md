@@ -21,10 +21,6 @@ Confirm scope with the project owner before starting any of these — per
 go-ahead. Ordered per [index.md](index.md#planned-post-mvp)'s stated
 priority.
 
-- [ ] Auto-import the source page's photo during URL import — deferred from
-  the 2026-08-11 import work because recipe photos currently require an
-  already-saved recipe id, so this needs either that constraint lifted or a
-  post-save fetch step.
 - [ ] View tokens left / model selector for magic import
 - [ ] Auto translate imported recipes to the user's native language and preferred units of measure.
 - [ ] Smart unit conversions and recipe scaling.
@@ -43,6 +39,30 @@ priority.
 
 ## Completed
 
+- **2026-08-13** — Auto-import the source page's photo during URL import
+  (deferred from the 2026-08-11 import work). The image URL is now
+  discovered during `/import` itself — schema.org `image` for JSON-LD, an
+  `og:image`/`twitter:image` meta tag as the shared fallback for the
+  incomplete-JSON-LD and Gemini-fallback cases, and `yt-dlp`'s own
+  `thumbnail` field for Reels/TikTok (no extra request) — and carried
+  alongside the pre-filled recipe through the same router-state handoff.
+  Rather than lifting the "recipe must exist before an image can attach to
+  it" constraint, a new `POST /recipes/:id/images/from-url` fetches the
+  bytes once the user saves and a real id exists; that fetch reuses
+  `recipeExtraction.ts`'s SSRF guard and manual redirect re-validation,
+  since the URL travels back from the browser in a request body. Best-effort
+  from the frontend's point of view — the recipe is already saved by the
+  time this runs, so a failure just toasts "Couldn't import the photo — add
+  one manually" rather than failing the save. See
+  [decisions.md](decisions.md#2026-08-13-recipe-photo-auto-import--post-save-fetch-not-staged-uploads)
+  for the full reasoning, including why staged pre-save uploads were
+  rejected. `pnpm lint`/`test`/`build` pass (190 backend + 59 frontend
+  tests). **Verified live end-to-end** against a real BBC Good Food page
+  (confirmed beforehand to have both a JSON-LD `ImageObject` and an
+  `og:image`) — network trace confirmed the save → attach → re-fetch
+  sequence, with the photo rendering in the edit form. **Not verified live:
+  the yt-dlp-thumbnail and Gemini-fallback-og:image paths** — only covered
+  by unit tests this session.
 - **2026-08-12** — LLM-based recipe import from Instagram Reels/TikTok
   shipped (the remaining half of the original import backlog item; URL
   import shipped 2026-08-11). Same `/import` endpoint and `source_url`

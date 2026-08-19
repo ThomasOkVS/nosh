@@ -1131,3 +1131,125 @@ looking at stale code. Nothing found to actually be wrong when spot-checked
 after the fix, but this is why "verified live" claims earlier in this file
 are trustworthy only to the extent they were paired with a rebuild or came
 before the gap between rebuilds grew long.
+
+## 2026-08-13: Recipe photo auto-import — post-save fetch, not staged uploads
+
+**Decision:** The backlog item deferred from the 2026-08-11 URL-import work
+("recipe photos currently require an already-saved recipe id") is resolved
+by discovering the image URL during `/import` and attaching it via a *new*
+step that runs right after the normal save, rather than by loosening the
+"recipe must exist" constraint on image uploads. Concretely: `/import`'s
+NDJSON result now carries an `imageUrl` alongside the recipe (schema.org
+`image` for JSON-LD, an `og:image`/`twitter:image` meta tag as the shared
+fallback for both the incomplete-JSON-LD and Gemini-fallback cases, and
+`yt-dlp`'s own `thumbnail` field for Reels/TikTok — no extra request in that
+last case, since the metadata call already happens for duration/caption).
+Once the user saves through the existing `POST /recipes` and a real id comes
+back, the frontend calls a new `POST /recipes/:id/images/from-url` with that
+URL, which fetches the bytes server-side and writes them through the same
+`addRecipeImage` path a manual upload uses.
+
+**Why not stage the upload before the recipe exists:** considered adding a
+draft/orphaned-image table adopted at save time, which would let images
+attach in the same request as the recipe data. Rejected — it needs an
+abandoned-upload cleanup job (imports that are never saved would otherwise
+leak files indefinitely) for no real benefit over a second request, since
+import already reviews-then-saves as two steps regardless of images.
+
+**Why the fetch needs the same SSRF guard as the original page fetch:**
+`imageUrl` travels back from the browser in the `from-url` request body —
+it originated from the server's own page scrape, but nothing about that
+request proves it wasn't tampered with by an authenticated user pointing it
+at an internal address instead. `services/imageFromUrl.ts` reuses
+`recipeExtraction.ts`'s `validateUrl` (now exported for this) rather than
+re-implementing the blocked-host check, and re-validates on every manual
+redirect hop the same way the page fetch does. Content-type is checked
+against the same `IMAGE_MIME_EXTENSIONS` allowlist the manual multipart
+upload enforces (moved into `imageFromUrl.ts` as the one shared definition,
+since both directions of "what counts as an image this app will store" need
+to agree), and size is capped at the same 5MB multer already enforces on a
+manual upload — an auto-imported photo shouldn't be held to a looser
+standard than one the user picks themselves.
+
+**Why a failure here can't fail the save:** by the time this call runs, the
+recipe is already committed — a 404, blocked host, unsupported type, or
+oversized image only means "no photo", not "the save failed". The frontend
+awaits the attach call so the user sees the photo immediately after landing
+on the edit page when it succeeds, but on failure it swallows the error and
+toasts "Couldn't import the photo — add one manually" via the existing
+`useToast()`, the same non-blocking pattern used elsewhere (delete/upload
+failures on the form itself).
+
+**Status:** `pnpm lint`/`test`/`build` pass on both packages (190 backend +
+59 frontend tests, including new coverage for JSON-LD/meta-tag image
+extraction, yt-dlp thumbnail passthrough, the `from-url` fetch's redirect/
+size/content-type handling, and the frontend's best-effort attach-and-toast
+behavior). **Verified live end-to-end**: imported a real BBC Good Food page
+(confirmed beforehand to have both a JSON-LD `ImageObject` and an
+`og:image`), saved it, and watched the network trace confirm
+`POST /recipes` → `POST /recipes/:id/images/from-url` → the edit page's
+`GET /recipes/:id/images/:imageId` all succeed, with the photo actually
+rendering in the form. **Not verified live: the yt-dlp-thumbnail and
+Gemini-fallback-og:image paths** — covered by unit tests with fake
+extractors, but no real Reels/TikTok or JSON-LD-less import was run through
+this specific code path in this session; worth a spot-check before treating
+those two sources as proven end-to-end.
+
+## 2026-08-13: Frontend/backend dev container crash-loop on pnpm's deps-status check — fixed via `pnpm exec`, not the `.npmrc` route
+
+**Decision:** Both `frontend/Dockerfile.dev` and `backend/Dockerfile.dev` now
+run their dev command via `pnpm exec <binary> ...` (`pnpm exec vite --host`,
+`pnpm exec tsx watch src/index.ts`) instead of `pnpm dev`/`pnpm <script>`.
+The latter goes through `pnpm run`, which triggers a pre-script "dependency
+status check" (`runDepsStatusCheck`, visible in pnpm's own stack trace) —
+this check false-positives against the bind-mounted repo in this project's
+dev containers, decides a reinstall is needed, and then tries to
+interactively confirm purging `node_modules` with no TTY available,
+crash-looping the container forever
+(`ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY`). `pnpm exec` resolves and
+runs the binary directly without going through that pre-script machinery,
+sidestepping the false positive entirely rather than working around its
+symptom.
+
+**What actually confirmed the false positive:** a plain `pnpm install` run
+by hand inside the same bind-mounted container reported "Already up to
+date" instantly — so the lockfile genuinely does match what's installed.
+`runDepsStatusCheck` is a separate, cruder check than `pnpm install`'s own
+verification, and it disagreed with that ground truth specifically when a
+bind mount was involved: the identical image, run with no bind mount at all
+(`docker run` against the built image directly), started clean with no
+check failure whatsoever. The exact mechanism inside `runDepsStatusCheck`
+that gets fooled by a bind mount wasn't root-caused further (its comparison
+isn't a simple file-mtime check — the recorded `lastValidatedTimestamp` in
+`node_modules/.pnpm-workspace-state-v1.json` was already *older* than the
+bind-mounted manifests, the opposite of what a naive mtime-staleness check
+would need to misfire) — not worth chasing given `pnpm exec` avoids the
+whole code path.
+
+**Why not the fixes pnpm's own error message suggests
+(`CI=true` / `confirmModulesPurge: false`):** tried both. `CI=true` does
+work, but only by making pnpm answer "yes" to the purge and run a full
+reinstall — on *every single container start*, adding real startup latency
+indefinitely, since the underlying false positive never gets resolved, just
+auto-approved every time. `confirmModulesPurge: false` in a root `.npmrc`
+had no effect at all (verified via `pnpm config get`, which didn't even
+show pnpm picking it up in this context) and was removed again rather than
+left in as dead configuration.
+
+**A compounding trap hit while diagnosing this:** `docker compose up
+--force-recreate` (without `-v`) does *not* discard a container's anonymous
+volumes — so several early attempts to test a fix kept reusing a
+`node_modules` volume that had been left in a partial/interrupted state by
+earlier crash-loop attempts, making a real fix look like it hadn't worked.
+`docker compose rm -f -s -v <service>` (or `down`, which removes the
+container network but not named volumes like `postgres_data`) is needed to
+get a genuinely fresh anonymous volume when recovering from this state —
+worth remembering for any future dev-container debugging in this repo.
+
+**Status:** Fixed and verified: both containers now start cleanly from a
+completely fresh `docker compose down` + `up` (no `--force-recreate`
+needed), stay up rather than crash-looping, and the frontend serves the
+real app in a browser pointed at `localhost:5173`. Backend was already
+unaffected in most manual tests during this session, but was switched to
+the same `pnpm exec` pattern for consistency and to close off the same
+failure mode before it has a chance to appear there too.

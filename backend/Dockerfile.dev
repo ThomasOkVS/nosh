@@ -24,4 +24,7 @@ WORKDIR /repo/backend
 EXPOSE 3001
 
 USER node
-CMD ["pnpm", "dev"]
+# `pnpm exec tsx watch ...` rather than `pnpm dev` — see frontend/Dockerfile.dev
+# for why: `pnpm run`/`pnpm <script>` triggers a pre-script dependency-status
+# check that false-positives against the bind-mounted repo and crash-loops.
+CMD ["pnpm", "exec", "tsx", "watch", "src/index.ts"]

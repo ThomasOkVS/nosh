@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import request from "supertest";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createTestApp } from "../test/app";
 
 async function signedInAgent(
@@ -296,6 +296,73 @@ describe("recipe routes", () => {
       `/recipes/${createRes.body.id}/images/${uploadRes.body.id}`,
     );
     expect(deleteRes.status).toBe(204);
+
+    const getRes = await agent.get(`/recipes/${createRes.body.id}`);
+    expect(getRes.body.images).toHaveLength(0);
+  });
+
+  it("attaches an image fetched from a URL", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      new Response(Buffer.from("fake-image-bytes"), {
+        status: 200,
+        headers: { "content-type": "image/jpeg" },
+      }),
+    );
+    const app = createTestApp({ fetchImpl });
+    const agent = await signedInAgent(app, "alice@example.com");
+    const createRes = await agent.post("/recipes").send(samplePayload);
+
+    const res = await agent
+      .post(`/recipes/${createRes.body.id}/images/from-url`)
+      .send({ url: "https://example.com/soup.jpg" });
+
+    expect(res.status).toBe(201);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+
+    const getRes = await agent.get(`/recipes/${createRes.body.id}`);
+    expect(getRes.body.images).toHaveLength(1);
+  });
+
+  it("requires ownership to attach an image from a URL", async () => {
+    const fetchImpl = vi.fn();
+    const app = createTestApp({ fetchImpl });
+    const alice = await signedInAgent(app, "alice@example.com");
+    const bob = await signedInAgent(app, "bob@example.com");
+    const createRes = await alice.post("/recipes").send(samplePayload);
+
+    const res = await bob
+      .post(`/recipes/${createRes.body.id}/images/from-url`)
+      .send({ url: "https://example.com/soup.jpg" });
+
+    expect(res.status).toBe(404);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("rejects a from-url attach pointed at a blocked host", async () => {
+    const fetchImpl = vi.fn();
+    const app = createTestApp({ fetchImpl });
+    const agent = await signedInAgent(app, "alice@example.com");
+    const createRes = await agent.post("/recipes").send(samplePayload);
+
+    const res = await agent
+      .post(`/recipes/${createRes.body.id}/images/from-url`)
+      .send({ url: "http://169.254.169.254/latest/meta-data" });
+
+    expect(res.status).toBe(400);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a from-url fetch failure as a real status, not a 500", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response("not found", { status: 404 }));
+    const app = createTestApp({ fetchImpl });
+    const agent = await signedInAgent(app, "alice@example.com");
+    const createRes = await agent.post("/recipes").send(samplePayload);
+
+    const res = await agent
+      .post(`/recipes/${createRes.body.id}/images/from-url`)
+      .send({ url: "https://example.com/missing.jpg" });
+
+    expect(res.status).toBe(502);
 
     const getRes = await agent.get(`/recipes/${createRes.body.id}`);
     expect(getRes.body.images).toHaveLength(0);

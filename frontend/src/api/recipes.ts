@@ -31,6 +31,13 @@ export async function uploadRecipeImage(recipeId: number, file: File): Promise<R
   return apiFetch<RecipeImage>(`/recipes/${recipeId}/images`, { method: "POST", body: formData });
 }
 
+export function attachRecipeImageFromUrl(recipeId: number, url: string): Promise<RecipeImage> {
+  return apiFetch<RecipeImage>(`/recipes/${recipeId}/images/from-url`, {
+    method: "POST",
+    body: { url },
+  });
+}
+
 export function deleteRecipeImage(recipeId: number, imageId: number): Promise<void> {
   return apiFetch<void>(`/recipes/${recipeId}/images/${imageId}`, { method: "DELETE" });
 }
