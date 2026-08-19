@@ -1416,3 +1416,97 @@ that's outside what a code change controls.
 `pnpm lint`/`test`/`build` pass on both packages (190 backend + 67 frontend
 tests, all pre-existing — no new tests needed, since none of these changes
 alter observable behavior).
+
+## 2026-08-19: Collections added as a first-class concept distinct from tags; tag browsing via a query param
+
+**Decision:** Named, user-owned collections (many-to-many with recipes, no
+description/cover photo/ordering) modeled structurally after
+`tags`/`recipe_tags` but with their own `collections.user_id` and CRUD
+identity (create/rename/delete); tag-based browsing implemented as an
+optional `tag` query param on the existing `GET /recipes` and
+`GET /recipes/search` endpoints, reached by clicking a tag chip on a recipe
+card or the detail page rather than through a standalone "browse all tags"
+list. An early pass added a filter-chip row above the recipe grid (backed by
+a `GET /recipes/tags` endpoint listing the full vocabulary) — cut after a
+live look at the running app read it as clutter, and the endpoint went with
+it since nothing else needed it.
+
+**Why collections aren't just another kind of tag.** Tags are attribute-like:
+free-text, and implicitly created/destroyed as a side effect of editing a
+recipe's tag list (`syncTags` deletes and re-links on every save — a tag has
+no identity of its own beyond its name). A collection is explicitly named and
+managed by the user (create it, rename it, delete it) independent of any one
+recipe's edits, which needs the same direct ownership shape `recipes` already
+has (`user_id`, `UNIQUE (user_id, name)` rather than tags' global-unique
+name) — conflating the two would force tag-only semantics onto something the
+user wants to curate.
+
+**Why a query param, not a dedicated `/recipes/by-tag` endpoint.** The
+feature explicitly needs to combine with the existing text search (a tag
+chip filters within whatever's already been searched, and vice versa). A
+separate endpoint would force the frontend to choose between three states —
+plain list, search, tag-filtered — rather than two independently-optional
+filters on the same two endpoints, and the "search AND tag" case would need
+reimplementing wherever that third endpoint lived. The filter itself is an
+`EXISTS` subquery against `recipe_tags`/`tags`, not a `JOIN` — a join would
+duplicate a multiply-tagged recipe's row once per matching tag and disturb
+`ORDER BY`/`ts_rank`.
+
+**Why collection membership isn't part of `RecipeInput`.** Same category as
+image upload: a side-effecting relationship that doesn't round-trip through
+create/update, and only meaningful once a real recipe id exists. Kept off
+`RecipeFormPage` entirely (not even for existing recipes) — it lives solely
+on `RecipeDetailPage` via `RecipeCollectionsEditor`, so there's one place
+membership is edited rather than two.
+
+**Cascade behavior**, matching `recipe_tags`'s existing shape exactly: both
+`recipe_collections` FKs (`recipe_id`, `collection_id`) cascade on delete, but
+only that join table. Deleting a collection never deletes its recipes;
+deleting a recipe never deletes other collections it wasn't the only member
+of. A join table only ever cascades on its own two FKs — it has no reason to
+reach through to the "other side" entity.
+
+`pnpm lint`/`test`/`build` pass on both packages (205 backend + 84 frontend
+tests, including new coverage for cross-user ownership checks on both the
+collection side and the recipe side of adding/removing membership).
+
+**Caught live, not by the test suite: `TagChip` needed both `preventDefault`
+and `stopPropagation`.** `RecipeCard`'s tags render inside the card's own
+`<Link>`, so the chip's click handler has to stop the click reaching that
+`<Link>`. `stopPropagation()` alone looked sufficient — jsdom doesn't
+simulate an anchor's native "follow this href" default action, so
+`RecipeCard.test.tsx` passed either way — but a real browser does, and
+`stopPropagation()` stops the *Link's own* `onClick` from running rather than
+stopping navigation directly. That `onClick` is exactly what would have
+called `preventDefault()` to cancel the anchor's default action; skip it and
+the browser follows the href regardless. Live-clicking a tag chip on the
+running app surfaced this immediately (it navigated to the recipe instead of
+filtering); fixed by having `TagChip` call `preventDefault()` itself, the
+same way `RecipeCard`'s remove-from-collection button already did. Left as a
+reminder in this codebase (and worth remembering generally) that a
+nested-interactive-element fix verified only against jsdom isn't verified at
+all for this specific class of bug — it needs a real browser.
+
+New migration (`1700000000009_create-collections`) also needed a manual
+`pnpm migrate up` against the dev database — unlike the test suite (which
+runs migrations itself via `setupTestDatabase()`), the dev backend container
+doesn't auto-migrate on start, so the running homelab-style dev stack 500'd
+on every collections endpoint until that was run by hand. Worth remembering
+for the real homelab deploy too: a new migration needs an explicit migrate
+step, it doesn't apply itself.
+
+Verified live against the running dev stack end to end, after the fix above:
+created/renamed/deleted a collection, added/removed recipes from the detail
+page (both from the popover's existing-collections list and via the inline
+"new collection" path), clicked a tag chip from a recipe card and confirmed
+the list landed pre-filtered without also navigating to the recipe, combined
+a tag filter with a text search, and confirmed deleting a recipe doesn't
+touch its collections and deleting a collection doesn't touch its recipes.
+
+**Post-implementation scope cut, from the same live look:** the original
+plan also added a filter-chip row listing every tag above the recipe grid
+(backed by a `GET /recipes/tags` endpoint). Seeing it running live, it read
+as clutter and was removed — tag browsing now works only by clicking a tag
+already shown on a recipe, not via a standalone "browse all tags" list. The
+now-unused endpoint, repository function, and frontend `listTags`/
+`TagFilterChips` were deleted along with it rather than left as dead code.

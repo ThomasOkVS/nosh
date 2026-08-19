@@ -1,6 +1,6 @@
 import { CircleNotchIcon, LinkIcon, PlusIcon } from "@phosphor-icons/react";
 import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { listRecipes, searchRecipes } from "../api/recipes";
 import { EmptyRecipesIllustration, EmptySearchIllustration } from "../components/EmptyStateIllustration";
 import { RecipeCard, RecipeCardSkeleton } from "../components/RecipeCard";
@@ -8,10 +8,26 @@ import { useAsync } from "../hooks/useAsync";
 import { useImport } from "../import/ImportContext";
 import { buttonClass, errorBannerClass, inputClass } from "../styles";
 
+function emptyStateHeading(debouncedQuery: string, activeTag: string | undefined): string {
+  if (debouncedQuery) {
+    return "No recipes match your search";
+  }
+  if (activeTag) {
+    return `No recipes tagged "${activeTag}"`;
+  }
+  return "No recipes yet";
+}
+
 export function RecipeListPage() {
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const { openDialog } = useImport();
+
+  // Read (not written) here — there's no chip row on this page to toggle it,
+  // but a tag chip clicked on a recipe card or the detail page still hands
+  // off to this page via `/?tag=…`, so the filter still needs to apply.
+  const [searchParams] = useSearchParams();
+  const activeTag = searchParams.get("tag") ?? undefined;
 
   useEffect(() => {
     const timeout = setTimeout(() => setDebouncedQuery(query.trim()), 300);
@@ -19,8 +35,8 @@ export function RecipeListPage() {
   }, [query]);
 
   const fetchRecipes = useCallback(
-    () => (debouncedQuery ? searchRecipes(debouncedQuery) : listRecipes()),
-    [debouncedQuery],
+    () => (debouncedQuery ? searchRecipes(debouncedQuery, activeTag) : listRecipes(activeTag)),
+    [debouncedQuery, activeTag],
   );
   const { data: recipes, loading, error } = useAsync(fetchRecipes);
 
@@ -73,20 +89,20 @@ export function RecipeListPage() {
       )}
       {!isInitialLoad && recipes?.length === 0 && (
         <div className="flex flex-col items-center gap-3 py-16 text-center">
-          {debouncedQuery ? (
+          {debouncedQuery || activeTag ? (
             <EmptySearchIllustration className="h-32 w-32" />
           ) : (
             <EmptyRecipesIllustration className="h-32 w-32" />
           )}
           <h2 className="font-display text-lg font-bold text-ink">
-            {debouncedQuery ? "No recipes match your search" : "No recipes yet"}
+            {emptyStateHeading(debouncedQuery, activeTag)}
           </h2>
           <p className="max-w-xs text-sm text-ink-muted">
-            {debouncedQuery
-              ? "Try a different search term, or clear the search to see everything."
+            {debouncedQuery || activeTag
+              ? "Try a different search term, or clear the filter to see everything."
               : "Add your first recipe to get your collection started."}
           </p>
-          {!debouncedQuery && (
+          {!debouncedQuery && !activeTag && (
             <Link to="/recipes/new" className={`mt-2 ${buttonClass("primary")}`}>
               <PlusIcon size={18} weight="bold" />
               Add your first recipe

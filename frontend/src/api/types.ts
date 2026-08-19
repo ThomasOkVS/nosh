@@ -62,3 +62,15 @@ export interface RecipeInput {
   tags: string[];
   sourceUrl: string | null;
 }
+
+export interface Collection {
+  id: number;
+  name: string;
+  createdAt: string;
+  recipeCount: number;
+}
+
+export interface RecipeCollectionSummary {
+  id: number;
+  name: string;
+}

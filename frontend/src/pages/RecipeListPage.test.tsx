@@ -27,9 +27,9 @@ function makeRecipe(overrides: Partial<Recipe> = {}): Recipe {
   };
 }
 
-function renderPage() {
+function renderPage(initialEntries: string[] = ["/"]) {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={initialEntries}>
       <ToastProvider>
         <ImportProvider>
           <RecipeListPage />
@@ -60,6 +60,17 @@ describe("RecipeListPage", () => {
     fireEvent.change(screen.getByPlaceholderText("Search recipes…"), { target: { value: "soup" } });
 
     expect(await screen.findByText("Pumpkin soup")).toBeInTheDocument();
-    expect(search).toHaveBeenCalledWith("soup");
+    expect(search).toHaveBeenCalledWith("soup", undefined);
+  });
+
+  it("filters by a tag carried in the URL (e.g. from a tag clicked on a recipe card)", async () => {
+    const list = vi
+      .spyOn(recipesApi, "listRecipes")
+      .mockResolvedValue([makeRecipe({ title: "Dessert-tagged soup" })]);
+
+    renderPage(["/?tag=dessert"]);
+
+    expect(await screen.findByText("Dessert-tagged soup")).toBeInTheDocument();
+    expect(list).toHaveBeenCalledWith("dessert");
   });
 });

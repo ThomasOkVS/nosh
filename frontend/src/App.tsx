@@ -3,6 +3,8 @@ import { AuthProvider } from "./auth/AuthProvider";
 import { RequireAuth } from "./auth/RequireAuth";
 import { Layout } from "./components/Layout";
 import { ImportProvider } from "./import/ImportProvider";
+import { CollectionDetailPage } from "./pages/CollectionDetailPage";
+import { CollectionsPage } from "./pages/CollectionsPage";
 import { LoginPage } from "./pages/LoginPage";
 import { RecipeDetailPage } from "./pages/RecipeDetailPage";
 import { RecipeFormPage } from "./pages/RecipeFormPage";
@@ -31,6 +33,8 @@ function App() {
               <Route element={<RequireAuth />}>
                 <Route element={<Layout />}>
                   <Route path="/" element={<RecipeListPage />} />
+                  <Route path="/collections" element={<CollectionsPage />} />
+                  <Route path="/collections/:id" element={<CollectionDetailPage />} />
                   {/* The `key`s force a remount when moving between create and
                     * edit (and between two different recipes). Both routes
                     * render the same component at the same tree position, so

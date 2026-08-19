@@ -1,12 +1,18 @@
 import { apiFetch, apiUrl } from "./client";
-import type { Recipe, RecipeImage, RecipeInput } from "./types";
+import type { Recipe, RecipeCollectionSummary, RecipeImage, RecipeInput } from "./types";
 
-export function listRecipes(): Promise<Recipe[]> {
-  return apiFetch<Recipe[]>("/recipes");
+export function listRecipes(tag?: string): Promise<Recipe[]> {
+  return apiFetch<Recipe[]>(`/recipes${tag ? `?tag=${encodeURIComponent(tag)}` : ""}`);
 }
 
-export function searchRecipes(query: string): Promise<Recipe[]> {
-  return apiFetch<Recipe[]>(`/recipes/search?q=${encodeURIComponent(query)}`);
+export function searchRecipes(query: string, tag?: string): Promise<Recipe[]> {
+  const params = new URLSearchParams({ q: query });
+  if (tag) params.set("tag", tag);
+  return apiFetch<Recipe[]>(`/recipes/search?${params.toString()}`);
+}
+
+export function listRecipeCollections(recipeId: number): Promise<RecipeCollectionSummary[]> {
+  return apiFetch<RecipeCollectionSummary[]>(`/recipes/${recipeId}/collections`);
 }
 
 export function getRecipe(id: number): Promise<Recipe> {

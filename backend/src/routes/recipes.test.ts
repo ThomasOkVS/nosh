@@ -193,6 +193,68 @@ describe("recipe routes", () => {
     expect(res.status).toBe(400);
   });
 
+  it("filters the recipe list by tag", async () => {
+    const app = createTestApp();
+    const agent = await signedInAgent(app, "alice@example.com");
+    await agent.post("/recipes").send(samplePayload);
+    await agent.post("/recipes").send({
+      title: "Chocolate Cake",
+      ingredients: [{ quantity: "200", unit: "g", name: "chocolate" }],
+      steps: [{ instruction: "Melt the chocolate" }],
+      tags: ["dessert"],
+    });
+
+    const res = await agent.get("/recipes").query({ tag: "dessert" });
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].title).toBe("Chocolate Cake");
+  });
+
+  it("combines a text search with a tag filter", async () => {
+    const app = createTestApp();
+    const agent = await signedInAgent(app, "alice@example.com");
+    await agent.post("/recipes").send(samplePayload);
+    await agent.post("/recipes").send({
+      title: "Chocolate Cake",
+      description: "A rich chocolate dessert",
+      ingredients: [{ quantity: "200", unit: "g", name: "chocolate" }],
+      steps: [{ instruction: "Melt the chocolate" }],
+      tags: ["dessert"],
+    });
+
+    const matching = await agent.get("/recipes/search").query({ q: "chocolate", tag: "dessert" });
+    expect(matching.body).toHaveLength(1);
+
+    const mismatched = await agent.get("/recipes/search").query({ q: "chocolate", tag: "soup" });
+    expect(mismatched.body).toHaveLength(0);
+  });
+
+  it("lists the collections a recipe belongs to", async () => {
+    const app = createTestApp();
+    const agent = await signedInAgent(app, "alice@example.com");
+    const createRes = await agent.post("/recipes").send(samplePayload);
+
+    const empty = await agent.get(`/recipes/${createRes.body.id}/collections`);
+    expect(empty.status).toBe(200);
+    expect(empty.body).toEqual([]);
+
+    const collectionRes = await agent.post("/collections").send({ name: "Weeknight dinners" });
+    await agent.post(`/collections/${collectionRes.body.id}/recipes/${createRes.body.id}`);
+
+    const populated = await agent.get(`/recipes/${createRes.body.id}/collections`);
+    expect(populated.body).toEqual([{ id: collectionRes.body.id, name: "Weeknight dinners" }]);
+  });
+
+  it("hides another user's recipe's collections behind a 404", async () => {
+    const app = createTestApp();
+    const alice = await signedInAgent(app, "alice@example.com");
+    const bob = await signedInAgent(app, "bob@example.com");
+    const createRes = await alice.post("/recipes").send(samplePayload);
+
+    const res = await bob.get(`/recipes/${createRes.body.id}/collections`);
+    expect(res.status).toBe(404);
+  });
+
   it("uploads an image to a recipe", async () => {
     const app = createTestApp();
     const agent = await signedInAgent(app, "alice@example.com");

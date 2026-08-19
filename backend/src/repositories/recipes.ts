@@ -40,7 +40,7 @@ export interface Recipe {
   images: RecipeImage[];
 }
 
-interface RecipeRow {
+export interface RecipeRow {
   id: number;
   user_id: number;
   title: string;
@@ -53,7 +53,7 @@ interface RecipeRow {
   updated_at: Date;
 }
 
-const RECIPE_COLUMNS = `
+export const RECIPE_COLUMNS = `
   id, user_id, title, description, servings, prep_time_minutes, cook_time_minutes,
   source_url, created_at, updated_at
 `;
@@ -132,7 +132,7 @@ function toRecipe(
   };
 }
 
-async function assembleRecipes(pool: Pool, rows: RecipeRow[]): Promise<Recipe[]> {
+export async function assembleRecipes(pool: Pool, rows: RecipeRow[]): Promise<Recipe[]> {
   if (rows.length === 0) {
     return [];
   }
@@ -243,10 +243,38 @@ export async function findRecipeOwnerId(pool: Pool, id: number): Promise<number 
   return row ? row.user_id : null;
 }
 
-export async function listRecipesByUser(pool: Pool, userId: number): Promise<Recipe[]> {
+/** The tag filter is an `EXISTS` subquery rather than a `JOIN` against
+ * `recipe_tags`/`tags` — a join would multiply each matching recipe's row
+ * once per matching tag, which would both double-count recipes tagged more
+ * than once and disturb `ORDER BY` (search's `ts_rank` in particular). */
+function tagFilterClause(tag: string | undefined, paramIndex: number): { sql: string; params: unknown[] } {
+  if (!tag) {
+    return { sql: "", params: [] };
+  }
+  // Built by concatenation, not a template literal — this fragment's value
+  // is itself interpolated into the callers' own query template literals
+  // below, so writing it as a template literal too would nest one inside
+  // the other.
+  const sql =
+    "AND EXISTS (" +
+    " SELECT 1 FROM recipe_tags rt JOIN tags t ON t.id = rt.tag_id" +
+    " WHERE rt.recipe_id = recipes.id AND t.name = $" +
+    paramIndex +
+    ")";
+  return { sql, params: [tag] };
+}
+
+export async function listRecipesByUser(
+  pool: Pool,
+  userId: number,
+  options: { tag?: string } = {},
+): Promise<Recipe[]> {
+  const tagFilter = tagFilterClause(options.tag, 2);
   const result = await pool.query<RecipeRow>(
-    `SELECT ${RECIPE_COLUMNS} FROM recipes WHERE user_id = $1 ORDER BY created_at DESC`,
-    [userId],
+    `SELECT ${RECIPE_COLUMNS} FROM recipes
+     WHERE user_id = $1 ${tagFilter.sql}
+     ORDER BY created_at DESC`,
+    [userId, ...tagFilter.params],
   );
   return assembleRecipes(pool, result.rows);
 }
@@ -309,12 +337,18 @@ export async function deleteRecipe(pool: Pool, id: number): Promise<string[] | n
   });
 }
 
-export async function searchRecipes(pool: Pool, userId: number, query: string): Promise<Recipe[]> {
+export async function searchRecipes(
+  pool: Pool,
+  userId: number,
+  query: string,
+  options: { tag?: string } = {},
+): Promise<Recipe[]> {
+  const tagFilter = tagFilterClause(options.tag, 3);
   const result = await pool.query<RecipeRow>(
     `SELECT ${RECIPE_COLUMNS} FROM recipes
-     WHERE user_id = $1 AND search_vector @@ plainto_tsquery('english', $2)
+     WHERE user_id = $1 AND search_vector @@ plainto_tsquery('english', $2) ${tagFilter.sql}
      ORDER BY ts_rank(search_vector, plainto_tsquery('english', $2)) DESC`,
-    [userId, query],
+    [userId, query, ...tagFilter.params],
   );
   return assembleRecipes(pool, result.rows);
 }
