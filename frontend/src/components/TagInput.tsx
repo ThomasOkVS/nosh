@@ -3,11 +3,12 @@ import { useCallback, useState, type KeyboardEvent } from "react";
 
 interface TagInputProps {
   id?: string;
+  name?: string;
   value: string[];
   onChange: (tags: string[]) => void;
 }
 
-export function TagInput({ id, value, onChange }: Readonly<TagInputProps>) {
+export function TagInput({ id, name, value, onChange }: Readonly<TagInputProps>) {
   const [draft, setDraft] = useState("");
 
   const commitDraft = useCallback(() => {
@@ -60,6 +61,8 @@ export function TagInput({ id, value, onChange }: Readonly<TagInputProps>) {
       ))}
       <input
         id={id}
+        name={name}
+        autoComplete="off"
         value={draft}
         onChange={(event) => setDraft(event.target.value)}
         onKeyDown={handleKeyDown}

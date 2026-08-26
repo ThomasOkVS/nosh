@@ -228,4 +228,41 @@ describe("RecipeFormPage", () => {
     await waitFor(() => expect(screen.queryByLabelText("Title")).not.toBeInTheDocument());
     expect(screen.queryByDisplayValue("Stale draft")).not.toBeInTheDocument();
   });
+
+  it("asks for confirmation before deleting a photo, and only deletes once confirmed", async () => {
+    vi.spyOn(recipesApi, "getRecipe").mockResolvedValue({
+      id: 42,
+      userId: 1,
+      title: "Tomato soup",
+      description: null,
+      servings: null,
+      prepTimeMinutes: null,
+      cookTimeMinutes: null,
+      sourceUrl: null,
+      createdAt: "2026-01-01T00:00:00Z",
+      updatedAt: "2026-01-01T00:00:00Z",
+      ingredients: [],
+      steps: [],
+      tags: [],
+      images: [{ id: 9, filePath: "soup.jpg", position: 0 }],
+    } as Recipe);
+    const deleteRecipeImage = vi.spyOn(recipesApi, "deleteRecipeImage").mockResolvedValue(undefined);
+
+    renderWithRouting("/recipes/42/edit");
+    await screen.findByRole("button", { name: "Remove photo" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove photo" }));
+    expect(deleteRecipeImage).not.toHaveBeenCalled();
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(deleteRecipeImage).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove photo" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+
+    await waitFor(() => expect(deleteRecipeImage).toHaveBeenCalledWith(42, 9));
+    expect(screen.queryByRole("button", { name: "Remove photo" })).not.toBeInTheDocument();
+  });
 });

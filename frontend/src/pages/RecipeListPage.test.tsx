@@ -1,11 +1,19 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import * as recipesApi from "../api/recipes";
 import type { Recipe } from "../api/types";
 import { ImportProvider } from "../import/ImportProvider";
 import { ToastProvider } from "../toast/ToastProvider";
 import { RecipeListPage } from "./RecipeListPage";
+
+/** Exposes the router's current search string so a test can assert the
+ * search query round-trips into the URL, without reaching into history
+ * internals. */
+function SearchProbe() {
+  const location = useLocation();
+  return <div data-testid="search-probe">{location.search}</div>;
+}
 
 function makeRecipe(overrides: Partial<Recipe> = {}): Recipe {
   return {
@@ -33,6 +41,7 @@ function renderPage(initialEntries: string[] = ["/"]) {
       <ToastProvider>
         <ImportProvider>
           <RecipeListPage />
+          <SearchProbe />
         </ImportProvider>
       </ToastProvider>
     </MemoryRouter>,
@@ -72,5 +81,28 @@ describe("RecipeListPage", () => {
 
     expect(await screen.findByText("Dessert-tagged soup")).toBeInTheDocument();
     expect(list).toHaveBeenCalledWith("dessert");
+  });
+
+  it("writes a typed search query into the URL so it's shareable/restorable", async () => {
+    vi.spyOn(recipesApi, "listRecipes").mockResolvedValue([]);
+    vi.spyOn(recipesApi, "searchRecipes").mockResolvedValue([makeRecipe({ title: "Pumpkin soup" })]);
+
+    renderPage();
+    fireEvent.change(screen.getByLabelText("Search recipes"), { target: { value: "soup" } });
+
+    await screen.findByText("Pumpkin soup");
+    expect(screen.getByTestId("search-probe")).toHaveTextContent("?q=soup");
+  });
+
+  it("restores a search query already present in the URL on load", async () => {
+    const search = vi
+      .spyOn(recipesApi, "searchRecipes")
+      .mockResolvedValue([makeRecipe({ title: "Pumpkin soup" })]);
+
+    renderPage(["/?q=soup"]);
+
+    expect(await screen.findByText("Pumpkin soup")).toBeInTheDocument();
+    expect(screen.getByLabelText("Search recipes")).toHaveValue("soup");
+    expect(search).toHaveBeenCalledWith("soup", undefined);
   });
 });

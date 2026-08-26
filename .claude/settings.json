@@ -33,13 +33,6 @@
       "Bash(git status*)",
       "Bash(git diff*)"
     ],
-    "ask": [
-      "Bash(git push*)",
-      "Edit(.env)",
-      "Edit(.env.*)",
-      "Edit(.claude/settings.json)",
-      "Edit(.claude/settings.local.json)"
-    ],
     "deny": [
       "Bash(npm install *)",
       "Bash(npm uninstall *)",
@@ -57,6 +50,18 @@
       "Bash(ssh *)",
       "Bash(scp *)"
     ],
+    "ask": [
+      "Bash(git push*)",
+      "Edit(.env)",
+      "Edit(.env.*)",
+      "Edit(.claude/settings.json)",
+      "Edit(.claude/settings.local.json)"
+    ],
     "defaultMode": "default"
+  },
+  "enabledPlugins": {
+    "security-guidance@claude-plugins-official": true,
+    "context7@claude-plugins-official": true,
+    "typescript-lsp@claude-plugins-official": true
   }
 }

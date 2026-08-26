@@ -155,8 +155,14 @@ export function RecipeCollectionsEditor({ recipeId }: Readonly<RecipeCollections
                 </ul>
               )}
               <form onSubmit={handleCreateAndAdd} className="mt-1 flex gap-1.5 border-t border-border pt-2">
+                <label htmlFor={`new-collection-name-${recipeId}`} className="sr-only">
+                  Collection name
+                </label>
                 <input
+                  id={`new-collection-name-${recipeId}`}
+                  name="name"
                   type="text"
+                  autoComplete="off"
                   placeholder="New collection…"
                   value={newName}
                   onChange={(event) => setNewName(event.target.value)}

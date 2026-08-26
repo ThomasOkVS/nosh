@@ -57,6 +57,7 @@ export function LoginPage() {
         </label>
         <input
           id="username"
+          name="username"
           required
           autoComplete="username"
           value={username}
@@ -68,7 +69,14 @@ export function LoginPage() {
         <label htmlFor="password" className={labelClass}>
           Password
         </label>
-        <PasswordInput id="password" required autoComplete="current-password" value={password} onChange={setPassword} />
+        <PasswordInput
+          id="password"
+          name="password"
+          required
+          autoComplete="current-password"
+          value={password}
+          onChange={setPassword}
+        />
       </div>
       <button type="submit" disabled={submitting} className={`w-full ${buttonClass("primary")}`}>
         {submitting ? "Logging in…" : "Log in"}

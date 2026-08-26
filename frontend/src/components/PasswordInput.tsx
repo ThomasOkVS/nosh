@@ -3,6 +3,7 @@ import { useState, type ChangeEvent } from "react";
 
 interface PasswordInputProps {
   id: string;
+  name?: string;
   value: string;
   onChange: (value: string) => void;
   required?: boolean;
@@ -12,6 +13,7 @@ interface PasswordInputProps {
 
 export function PasswordInput({
   id,
+  name,
   value,
   onChange,
   required,
@@ -24,6 +26,7 @@ export function PasswordInput({
     <div className="relative mt-1">
       <input
         id={id}
+        name={name}
         type={visible ? "text" : "password"}
         required={required}
         minLength={minLength}

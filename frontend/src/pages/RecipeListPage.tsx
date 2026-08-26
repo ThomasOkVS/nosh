@@ -19,20 +19,39 @@ function emptyStateHeading(debouncedQuery: string, activeTag: string | undefined
 }
 
 export function RecipeListPage() {
-  const [query, setQuery] = useState("");
-  const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [searchParams, setSearchParams] = useSearchParams();
+  // Seeded from the URL so a shared/reloaded/back-navigated `?q=…` link
+  // restores the same search instead of landing on an unfiltered list — see
+  // docs/design-system.md#state--navigation. `tag` was already read from the
+  // URL this way; `q` now follows the same pattern.
+  const [query, setQuery] = useState(() => searchParams.get("q") ?? "");
+  const [debouncedQuery, setDebouncedQuery] = useState(() => searchParams.get("q") ?? "");
   const { openDialog } = useImport();
 
-  // Read (not written) here — there's no chip row on this page to toggle it,
-  // but a tag chip clicked on a recipe card or the detail page still hands
-  // off to this page via `/?tag=…`, so the filter still needs to apply.
-  const [searchParams] = useSearchParams();
+  // Tag filtering has no chip row on this page to toggle it — a tag chip
+  // clicked on a recipe card or the detail page hands off to this page via
+  // `/?tag=…`, so the filter just needs to apply, not round-trip back out.
   const activeTag = searchParams.get("tag") ?? undefined;
 
   useEffect(() => {
     const timeout = setTimeout(() => setDebouncedQuery(query.trim()), 300);
     return () => clearTimeout(timeout);
   }, [query]);
+
+  useEffect(() => {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (debouncedQuery) {
+          next.set("q", debouncedQuery);
+        } else {
+          next.delete("q");
+        }
+        return next;
+      },
+      { replace: true },
+    );
+  }, [debouncedQuery, setSearchParams]);
 
   const fetchRecipes = useCallback(
     () => (debouncedQuery ? searchRecipes(debouncedQuery, activeTag) : listRecipes(activeTag)),
@@ -53,8 +72,14 @@ export function RecipeListPage() {
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="relative w-full sm:max-w-xs">
+          <label htmlFor="recipe-search" className="sr-only">
+            Search recipes
+          </label>
           <input
+            id="recipe-search"
+            name="q"
             type="search"
+            autoComplete="off"
             placeholder="Search recipes…"
             value={query}
             onChange={(event) => setQuery(event.target.value)}

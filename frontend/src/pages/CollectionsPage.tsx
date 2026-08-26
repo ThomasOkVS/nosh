@@ -41,8 +41,14 @@ export function CollectionsPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="font-display text-2xl font-extrabold text-ink">Collections</h1>
         <form onSubmit={handleCreate} className="flex gap-2">
+          <label htmlFor="new-collection-name" className="sr-only">
+            Collection name
+          </label>
           <input
+            id="new-collection-name"
+            name="name"
             type="text"
+            autoComplete="off"
             placeholder="New collection…"
             value={newName}
             onChange={(event) => setNewName(event.target.value)}
