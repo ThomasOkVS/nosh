@@ -12,11 +12,11 @@ export function RecipeCardSkeleton() {
     <div className="overflow-hidden rounded-lg border border-border bg-surface">
       <Skeleton className="aspect-[4/3] w-full" />
       <div className="space-y-2 p-4">
-        <Skeleton className="h-5 w-3/4 rounded-full" />
-        <Skeleton className="h-4 w-1/2 rounded-full" />
-        <div className="flex gap-1 pt-1">
-          <Skeleton className="h-5 w-14 rounded-full" />
-          <Skeleton className="h-5 w-16 rounded-full" />
+        <Skeleton className="h-5 w-3/4" />
+        <Skeleton className="h-3 w-2/5" />
+        <div className="flex gap-3 pt-1">
+          <Skeleton className="h-3 w-12" />
+          <Skeleton className="h-3 w-14" />
         </div>
       </div>
     </div>
@@ -38,7 +38,7 @@ export function RecipeCard({ recipe, onRemove }: Readonly<RecipeCardProps>) {
   return (
     <Link
       to={`/recipes/${recipe.id}`}
-      className="relative block overflow-hidden rounded-lg border border-border bg-surface transition-[transform,box-shadow] duration-standard ease-standard hover:-translate-y-0.5 hover:shadow-[0_1px_2px_rgba(35,32,28,0.04),0_8px_20px_rgba(35,32,28,0.08)] dark:hover:shadow-[0_1px_2px_rgba(0,0,0,0.2),0_8px_20px_rgba(0,0,0,0.35)]"
+      className="relative block overflow-hidden rounded-lg border border-border bg-surface transition-[transform,box-shadow] duration-standard ease-standard hover:-translate-y-0.5 hover:shadow-[0_1px_2px_rgba(35,25,15,0.05),0_8px_20px_rgba(35,25,15,0.1)] dark:hover:shadow-[0_1px_2px_rgba(0,0,0,0.25),0_8px_20px_rgba(0,0,0,0.4)]"
     >
       {onRemove && (
         <button
@@ -64,20 +64,26 @@ export function RecipeCard({ recipe, onRemove }: Readonly<RecipeCardProps>) {
         )}
       </div>
       <div className="p-4">
-        <h2 className="truncate font-display font-bold text-ink">{recipe.title}</h2>
-        <p className="mt-1 text-sm text-ink-muted">
+        <h2 className="truncate font-display text-lg font-semibold italic text-ink">{recipe.title}</h2>
+        <hr className="mt-1.5 border-border" />
+        <p className="mt-1.5 font-mono text-[11px] uppercase tracking-wider text-ink-muted">
           {[
-            recipe.servings ? `${recipe.servings} servings` : null,
-            recipe.prepTimeMinutes ? `${recipe.prepTimeMinutes} min prep` : null,
-            recipe.cookTimeMinutes ? `${recipe.cookTimeMinutes} min cook` : null,
+            recipe.servings ? `Serves ${recipe.servings}` : null,
+            recipe.prepTimeMinutes ? `Prep ${recipe.prepTimeMinutes} min` : null,
+            recipe.cookTimeMinutes ? `Cook ${recipe.cookTimeMinutes} min` : null,
           ]
             .filter(Boolean)
-            .join(" · ")}
+            .join("  ·  ")}
         </p>
         {recipe.tags.length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-1">
+          <div className="mt-2 flex flex-wrap gap-3">
             {recipe.tags.map((tag) => (
-              <TagChip key={tag} tag={tag} onClick={(t) => navigate(`/?tag=${encodeURIComponent(t)}`)} />
+              <TagChip
+                key={tag}
+                tag={tag}
+                variant="editorial"
+                onClick={(t) => navigate(`/?tag=${encodeURIComponent(t)}`)}
+              />
             ))}
           </div>
         )}

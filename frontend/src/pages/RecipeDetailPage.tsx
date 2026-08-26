@@ -15,7 +15,7 @@ import { RecipeCollectionsEditor } from "../components/RecipeCollectionsEditor";
 import { Skeleton } from "../components/Skeleton";
 import { TagChip } from "../components/TagChip";
 import { useAsync } from "../hooks/useAsync";
-import { buttonClass, errorBannerClass, sectionHeadingClass } from "../styles";
+import { errorBannerClass, sectionHeadingClass } from "../styles";
 import { useToast } from "../toast/ToastContext";
 
 /**
@@ -45,13 +45,13 @@ function RecipeDetailSkeleton() {
         All recipes
       </Link>
       <Skeleton className="aspect-[16/9] w-full rounded-lg" />
-      <div className="space-y-2">
-        <Skeleton className="h-8 w-2/3 rounded-full" />
-        <Skeleton className="h-4 w-1/3 rounded-full" />
+      <div className="space-y-2 border-b border-border pb-4">
+        <Skeleton className="h-8 w-2/3" />
+        <Skeleton className="h-3 w-1/3" />
       </div>
-      <div className="flex gap-1">
-        <Skeleton className="h-5 w-16 rounded-full" />
-        <Skeleton className="h-5 w-20 rounded-full" />
+      <div className="flex gap-3">
+        <Skeleton className="h-3 w-16" />
+        <Skeleton className="h-3 w-20" />
       </div>
     </div>
   );
@@ -86,12 +86,12 @@ export function RecipeDetailPage() {
   const [heroImage, ...otherImages] = recipe.images;
   const sourceLink = parseSourceLink(recipe.sourceUrl);
   const metaLine = [
-    recipe.servings ? `${recipe.servings} servings` : null,
-    recipe.prepTimeMinutes ? `${recipe.prepTimeMinutes} min prep` : null,
-    recipe.cookTimeMinutes ? `${recipe.cookTimeMinutes} min cook` : null,
+    recipe.servings ? `Serves ${recipe.servings}` : null,
+    recipe.prepTimeMinutes ? `Prep ${recipe.prepTimeMinutes} min` : null,
+    recipe.cookTimeMinutes ? `Cook ${recipe.cookTimeMinutes} min` : null,
   ]
     .filter(Boolean)
-    .join(" · ");
+    .join("  ·  ");
 
   return (
     <div className="space-y-6">
@@ -100,88 +100,64 @@ export function RecipeDetailPage() {
         All recipes
       </Link>
 
+      {/* Cookbook Editorial (2026-08-26) drops the glass-photo overlay
+          pattern: title/meta/tags now sit below the photo as a masthead
+          block, in both the photo and no-photo case, rather than one of them
+          floating text over the image — see docs/design-system.md#detail-page-layout.
+          That also removes the original collision risk the overlay's
+          title+buttons flex row was built to avoid (nothing floats over the
+          image any more), but the same "one flex row, not independently
+          positioned" shape is kept below for the same reason: robust to a
+          long title regardless of layout. */}
       {heroImage ? (
-        // Info panel floats over the hero photo — see
-        // docs/design-system.md#photo-overlay-panels for why this uses a
-        // fixed-dark glass + white text instead of the theme-following
-        // tokens used everywhere else.
-        <div className="relative aspect-[16/9] w-full overflow-hidden rounded-lg bg-surface-sunken">
-          <img
-            src={recipeImageUrl(recipe.id, heroImage.id)}
-            alt=""
-            className="absolute inset-0 h-full w-full object-cover"
-          />
-
-          <div className="glass-photo absolute inset-x-3 bottom-3 rounded-lg p-4 sm:inset-x-4 sm:bottom-4 sm:p-5">
-            <div className="flex items-start justify-between gap-3">
-              <h1 className="font-display text-xl font-extrabold text-white sm:text-2xl">{recipe.title}</h1>
-              <div className="flex flex-shrink-0 gap-2">
-                <Link
-                  to={`/recipes/${recipe.id}/edit`}
-                  aria-label="Edit recipe"
-                  className="flex h-11 w-11 items-center justify-center rounded-full bg-white/15 text-white transition-transform duration-standard ease-standard hover:scale-105 hover:bg-white/25 active:scale-95"
-                >
-                  <PencilSimpleIcon size={18} />
-                </Link>
-                <button
-                  type="button"
-                  onClick={() => setConfirmingDelete(true)}
-                  aria-label="Delete recipe"
-                  className="flex h-11 w-11 items-center justify-center rounded-full bg-white/15 text-white transition-colors duration-standard ease-standard hover:bg-white/25 hover:text-danger-300"
-                >
-                  <TrashIcon size={18} />
-                </button>
-              </div>
-            </div>
-            {recipe.description && <p className="mt-1 text-sm text-white/80">{recipe.description}</p>}
-            {metaLine && <p className="mt-2 text-sm text-white/80">{metaLine}</p>}
-            {recipe.tags.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-1">
-                {recipe.tags.map((tag) => (
-                  <TagChip
-                    key={tag}
-                    tag={tag}
-                    variant="overlay"
-                    onClick={(t) => navigate(`/?tag=${encodeURIComponent(t)}`)}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
+        <div className="aspect-[16/9] w-full overflow-hidden rounded-lg border border-border bg-surface-sunken">
+          <img src={recipeImageUrl(recipe.id, heroImage.id)} alt="" className="h-full w-full object-cover" />
         </div>
       ) : (
-        <>
-          <div className="flex aspect-[16/9] w-full items-center justify-center rounded-lg bg-citrus-50 text-citrus-500 dark:bg-citrus-500/15 dark:text-citrus-400">
-            <ImageSquareIcon size={48} />
-          </div>
+        <div className="flex aspect-[16/9] w-full items-center justify-center rounded-lg border border-border bg-citrus-50 text-citrus-500 dark:bg-citrus-500/15 dark:text-citrus-400">
+          <ImageSquareIcon size={48} />
+        </div>
+      )}
 
-          <div>
-            <h1 className="font-display text-2xl font-extrabold text-ink">{recipe.title}</h1>
-            {recipe.description && <p className="mt-1 text-ink-muted">{recipe.description}</p>}
-          </div>
-
-          {metaLine && <p className="text-sm text-ink-muted">{metaLine}</p>}
-
-          {recipe.tags.length > 0 && (
-            <div className="flex flex-wrap gap-1">
-              {recipe.tags.map((tag) => (
-                <TagChip key={tag} tag={tag} onClick={(t) => navigate(`/?tag=${encodeURIComponent(t)}`)} />
-              ))}
-            </div>
-          )}
-
-          <div className="flex gap-2">
-            <Link to={`/recipes/${recipe.id}/edit`} className={buttonClass("secondary")}>
-              <PencilSimpleIcon size={16} />
-              Edit
+      <div className="space-y-3 border-b border-border pb-5">
+        <div className="flex items-start justify-between gap-3">
+          <h1 className="font-display text-2xl font-bold italic text-ink sm:text-3xl">{recipe.title}</h1>
+          <div className="flex flex-shrink-0 gap-2">
+            <Link
+              to={`/recipes/${recipe.id}/edit`}
+              aria-label="Edit recipe"
+              className="flex h-11 w-11 items-center justify-center rounded-md text-ink-muted transition-colors duration-standard ease-standard hover:bg-surface-sunken hover:text-ink"
+            >
+              <PencilSimpleIcon size={18} />
             </Link>
-            <button type="button" onClick={() => setConfirmingDelete(true)} className={buttonClass("ghost")}>
-              <TrashIcon size={16} />
-              Delete
+            <button
+              type="button"
+              onClick={() => setConfirmingDelete(true)}
+              aria-label="Delete recipe"
+              className="flex h-11 w-11 items-center justify-center rounded-md text-ink-muted transition-colors duration-standard ease-standard hover:bg-surface-sunken hover:text-danger-500"
+            >
+              <TrashIcon size={18} />
             </button>
           </div>
-        </>
-      )}
+        </div>
+
+        {recipe.description && (
+          <p className="font-display text-lg italic text-ink-muted">{recipe.description}</p>
+        )}
+        {metaLine && <p className="font-mono text-xs uppercase tracking-wider text-ink-muted">{metaLine}</p>}
+        {recipe.tags.length > 0 && (
+          <div className="flex flex-wrap gap-3 pt-1">
+            {recipe.tags.map((tag) => (
+              <TagChip
+                key={tag}
+                tag={tag}
+                variant="editorial"
+                onClick={(t) => navigate(`/?tag=${encodeURIComponent(t)}`)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
 
       {sourceLink && (
         <a
@@ -216,13 +192,15 @@ export function RecipeDetailPage() {
             <ListChecksIcon size={20} className="text-teal-500" />
             Ingredients
           </h2>
-          <ul className="mt-3 space-y-1.5">
-            {recipe.ingredients.map((ingredient) => (
-              <li
-                key={ingredient.id}
-                className="flex items-center gap-3 rounded-md bg-surface-sunken px-3 py-2 text-ink"
-              >
-                <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-teal-500" />
+          {/* An "index" list — mono numerals instead of a bullet dot/checkbox,
+              hairline dividers instead of carded rows — see
+              docs/design-system.md#ingredient--step-display. */}
+          <ul className="mt-3 divide-y divide-border border-y border-border">
+            {recipe.ingredients.map((ingredient, index) => (
+              <li key={ingredient.id} className="flex items-baseline gap-4 py-2.5 text-ink">
+                <span className="w-6 flex-shrink-0 font-mono text-xs text-ink-muted">
+                  {String(index + 1).padStart(2, "0")}
+                </span>
                 {[ingredient.quantity, ingredient.unit, ingredient.name].filter(Boolean).join(" ")}
               </li>
             ))}
@@ -236,13 +214,27 @@ export function RecipeDetailPage() {
             <ListNumbersIcon size={20} className="text-citrus-500" />
             Steps
           </h2>
-          <ol className="mt-3 space-y-3">
+          {/* Large serif numerals instead of a circular badge, and a drop cap
+              on the first step's first letter — the "pull-quote" signature
+              this direction was picked for, see docs/design-system.md#detail-page-layout. */}
+          <ol className="mt-3 space-y-6">
             {recipe.steps.map((step, index) => (
-              <li key={step.id} className="flex gap-3 rounded-md bg-surface-sunken p-3">
-                <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-citrus-50 text-sm font-bold text-citrus-600 dark:bg-citrus-500/15 dark:text-citrus-400">
+              <li key={step.id} className="flex gap-4">
+                <span
+                  aria-hidden="true"
+                  className="w-8 flex-shrink-0 font-display text-3xl font-bold italic leading-none text-citrus-500/50"
+                >
                   {index + 1}
                 </span>
-                <p className="pt-0.5 text-ink">{step.instruction}</p>
+                <p
+                  className={`pt-1 text-ink ${
+                    index === 0
+                      ? "first-letter:float-left first-letter:mr-1 first-letter:font-display first-letter:text-4xl first-letter:font-bold first-letter:italic first-letter:leading-[0.8] first-letter:text-citrus-600 dark:first-letter:text-citrus-400"
+                      : ""
+                  }`}
+                >
+                  {step.instruction}
+                </p>
               </li>
             ))}
           </ol>

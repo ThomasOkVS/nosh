@@ -1510,3 +1510,102 @@ as clutter and was removed — tag browsing now works only by clicking a tag
 already shown on a recipe, not via a standalone "browse all tags" list. The
 now-unused endpoint, repository function, and frontend `listTags`/
 `TagFilterChips` were deleted along with it rather than left as dead code.
+
+## 2026-08-26: Design direction replaced — "Cookbook Editorial" supersedes "Citrus Pop"
+
+**Decision:** Replaced Citrus Pop (orange/teal, glassy, very-rounded,
+springy — [decisions.md](decisions.md#2026-08-06-design-system-defined-citrus-pop-glassyrounded-motion-forward))
+with "Cookbook Editorial": paper/ink neutrals, a deep sauce-red primary and
+sage secondary, a serif display face (Fraunces) with a genuine italic, a new
+monospace utility face (IBM Plex Mono) for printed-label-style metadata, a
+sharp/hairline shape language instead of very-rounded, and no glass/blur or
+gradient anywhere. Three directions were proposed (Cookbook Editorial,
+"Kitchen Ticket" — kraft paper/stamp-red/condensed caps, "Modern Bistro" —
+flat two-tone color/hard offset shadows/no serif) with ASCII-mockup previews
+of the recipe card in each; Cookbook Editorial was picked directly.
+
+**Scope, agreed before building:**
+- **Token layer: global, immediately.** Color/type/radius/glass values in
+  `frontend/src/index.css` and the shared `buttonClass`/`inputClass`/etc. in
+  `styles.ts` were swapped outright (not renamed — `citrus-*`/`teal-*` keep
+  their token names, now carrying different hues, since renaming every call
+  site app-wide was a much larger, riskier change for no visual difference).
+  Every page inherits the new palette/fonts/shape immediately, including
+  ones this pass didn't otherwise touch (header, auth screens, recipe form,
+  collections pages).
+- **Structural rework: recipe list and recipe detail pages only**, plus the
+  shared components changed to get there — `RecipeCard`/`RecipeCardSkeleton`
+  and `TagChip`'s new `editorial` variant (added alongside the existing,
+  unchanged `default` variant; the `overlay` variant was deleted, see
+  below). Because `CollectionDetailPage` also renders `RecipeCard` for
+  its own "recipes in this collection" grid, that grid picked up the full
+  structural treatment too, as a side effect of component reuse rather than
+  a deliberate pass over that page — its own chrome (header, create form,
+  empty state) is untouched. Per the project owner's explicit instruction,
+  no other page's *layout* was touched this pass — see
+  [design-system.md](design-system.md)'s "Migration status" note and the
+  updated Cards/Tags/Ingredient & step display/Detail page layout sections
+  for exactly what changed structurally versus what's token-only.
+- `.glass`/`.glass-menu` were re-skinned (opaque card-stock surface, no
+  `backdrop-filter`) rather than removed, so every consumer (header,
+  `ConfirmDialog`, `ImportDialog`, `UserMenu`, toasts, the collections
+  popover) picked up the new flat treatment with zero code changes.
+  `.glass-photo` was deleted outright — the detail page's photo-overlay
+  pattern it existed for is retired (see below), and nothing else used it.
+
+**Why:** Requested directly — dissatisfaction with the look/feel itself,
+separate from (and after) the 2026-08-06 structural CRUD-feel fixes, which
+had already addressed layout without changing that verdict. Confirmed via a
+direct question before building: the complaint was "still feels generic,"
+not just color/type, which is why this pass leans on real structural
+signature moves on the two in-scope pages (an index-style ingredient list,
+large serif step numerals, a first-step drop cap, a masthead layout) rather
+than a token-only reskin — a token-only pass already failed once to fix a
+"still CRUD" complaint, see the 2026-08-06 critical-review entry.
+
+**Notable trade-offs/decisions made along the way:**
+- **Danger color deliberately separated from the new primary.** Citrus
+  Pop's danger-500 only had to differ from *orange*; now that citrus-500 is
+  itself a red, danger-500 was pulled toward a cooler raspberry/wine
+  (hue ~340°) specifically to avoid "delete reads as a darker brand color"
+  — see [design-system.md#color](design-system.md#color--cookbook-editorial).
+- **The detail page's photo-overlay info panel was retired**, not reskinned
+  in place — title/meta/tags/actions now sit below the photo in normal
+  flow on both the photo and no-photo branches (previously two different
+  layouts). This incidentally removes the original collision risk the
+  "title and buttons in one flex row" fix addressed (nothing floats over
+  the image any more); that flex-row shape was kept anyway for the same
+  long-title robustness, just via normal flow now.
+- **The recipe description's italic serif "lede" is a documented exception**
+  to "never use the display font below `display-md`" — see
+  [design-system.md#typography](design-system.md#typography).
+- **The login/signup screen's orange→pink gradient background was left
+  as-is** — it's a hardcoded literal gradient in `AuthLayout.tsx`, not
+  derived from the citrus tokens, so the token swap didn't touch it and it
+  wasn't in scope to redesign by hand this pass. It now sits oddly next to
+  the new sauce-red brand color; tracked in [backlog.md](backlog.md).
+
+**Verification:** `pnpm lint`/`test`/`build` all pass (87 frontend tests,
+all pre-existing — no test asserted on colors/classnames that changed).
+Verified live against the real backend + seeded demo data via a headless
+Playwright script (no project browser-automation skill existed yet for this
+repo): recipe list and detail pages in both themes, a no-photo recipe, the
+delete `ConfirmDialog` (confirms the glass-token reskin renders correctly
+on a component this pass didn't edit), and the login screen (confirms the
+global token swap doesn't break an out-of-scope page — a first full-page
+screenshot looked washed-out, which turned out to be a compression artifact
+of that particular screenshot, not a real rendering bug: computed styles
+and a cropped, pixel-level screenshot both confirmed correct opaque-white/
+dark-text rendering).
+
+**Alternatives considered:** Keeping `.glass-photo` and `TagChip`'s `overlay`
+variant for a possible future photo-overlay surface (rejected for both —
+their designs were specific to Citrus Pop's now-retired overlay pattern, no
+longer had any caller, and CLAUDE.md's standing rule is to delete
+certainly-unused code rather than keep a compat shim "just in case"; a
+future need should get a treatment designed for this direction's flat/
+hairline language, not a resurrection of either). Renaming `citrus-*`/`teal-*` tokens to
+neutral names now that they no longer mean "orange"/"teal" (rejected for
+this pass — a mechanical rename across every file that references them is
+a large, separate, low-value refactor; tracked in backlog.md instead of
+bundled into a visual change).

@@ -69,7 +69,17 @@ export function RecipeListPage() {
   const isRefetching = loading && recipes !== null;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
+      <div className="border-b border-border pb-4">
+        <h1 className="font-display text-3xl font-bold italic text-ink sm:text-4xl">Your recipes</h1>
+        {!isInitialLoad && recipes && recipes.length > 0 && (
+          <p className="mt-1 font-mono text-xs uppercase tracking-wider text-ink-muted">
+            {recipes.length} recipe{recipes.length === 1 ? "" : "s"}
+            {activeTag ? ` tagged "${activeTag}"` : ""}
+          </p>
+        )}
+      </div>
+
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="relative w-full sm:max-w-xs">
           <label htmlFor="recipe-search" className="sr-only">
@@ -119,7 +129,7 @@ export function RecipeListPage() {
           ) : (
             <EmptyRecipesIllustration className="h-32 w-32" />
           )}
-          <h2 className="font-display text-lg font-bold text-ink">
+          <h2 className="font-display text-lg font-semibold italic text-ink">
             {emptyStateHeading(debouncedQuery, activeTag)}
           </h2>
           <p className="max-w-xs text-sm text-ink-muted">

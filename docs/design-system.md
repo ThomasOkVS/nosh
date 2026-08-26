@@ -14,118 +14,178 @@ underneath a coat of paint. The **Cards**, **Ingredient & step display**,
 **Detail page layout**, **Forms**, and **Tags/chips** sections below were
 rewritten as a result — see [decisions.md](decisions.md) for both entries.
 
+**2026-08-26: aesthetic direction replaced — "Cookbook Editorial" supersedes
+"Citrus Pop".** The project owner was unhappy with Citrus Pop's look
+independent of the structural fixes above (both were true at once: the
+layout stopped reading as CRUD, but the color/type/shape identity itself
+wasn't wanted any more). Three directions were proposed (Cookbook Editorial,
+Kitchen Ticket, Modern Bistro — see
+[decisions.md](decisions.md#2026-08-26-design-direction-replaced-cookbook-editorial-supersedes-citrus-pop)
+for all three and why Cookbook Editorial won). Every section below now
+describes Cookbook Editorial; where a value or pattern changed, the old
+Citrus Pop version is noted for context rather than kept as a live option.
+
+**Migration status — read this before touching any page.** The token layer
+(color/type/radius/glass, all in `frontend/src/index.css` + `styles.ts`) was
+swapped **globally** at the project owner's explicit direction, so every page
+picks up the new palette/fonts/shape automatically. Bespoke *structural*
+rework (index-style ingredient list, serif step numerals, masthead layout,
+etc.) was scoped to the **recipe list and recipe detail pages**, plus the
+shared components they needed changed to get there: `RecipeCard`/
+`RecipeCardSkeleton` and `TagChip`'s new `editorial` variant. Because
+`RecipeCard` is also reused by `CollectionDetailPage` (its "recipes in this
+collection" grid), that page's card grid already renders with the full
+structural treatment too — component reuse, not a deliberate pass over that
+page. Its own chrome (header, create-collection form, empty state) is still
+untouched. The header, auth screens, recipe form, and the rest of the
+collections pages are still Citrus Pop's *structure* wearing Cookbook
+Editorial's *colors*. That's an intentional, scoped first step, not an
+oversight: don't assume any page other than recipe list/detail fully
+reflects this doc's component patterns until it gets its own pass (tracked
+in [backlog.md](backlog.md)).
+
 ## Brand direction
 
-Bold and playful, but premium — not a toy. Three reference points, each
-contributing something specific:
+**2026-08-26: Cookbook Editorial.** Premium print-cookbook/food-magazine
+energy — paper and ink, a serif display voice, restrained color used
+deliberately rather than everywhere, hairline structure instead of soft/
+glassy surfaces. Reference points:
 
-- **Apple** — restraint, generous whitespace, precise/refined motion. Nothing
-  here should feel cluttered or cheap.
-- **Arc (browser)** — saturated color used with confidence, soft rounded
-  shapes, glassy/translucent surfaces, lots of small delightful details.
-- **family.co** — bold, friendly display typography, vibrant gradients, warm
-  and confident tone rather than corporate-neutral.
+- **Print cookbooks & food magazines** (the actual subject matter) —
+  generous margins, a confident serif for titles, printed-label-style
+  monospace for metadata (servings/time), numbered/indexed lists instead of
+  browser bullets.
+- **Apple** (carried over from Citrus Pop) — restraint, generous whitespace,
+  nothing cluttered or cheap.
+- **Kinfolk/Cherry Bombe-adjacent editorial design** — warm neutral paper
+  tones, one confident accent color (not a rainbow of them), type doing the
+  work color used to do.
 
-The tension to hold: playful color and motion, disciplined layout and
-typography. If a screen feels chaotic, pull back on color/motion, not on the
-rounded/glassy identity itself.
+The tension to hold: warm and inviting, not sterile or corporate, while
+staying calm and hairline-precise rather than saturated/glassy/springy. If a
+screen feels flat or lifeless, reach for the serif italic and the mono
+label — not a gradient or a rounded pill.
 
-## Color — "Citrus Pop"
+**Superseded:** Citrus Pop's Apple/Arc/family.co references (glassy
+translucent surfaces, saturated gradient, very-rounded pill shapes, springy
+motion) — see [decisions.md](decisions.md#2026-08-06-design-system-defined-citrus-pop-glassyrounded-motion-forward)
+for the original rationale and
+[decisions.md](decisions.md#2026-08-26-design-direction-replaced-cookbook-editorial-supersedes-citrus-pop)
+for why it was replaced.
 
-An orange→pink citrus gradient as the primary brand color, a deep teal as
-secondary/contrast, warm (not cold) neutrals.
+## Color — "Cookbook Editorial"
 
-### Primary — Citrus (orange)
+Paper and ink neutrals carry most of the UI; a single deep "sauce red" is
+the primary accent, a muted sage is secondary. Color is used sparingly and
+deliberately — most of a screen should read as paper/ink/hairline, with the
+accent reserved for actions, links, and a few signature moments (step
+numerals, focus rings).
+
+### Primary — "citrus" token family, now sauce red
+
+Kept the `citrus-*` token *names* (renaming every call site app-wide was a
+much larger, riskier change for no visual benefit — see decisions.md) but
+the hue is now a deep brick/sauce red, not orange.
 
 | Token | Hex | Use |
 |---|---|---|
-| `citrus-50` | `#FFF4EC` | tinted backgrounds, hover fills |
-| `citrus-100` | `#FFE4D2` | subtle badges/chips |
-| `citrus-300` | `#FFB37A` | decorative, disabled-state accents |
-| `citrus-500` | `#FF7A1A` | **primary flat button fill**, primary text/icon accents |
-| `citrus-600` | `#F2600A` | primary button hover/active |
-| `citrus-700` | `#CB4A02` | primary button pressed, high-contrast text-on-light use |
+| `citrus-50` | `#FBEAE6` | tinted backgrounds (no-photo placeholder, step-numeral tint) |
+| `citrus-100` | `#F3D2C9` | subtle badges/chips |
+| `citrus-300` | `#D98071` | decorative, disabled-state accents |
+| `citrus-500` | `#B23A2E` | **primary flat button fill**, primary text/icon accents |
+| `citrus-600` | `#9A2F24` | primary button hover/active, editorial tag-chip hover |
+| `citrus-700` | `#7A2419` | primary button pressed, high-contrast text-on-light use |
 
-**Citrus gradient** (decorative only, not for buttons — see Buttons):
-`linear-gradient(135deg, #FF7A1A 0%, #FF3D81 100%)`. Reserve for hero
-sections, empty-state backgrounds, the login/signup screen background, and
-loading/skeleton shimmer — moments that should feel like a brand moment, not
-routine UI.
+**No decorative gradient in this direction.** Citrus Pop's orange→pink hero
+gradient is retired — Cookbook Editorial has no hero/gradient moment; paper,
+ink, and a hairline rule carry that weight instead. (The login screen's
+background gradient hasn't been touched yet — see Migration status above.)
 
-### Secondary — Teal
+### Secondary — "teal" token family, now sage
 
 | Token | Hex | Use |
 |---|---|---|
-| `teal-50` | `#EAFBFA` | tinted backgrounds |
-| `teal-300` | `#5FD4CB` | decorative accents |
-| `teal-500` | `#12A6A0` | secondary buttons/links, active nav icon fill, tag accents |
-| `teal-700` | `#0B6E6A` | secondary text-on-light, secondary pressed state |
+| `teal-50` | `#EEF1E7` | tinted backgrounds (default tag-chip fill) |
+| `teal-300` | `#A3AE82` | decorative accents |
+| `teal-500` | `#5F6B3E` | secondary buttons/links, active nav icon fill |
+| `teal-700` | `#404A29` | secondary text-on-light, default tag-chip text |
 
 ### Semantic
 
 | Token | Hex | Use |
 |---|---|---|
 | `success-500` | `#1E9E5A` | confirmations (e.g. "recipe saved") |
-| `warning-500` | `#E0A100` | non-blocking warnings |
-| `danger-500` | `#E11D48` | destructive actions, delete confirmation, form errors |
+| `warning-500` | `#C98A12` | non-blocking warnings |
+| `danger-500` | `#A61B4A` | destructive actions, delete confirmation, form errors |
 
-Chosen to sit visually apart from citrus-orange (rose/red, not orange-red) so
-"delete" never reads as just a darker brand color.
+**Deliberately a cooler raspberry/wine, not a brighter version of
+citrus-500.** Under Citrus Pop, danger just had to differ from *orange* —
+easy. Now that the primary accent is itself a red, "delete reads as a
+darker brand color" is a real risk again; danger-500 is pulled toward pink/
+magenta (hue ~340°) specifically to stay visually distinct from citrus-500's
+brick-red (hue ~8°). Don't let these drift closer together for "cohesion."
 
-### Neutrals — light mode (warm-tinted, not `slate`)
+### Neutrals — light mode (paper/ink, not warm-neutral-gray)
 
 | Token | Hex | Use |
 |---|---|---|
-| `neutral-0` | `#FFFFFF` | cards, elevated surfaces |
-| `neutral-25` | `#FDFCFB` | page background |
-| `neutral-100` | `#F5F1ED` | subtle fills, disabled backgrounds |
-| `neutral-200` | `#DED5CA` | borders, dividers |
-| `neutral-400` | `#A69C92` | placeholder text, disabled text |
-| `neutral-600` | `#6B6259` | secondary text |
-| `neutral-900` | `#23201C` | primary text |
+| `surface` | `#FFFFFF` | cards, elevated surfaces |
+| `surface-page` | `#F6F1E7` | page background ("paper") |
+| `surface-sunken` | `#EFE7D8` | subtle fills, disabled backgrounds, sunken rows |
+| `border` | `#D3C4A8` | borders, hairline dividers |
+| `ink-faint` | `#9C8F7A` | placeholder text, disabled text, mono metadata |
+| `ink-muted` | `#6B5F4E` | secondary text |
+| `ink` | `#231D16` | primary text |
 
 ### Neutrals — dark mode
 
-Dark charcoal, not pure black — near-black reads as OLED-harsh and gives
-glass surfaces nothing to visually separate from; a charcoal base lets
-translucent panels read as genuinely *lighter* layers on top.
+Warm near-black ("coffee ink"), not the previous cool charcoal — same
+reasoning as before (pure black reads OLED-harsh and gives elevated surfaces
+nothing to separate from), just shifted warmer to match the paper/ink theme.
 
 | Token | Hex | Use |
 |---|---|---|
-| `dark-bg` | `#14151A` | page background |
-| `dark-surface` | `#1D1F26` | opaque fallback surface (see Elevation) |
-| `dark-border` | `rgba(255,255,255,0.14)` | borders on dark surfaces |
-| `dark-text-primary` | `#F4F2EF` | primary text |
-| `dark-text-secondary` | `#A8A5A0` | secondary text |
+| `surface-page` (dark) | `#1C1814` | page background |
+| `surface` (dark) | `#26211B` | opaque surface |
+| `surface-sunken` (dark) | `#2E2820` | sunken rows/fills |
+| `border` (dark) | `rgba(255,255,255,0.14)` | borders on dark surfaces (unchanged) |
+| `ink` (dark) | `#F3EEE4` | primary text |
+| `ink-muted` (dark) | `#B8AD9B` | secondary text |
+| `ink-faint` (dark) | `#7D7462` | placeholder/faint text |
 
-Citrus/teal/semantic accent tokens stay the same hue in dark mode but should
-be used slightly desaturated-up-in-lightness where they sit directly on
-`dark-bg` (e.g. `citrus-400` instead of `citrus-500` for body-text links) to
-hold contrast — verify with a contrast checker per component, don't assume.
+Citrus/teal/semantic accent tokens stay the same hue in dark mode; verify
+contrast per component rather than assuming, same as before.
 
 ### Accessibility floor
 
 Every text/background pairing must hit **WCAG AA (4.5:1 for body text, 3:1
-for large/display text)** — including text sitting on glass panels or the
-citrus gradient. Glass and gradient are visual treatments, not exemptions:
-if a blurred/gradient background can't guarantee contrast, add a semi-opaque
-scrim behind the text rather than relaxing the contrast requirement.
+for large/display text)** — including text sitting on glass panels. This
+floor didn't change with the color palette; recheck real contrast numbers
+whenever a token's hex value changes, don't assume a new color inherits the
+old one's pass/fail.
 
 ## Typography
 
-**Display:** Plus Jakarta Sans (600/700/800) — page titles, recipe titles,
-section headers, the "Nosh" wordmark, empty-state headlines. Rounded
-geometric letterforms, matches the soft/friendly shape language without
-tipping into a cartoonish rounded-display font.
+**2026-08-26: Fraunces replaces Plus Jakarta Sans.** A serif display face
+with a genuine italic (used for pull-quote-style recipe descriptions and the
+step-1 drop cap), not a rounded geometric sans — the clearest single signal
+of the shift away from Citrus Pop's "friendly app" voice toward a
+"printed cookbook" one.
 
-**Body/UI:** Inter (400/500/600) — body copy, form labels/inputs, buttons,
-nav, all running text. Chosen specifically because it pairs cleanly with
-Plus Jakarta Sans and has excellent legibility at small sizes.
+**Display:** Fraunces (600/700/800/900 upright, 500/600 italic) — page
+titles, recipe titles, section headers, the "Nosh" wordmark, empty-state
+headlines, and (new) italic pull-quote description text and step numerals.
 
-Both loaded via Google Fonts CDN (`font-display: swap`). This is a minor
-tension with Nosh's otherwise self-hosted/no-third-party-dependency ethos —
-noted and accepted for now; revisit (self-host the font files) if the CDN
-dependency ever actually causes a problem (offline PWA use, privacy concern).
+**Body/UI:** Inter (400/500/600) — unchanged. Still body copy, form labels/
+inputs, buttons, nav, all running text.
+
+**Utility/metadata:** IBM Plex Mono (400/500), new. Printed-label-style text
+— servings/prep/cook, tag captions in the editorial `TagChip` variant. Set
+uppercase with wide tracking; this is what replaced the old teal/citrus pill
+chips' color-coding as "this is metadata, not prose."
+
+All three loaded via Google Fonts CDN (`font-display: swap`) — same
+CDN-dependency trade-off as before, still accepted for the same reason.
 
 ### Scale
 
@@ -139,21 +199,34 @@ dependency ever actually causes a problem (offline PWA use, privacy concern).
 | `body-sm` | 14/20px | 400/500 | Metadata, captions, chip labels |
 | `caption` | 12/16px | 500 | Timestamps, helper text |
 
-Never use the display font below `display-md` — it loses legibility and
-starts to look like a mistake rather than a choice.
+Never use the display font below `display-md` for **UI chrome** (section
+headers, buttons) — it loses legibility there. **Exception, added
+2026-08-26:** an italic serif "lede" — the recipe description under the
+title, styled at `body-lg` (18px) — is a deliberate editorial device, not
+UI chrome using the display font too small by mistake; Fraunces' italic
+stays legible at that size in a way the old geometric sans wouldn't have.
+Don't extend this exception past that one lede use without checking real
+legibility first.
 
 ## Shape language
 
-Very rounded, soft — the strongest single signal of the "friendly, not
-corporate" identity.
+**2026-08-26: sharp/hairline replaces very-rounded.** The single biggest
+non-color signal of the direction change — Cookbook Editorial reads as
+printed card stock with hairline rules, not soft rounded plastic.
 
 | Token | Radius | Use |
 |---|---|---|
-| `radius-sm` | 10px | inputs, chips/tags, small icon buttons |
-| `radius-md` | 16px | buttons, small cards, dropdowns |
-| `radius-lg` | 24px | recipe cards, panels, modals |
-| `radius-xl` | 32px | full-screen sheets, hero panels |
-| `radius-full` | 999px | primary CTA buttons, avatars, pill badges |
+| `radius-sm` | 4px | inputs, small icon buttons |
+| `radius-md` | 6px | buttons, small cards, dropdowns |
+| `radius-lg` | 8px | recipe cards, panels, modals |
+| `radius-xl` | 12px | full-screen sheets, hero panels |
+| `radius-full` | 999px | avatars, pill badges, tag chips (default variant only — the editorial `TagChip` variant isn't a pill, see Tags/chips) |
+
+Primary CTA buttons are `radius-md` now, not `radius-full` — Citrus Pop's
+pill-shaped buttons were a pointed identity marker of the old direction and
+don't fit hairline/sharp shape language. `radius-full` survives only where a
+genuinely circular shape is the point (avatars, icon buttons, the default
+tag-chip pill still used outside the recipe list/detail pages).
 
 ## Elevation & surfaces — glass
 
@@ -165,71 +238,60 @@ nothing for glass to sit on top of. Default cards (recipe list cards, form
 sections) use flat surfaces; reserve glass for panels that intentionally
 float over other content (usually a photo or a colored/gradient background).
 
-### Light mode glass
+**2026-08-26: glass/blur dropped app-wide.** Cookbook Editorial has no
+translucent surfaces — `.glass`/`.glass-menu` keep their **names** and call
+sites (header, `ConfirmDialog`, `ImportDialog`, `UserMenu`, toasts,
+`RecipeCollectionsEditor`'s popover) unchanged, but now render as an opaque
+card-stock surface with a hairline border, no `backdrop-filter`. This is a
+token/utility-level change only — none of those component files needed
+editing. See [decisions.md](decisions.md#2026-08-26-design-direction-replaced-cookbook-editorial-supersedes-citrus-pop).
+
+### `.glass`
 
 ```
-background: rgba(255, 255, 255, 0.65);
-backdrop-filter: blur(20px);
-border: 1px solid rgba(255, 255, 255, 0.5);
-box-shadow: 0 8px 32px rgba(35, 32, 28, 0.08);
+background: var(--color-surface);
+border: 1px solid var(--color-border);
+box-shadow: 0 1px 2px rgba(35, 25, 15, 0.04), 0 8px 24px rgba(35, 25, 15, 0.08);
 ```
 
-### Dark mode glass
+Dark mode redefines only the shadow (surface/border already flip via the
+semantic tokens).
+
+### `.glass-menu`
+
+Same treatment, a touch more shadow since an anchored menu has no dimmed
+backdrop of its own to separate it from the page behind:
 
 ```
-background: rgba(30, 32, 38, 0.55);
-backdrop-filter: blur(20px);
-border: 1px solid var(--dark-border);
-box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+background: var(--color-surface);
+border: 1px solid var(--color-border);
+box-shadow: 0 2px 4px rgba(35, 25, 15, 0.06), 0 12px 28px rgba(35, 25, 15, 0.14);
 ```
 
-### Fallback
+**Superseded — no `@supports`/blur fallback needed any more.** There's no
+blur to fall back from, so the old backdrop-filter feature-detection block
+is gone from `index.css`.
 
-`backdrop-filter` isn't supported everywhere (older WebKit/Firefox). Wrap the
-blur in `@supports (backdrop-filter: blur(1px))`; the fallback is a plain
-opaque surface (`neutral-0` / `dark-surface`) with the same border and
-shadow — still looks intentional, just not translucent. Never let the
-fallback be "no visible panel at all."
+### Photo-overlay panels — retired
 
-### Photo-overlay panels
+**Added 2026-08-06, retired 2026-08-26.** The recipe detail hero used to
+float a `.glass-photo` info panel (title/meta/tags/actions) over the bottom
+of the photo, with a fixed dark tint independent of theme. Cookbook
+Editorial's detail page layout (see Detail page layout below) puts that
+content **below** the photo instead, in normal flow — so `.glass-photo` and
+its fixed-dark-tint-regardless-of-theme rationale no longer apply anywhere,
+and the utility was deleted from `index.css` rather than left unused. The
+"Edit/Delete live in the same flex row as the title" fix below is **kept**,
+even though its original motivation (independently-absolutely-positioned
+buttons colliding with a tall panel *floating over an image*) no longer
+applies once nothing floats over the image — it's still good practice for
+robustness against a long title, just via normal flow instead of absolute
+positioning now.
 
-**Added 2026-08-06.** `.glass` assumes it's sitting over the app's own flat
-surface — a reasonable assumption for the header or a modal over ordinary
-content, but wrong for a panel floating over a user's recipe photo, whose
-brightness/color has nothing to do with the app's light/dark setting. Using
-theme-following `.glass` there produced a panel that read as washed-out over
-bright photos and murky over dark ones.
-
-Fix: a separate `.glass-photo` utility — **fixed dark tint regardless of
-theme** (`rgba(20, 21, 26, 0.55)` + blur, always paired with white text, never
-`--color-ink`) — used for the recipe detail hero's info panel: **a bounded
-floating card** (inset from the image's edges — `inset-x-3/bottom-3`-ish, not
-flush to them — `radius-lg`), not a full-height fade-to-transparent gradient.
-A first pass used only a `black/80→transparent` gradient behind plain white
-text; in review that gave inconsistent, position-dependent contrast (fine
-near the bottom edge, weak higher up) instead of a guarantee. A bounded panel
-with uniform opacity everywhere inside it is the actual fix — reserve
-gradients for *transitions into* a glass panel, never as the sole contrast
-mechanism.
-
-**Edit/Delete live inside that same panel, not as independently-floating
-buttons.** A second pass put them in their own absolutely-positioned
-top-right group, separate from the bottom info panel — which worked for a
-short recipe but visibly collided with the panel the moment title +
-description + meta + several tags made it tall enough to reach the top of
-the image. The fix is structural, not a size/position tweak: the buttons are
-laid out in the *same flex row as the title*, inside the panel
-(`justify-between`, title left, buttons right) — two elements in one flex
-container can't overlap regardless of how tall the panel's content gets,
-where two independently-absolutely-positioned elements always can. Inside
-the panel they drop `.glass-photo` itself (a dark-blur-on-dark-blur panel
-reads muddy) for a plain `bg-white/15` circle, which reads as a clear button
-against the panel's own darker tone instead.
-
-Applies whenever a panel floats over unpredictable user content (currently
-just the recipe hero) — if the app ever gains another photo-heavy surface,
-reuse `.glass-photo` for the panel, and keep any actions inside its flex
-layout rather than positioning them independently over the image.
+If a future photo-heavy surface ever wants an overlay-on-photo treatment
+again, it needs a new utility designed for Cookbook Editorial's flat/hairline
+language (a scrim + opaque label, not a re-add of `.glass-photo`'s blur) —
+don't resurrect the deleted class as-is.
 
 ### Confirmation dialogs
 
@@ -241,18 +303,21 @@ no spring overshoot — this is a routine confirmation, not a delight moment),
 icon (`WarningIcon`, `danger-50`/`danger-500` circle) + heading + message +
 a ghost Cancel / filled-destructive Delete pair. This is the buttons spec's
 "actual confirming action inside a confirmation step" — the one place the
-filled `danger-500` button belongs (see Buttons above).
+filled `danger-500` button belongs (see Buttons above). Unaffected by the
+2026-08-26 glass change beyond the panel itself going opaque — no code
+changes were needed here.
 
 **The backdrop must actively neutralize whatever is behind it**, not just
 dim it a little — `bg-black/60` **plus `backdrop-blur-sm`**, not `bg-black/50`
 alone. A first pass used just a 50%-opacity backdrop with no blur; over the
 recipe detail page's photo-heavy background the sharp image behind stayed
-visually competitive with the dialog, and the `.glass` panel (which itself
-assumes a neutralized backdrop, not a busy photo) lost definition — it read
-as "melted into" the photo rather than floating above it. Blurring +
-darkening the backdrop enough is what makes the dialog panel's own glass
-treatment work reliably, *regardless of what page it's opened on* — fix it
-at the backdrop, not by hand-tuning the panel per page.
+visually competitive with the dialog, and the panel lost definition — it
+read as "melted into" the photo rather than floating above it. Blurring +
+darkening the backdrop enough is what makes the dialog panel work reliably,
+*regardless of what page it's opened on* — fix it at the backdrop, not by
+hand-tuning the panel per page. (This backdrop blur is on the native
+`<dialog>::backdrop`, a separate mechanism from `.glass`'s own now-removed
+blur — it still applies.)
 
 Accessibility: `role="alertdialog"`, `aria-modal`, Escape to cancel, click
 on backdrop to cancel, focus starts on Cancel (not the destructive action —
@@ -338,13 +403,13 @@ settles), that's a bug against this rule, not a style nitpick.
 
 ### Buttons
 
-- **Primary:** flat `citrus-500` fill, white text, `radius-full`, hover
-  `citrus-600` + subtle `scale(1.02)` via `motion-standard`, pressed
-  `citrus-700` + `scale(0.98)` via `motion-micro`. Gradient is reserved for
-  hero moments (see Color), not buttons — keeps buttons calm and legible
-  even on busy backgrounds.
+- **Primary:** flat `citrus-500` fill, white text, `radius-md` (**not
+  `radius-full`** as of 2026-08-26 — pill CTAs were a Citrus Pop identity
+  marker that doesn't fit hairline/sharp shape language), hover `citrus-600`,
+  pressed `citrus-700` + `scale(0.98)` via `motion-micro`. No gradient — this
+  direction doesn't have one (see Color).
 - **Secondary:** `teal-500` text/border on transparent or `neutral-0`
-  fill, `radius-full`.
+  fill, `radius-md`.
 - **Destructive:** icon-only or ghost by default (text `danger-500`, no
   fill), *not* a bold filled pill placed as a co-equal peer next to a
   primary/edit action — a filled-red button sitting beside an outlined
@@ -415,67 +480,102 @@ fix is structural, not cosmetic:
 - Recipes with no photo get the citrus-tinted icon placeholder (see
   Photography) filling the same `aspect-[4/3]` slot, so the grid rhythm
   never breaks depending on which recipes have photos.
+- **Added 2026-08-26, Cookbook Editorial:** title set in italic Fraunces,
+  a hairline rule (`border-border`) directly under it, then a mono
+  uppercase/tracked meta line (`Serves 4  ·  Prep 15  ·  Cook 90`, not the
+  old prose "4 servings · 15 min prep") — the printed-recipe-card layer that
+  replaced color/pill-coded metadata. Tags use the `editorial` `TagChip`
+  variant below the meta line (see Tags/chips).
 
 ### Tags/chips
 
-`radius-full`, `citrus-50`/`teal-50` tinted background with matching darker
-text (`citrus-700`/`teal-700`) in light mode; inverted-lightness equivalents
-in dark mode. **Always render capitalized** (`capitalize` — first letter of
-each word), regardless of how the tag was typed/stored — raw lowercase chip
-text (`belgian`, `dessert`) reads as an unprocessed database value, not
-authored content. This is a display rule only; store/match tags as typed.
+**Two variants as of 2026-08-26** (`TagChip`'s `variant` prop):
 
-### Ingredient & step display — not raw `<ul>`/`<ol>`
+- **`default`** (unchanged pill) — `radius-full`, `teal-50`/`citrus-50`-family
+  tinted background with matching darker text, used everywhere outside the
+  recipe list/detail pages (`RecipeCollectionsEditor`, forms, etc. — see
+  Migration status at the top of this doc).
+- **`editorial`** (new) — the recipe list/detail pages' own treatment: no
+  pill/background at all, a small-caps `font-mono` label with a hairline
+  underline (`border-b border-border`), `citrus-500` on hover. Grounded in
+  printed-label/index-card material rather than a UI-chip convention — see
+  Brand direction.
+- **`overlay` — removed.** Existed only for the detail hero's now-retired
+  photo-overlay panel (see Elevation — Photo-overlay panels); deleted along
+  with it rather than kept as an unused variant. A future photo-overlay
+  surface should design its own treatment for Cookbook Editorial rather than
+  resurrect this one (see that section for why).
 
-**Added 2026-08-06**, same review as Cards above: browser-default bullets
-and numbers on the recipe detail page read as an unstyled dump of two DB
-tables.
+**Always render capitalized** (`capitalize` for `default`/`overlay`;
+`editorial` uses `uppercase` instead, to the same end), regardless of how the
+tag was typed/stored — raw lowercase chip text (`belgian`, `dessert`) reads
+as an unprocessed database value, not authored content. This is a display
+rule only; store/match tags as typed.
 
-- **Ingredients:** a checklist, not a bulleted list. Each ingredient is a row
-  with a small `radius-full` bullet dot (`teal-500`) instead of a browser
-  `•`, in a `bg-surface-sunken` rounded-md row for light visual separation
-  between items.
-- **Steps:** each step is its own card (`bg-surface-sunken`, `radius-md`,
-  padding), not an `<ol>` line — with a large circular number badge
-  (`citrus-50` fill / `citrus-600` text in light, inverted in dark) to its
-  left instead of a plain `1.`/`2.` prefix. Cards stack with a visible gap
-  (`space-y-3`), not tight list spacing, so each step reads as a discrete
-  action.
+### Ingredient & step display
+
+**Superseded 2026-08-26** (recipe detail page only — see Migration status).
+The 2026-08-06 checklist/carded-step treatment below was itself a fix for
+raw `<ul>`/`<ol>` bullets reading as an unstyled DB dump; Cookbook Editorial
+replaces *that* pattern with an "index" list, grounded in a printed
+recipe card rather than a generic checklist UI:
+
+- **Ingredients:** a plain list with hairline row dividers
+  (`divide-y`/`border-y border-border`), each row prefixed with a
+  `font-mono` two-digit index (`01`, `02`, …) instead of a bullet dot or
+  checkbox — no card background per row.
+- **Steps:** a large italic Fraunces numeral (`text-3xl`, `citrus-500/50`,
+  `aria-hidden` since the `<ol>` already conveys order) replaces the old
+  circular number badge, sitting to the left of the instruction text with
+  no card background. **The first step's first letter is a drop cap**
+  (`first-letter:` variant, `text-4xl` italic Fraunces, floated) — the one
+  deliberate "signature" flourish this direction was picked for; don't add
+  a second one elsewhere on the page without a good reason, the point is
+  restraint everywhere except one place (see Brand direction).
+
+**Original 2026-08-06 version (superseded, for context):** each ingredient a
+`bg-surface-sunken` row with a `teal-500` bullet dot; each step its own
+`bg-surface-sunken` card with a circular `citrus-50`/`citrus-600` number
+badge. That version is still the right model if this pattern is ever needed
+somewhere *outside* the Cookbook Editorial pages.
 
 ### Detail page layout — photo leads, not metadata
 
-**Added 2026-08-06, revised same day.** The original detail page ran title →
-description → stats → tags → *then* a small photo — which reads as "record
-with an attached image field." The photo is the whole point of a recipe; it
-goes first. The first fix just moved title/meta/tags/actions to sit *below*
-a full-width hero photo; a same-day follow-up went further and put that
-content **on top of** the photo instead, since a photo followed immediately
-by a solid block of text was still spending a full extra screen's worth of
-height on information the photo had room for:
+**Added 2026-08-06, revised same day, restructured 2026-08-26.** The
+original detail page ran title → description → stats → tags → *then* a
+small photo — which reads as "record with an attached image field." The
+photo is the whole point of a recipe; it goes first.
 
-**When a photo exists:**
+**2026-08-26 (current):** the overlay-on-photo approach below was retired
+(see Elevation — Photo-overlay panels) in favor of a simpler structure that
+applies identically whether or not a photo exists:
+
 1. Back link (unchanged, above the photo).
-2. **Hero photo**, `aspect-[16/9]`, `radius-lg`, `relative` container.
-3. Floating bottom, inset from the edges: the `.glass-photo` info panel (see
-   Elevation — Photo-overlay panels), title and Edit/Delete in one flex row
-   (title left, icon buttons right — not independently positioned, see
-   Elevation for why), then description, the meta line, and tags below,
-   all in fixed white/`white/80` text.
-4. Ingredients, then Steps, per the card/checklist treatment below.
+2. **Hero photo** if one exists (`aspect-[16/9]`, `radius-lg`, hairline
+   border) — or the citrus-tinted icon placeholder in the same slot if not.
+3. Below it, in normal flow, a masthead block: title (italic Fraunces) and
+   Edit/Delete icon buttons in **one flex row** (`justify-between`, title
+   left, buttons right — kept from the overlay era for the same
+   long-title robustness, see Elevation), then the description as an italic
+   "lede" (see Typography's `body-lg` exception), the mono meta line, and
+   `editorial`-variant tags — all under a hairline rule closing the block.
+4. Ingredients, then Steps, per the index-list/serif-numeral treatment
+   above.
 
-**When there's no photo** (the citrus-tinted icon placeholder instead): the
-overlay treatment doesn't apply — scrimming a flat brand-colored placeholder
-would look like a muddy smear, not a hero moment. Falls back to the
-pre-overlay layout: placeholder block, then title/description/meta/tags/
-actions stacked below it in normal theme-following `--color-ink` text, same
-structure as the very first revision above.
+**Superseded (2026-08-06 overlay version, for context):** with a photo,
+title/meta/tags/actions floated in a `.glass-photo` panel over the bottom of
+the hero image in fixed white text; without one, they sat below a flat
+placeholder block in normal theme-following text. Two different layouts for
+the same content depending on photo presence added real complexity for a
+benefit (the photo/text overlap) this direction doesn't need — one layout
+for both cases is simpler and still photo-forward.
 
 ### Navigation / header
 
-Glass panel (see Elevation), sticky. Wordmark "Nosh" set in
-`display-md`/Plus Jakarta Sans 800, `citrus-500` — text-only, no icon mark.
-Active route indicator uses a filled Phosphor icon in `citrus-500`/`teal-500`
-per the mixed-icon rule above.
+Glass panel (see Elevation — now opaque, not blurred), sticky. Wordmark
+"Nosh" set in `display-md`/Fraunces 800, `citrus-500` (now sauce red, was
+orange) — text-only, no icon mark. Active route indicator uses a filled
+Phosphor icon in `citrus-500`/`teal-500` per the mixed-icon rule above.
 
 ### Anchored menus / popovers {#anchored-menus--popovers}
 
@@ -698,18 +798,28 @@ contained images a bit more room on larger screens without ballooning into
 - Prefer semantic CSS variables (`--color-surface`, `--color-text-primary`,
   `--color-border`) that get redefined per mode, over sprinkling
   `dark:bg-...` on every element — keeps components mode-agnostic.
-- A shared `.glass` utility (and its `@supports` fallback) belongs in
-  `index.css` once, rather than repeated inline per component.
-- Phosphor Icons and Plus Jakarta Sans/Inter are new dependencies — small,
-  directly justified by this doc, consistent with the "don't introduce
-  unnecessary dependencies" rule in [../CLAUDE.md](../CLAUDE.md) (these
-  aren't unnecessary, they're what the approved design requires).
+- A shared `.glass` utility belongs in `index.css` once, rather than
+  repeated inline per component. (No `@supports`/blur fallback needed as of
+  2026-08-26 — see Elevation.)
+- Phosphor Icons and Inter are dependencies from the original 2026-08-06
+  pass; Fraunces and IBM Plex Mono (2026-08-26, replacing Plus Jakarta Sans)
+  are the same kind of small, doc-justified addition, consistent with the
+  "don't introduce unnecessary dependencies" rule in
+  [../CLAUDE.md](../CLAUDE.md).
 
 ## Open items
 
 - Exact dark-mode accent-token lightness adjustments (e.g. `citrus-400` vs
   `citrus-500` on `dark-bg`) should be verified against real contrast
-  numbers during implementation, not assumed from this doc alone.
+  numbers during implementation, not assumed from this doc alone. Still
+  open after the 2026-08-26 color swap — the new hex values were sanity-
+  checked by calculation and a live look at both themes, not measured with
+  a contrast-checking tool.
+- **New 2026-08-26:** the header, auth screens, recipe form, and collections
+  pages only received the global token swap, not a structural Cookbook
+  Editorial pass (pill buttons/inputs, the login screen's retired-in-spirit
+  gradient background, etc. are all still there, just recolored) — see
+  Migration status at the top of this doc and [backlog.md](backlog.md).
 
 Resolved 2026-08-08 (see Toasts, Empty states, and the Inputs ring-offset
 note above): the `window.alert()` error banners, the icon-only empty-state

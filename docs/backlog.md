@@ -37,8 +37,51 @@ priority.
 - [ ] Native-feeling mobile experience (MVP ships as a responsive PWA; this
       is a further step beyond that).
 
+### Design system follow-ups (Cookbook Editorial, 2026-08-26)
+
+- [ ] Give the header, auth screens (login/signup), recipe form, and the
+      collections pages' own chrome (list header, create/rename forms, empty
+      states) a structural Cookbook Editorial pass — they currently only
+      inherited the global token swap (colors/fonts/radius), not the
+      pattern changes (index lists, mono metadata, editorial tag chips,
+      sharp shape language) applied to the recipe list/detail pages.
+      (`CollectionDetailPage`'s own recipe grid is already covered — it
+      reuses `RecipeCard`, which got the full treatment.) See
+      [design-system.md](design-system.md)'s "Migration status" note.
+- [ ] Redesign or remove `AuthLayout`'s login/signup background — it's still
+      the literal Citrus Pop orange→pink gradient, hardcoded rather than
+      token-derived, so it didn't shift with the rest of the app and now
+      sits oddly next to the new sauce-red brand color.
+- [ ] Consider renaming the `citrus-*`/`teal-*` design tokens now that they
+      no longer describe their own colors (citrus-* is sauce red, teal-* is
+      sage) — left as-is for the 2026-08-26 visual change since a mechanical
+      rename across every call site is a separate, low-value refactor on its
+      own merits.
+
 ## Completed
 
+- **2026-08-26** — New design direction, "Cookbook Editorial", replaces
+  "Citrus Pop": paper/ink palette with a sauce-red primary and sage
+  secondary, Fraunces (serif, italic) + IBM Plex Mono (new, printed-label
+  metadata) alongside unchanged Inter, sharp/hairline shapes instead of
+  very-rounded, glass/blur and the gradient dropped app-wide. Token layer
+  (`index.css`, `styles.ts`) swapped globally per the project owner's
+  direction, so every page picked up the new colors/fonts/shape
+  immediately; structural rework (index-style ingredient list, large serif
+  step numerals with a first-step drop cap, a masthead detail layout
+  replacing the old photo-overlay panel, a new `TagChip` `editorial`
+  variant) was scoped to the recipe list and detail pages only, per
+  explicit instruction. See
+  [decisions.md](decisions.md#2026-08-26-design-direction-replaced-cookbook-editorial-supersedes-citrus-pop)
+  for the full reasoning and [design-system.md](design-system.md) for the
+  updated Color/Typography/Shape/Elevation/Cards/Tags/Detail-page-layout
+  sections. `pnpm lint`/`test`/`build` all pass (87 frontend tests, all
+  pre-existing). **Verified live** against the real backend + seeded demo
+  data via a headless-browser script (both themes, a no-photo recipe, the
+  delete confirmation dialog, and the login screen — the last two to check
+  the global glass/token change didn't break pages this pass didn't edit
+  directly). Follow-up structural work on the rest of the app is tracked
+  above under "Design system follow-ups."
 - **2026-08-26** — Web Interface Guidelines review of `frontend/src` (accessibility/forms/state) fixed: every form input now carries a real `name` (and `autoComplete`, a live token where one applies, otherwise `"off"`), including the recipe form's dynamically-repeated ingredient/step rows, scoped to each row's stable id rather than its index; every previously placeholder-only field (ingredient Qty/Unit/Name, the collection create/rename inputs) got a real `sr-only` `<label>`; login/signup/recipe-form submit errors now move focus to their banner the moment they're set (`AuthLayout`, `RecipeFormPage`) instead of appearing silently; deleting a recipe photo now goes through `ConfirmDialog` like every other delete in the app, instead of firing on a single click; the recipe list's search query is now mirrored into the URL (`?q=…`) alongside the tag filter that was already there, so a search is shareable/refresh-safe; and the "Grandma's Sunday Ragù" placeholder's straight apostrophe was fixed to match the rest of the app's curly-quote copy (design-system.md's own copy of that example string had the same typo, fixed too). See [design-system.md#forms](design-system.md#forms) for the two new form conventions (`name`/label requirements, focus-follows-the-error) this pass established. **Deliberately not changed**, both reviewed and rejected as fixes: `prefers-reduced-motion` support (the app's [existing documented decision](design-system.md#reduced-motion--explicit-trade-off) is to ignore it) and list virtualization (no list in the app is anywhere near the guideline's 50-item threshold at personal-recipe-collection scale, and it would mean a new dependency for no real benefit — see [../CLAUDE.md](../CLAUDE.md)'s "don't introduce unnecessary dependencies"). `pnpm lint`/`test` pass on the frontend package, including new coverage for the photo-delete confirmation and the URL-synced search query. **Not verified live** — this was a code-level review/fix pass, not exercised against the running dev server.
 - **2026-08-19** — Recipe organization: collections and tag-based browsing
   shipped. Collections are simple named lists (many-to-many with recipes, no

@@ -6,13 +6,19 @@ export type ButtonVariant = "primary" | "secondary" | "destructive" | "ghost";
  * polymorphic wrapper component needed for that.
  */
 export function buttonClass(variant: ButtonVariant = "primary"): string {
+  // rounded-md (not rounded-full) — Cookbook Editorial (2026-08-26) replaces
+  // Citrus Pop's pill-shaped CTAs with the sharper, hairline-led shape
+  // language; see docs/design-system.md#shape-language.
   const base =
-    "inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-full px-4 py-2.5 text-sm font-medium transition-[transform,background-color,color,border-color] duration-standard ease-standard active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50";
+    "inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-md px-4 py-2.5 text-sm font-medium transition-[transform,background-color,color,border-color] duration-standard ease-standard active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50";
   switch (variant) {
     case "primary":
       return `${base} bg-citrus-500 text-white hover:bg-citrus-600`;
     case "secondary":
-      return `${base} border border-teal-500 text-teal-600 hover:bg-teal-50 dark:text-teal-300 dark:hover:bg-teal-500/10`;
+      // text-teal-500 (not -600, which isn't a defined token and would
+      // silently fall back to Tailwind's stock teal) — matches the border
+      // color and docs/design-system.md#buttons' spec.
+      return `${base} border border-teal-500 text-teal-500 hover:bg-teal-50 dark:text-teal-300 dark:hover:bg-teal-500/10`;
     case "destructive":
       return `${base} bg-danger-500 text-white hover:bg-danger-700`;
     case "ghost":
