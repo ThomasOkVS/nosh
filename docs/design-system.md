@@ -507,7 +507,7 @@ fix is structural, not cosmetic:
   surface should design its own treatment for Cookbook Editorial rather than
   resurrect this one (see that section for why).
 
-**Always render capitalized** (`capitalize` for `default`/`overlay`;
+**Always render capitalized** (`capitalize` for `default`;
 `editorial` uses `uppercase` instead, to the same end), regardless of how the
 tag was typed/stored — raw lowercase chip text (`belgian`, `dessert`) reads
 as an unprocessed database value, not authored content. This is a display
