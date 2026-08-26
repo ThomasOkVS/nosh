@@ -79,8 +79,14 @@ export function CollectionDetailPage() {
       <div className="flex items-center justify-between gap-3">
         {renaming ? (
           <form onSubmit={submitRename} className="flex flex-1 gap-2">
+            <label htmlFor="collection-name" className="sr-only">
+              Collection name
+            </label>
             <input
+              id="collection-name"
+              name="name"
               type="text"
+              autoComplete="off"
               value={nameDraft}
               onChange={(event) => setNameDraft(event.target.value)}
               autoFocus

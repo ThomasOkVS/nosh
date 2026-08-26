@@ -169,7 +169,9 @@ export function ImportDialog() {
           <input
             ref={inputRef}
             id="import-dialog-url"
+            name="url"
             type="url"
+            autoComplete="url"
             required
             placeholder="https://example.com/best-tomato-soup"
             value={url}

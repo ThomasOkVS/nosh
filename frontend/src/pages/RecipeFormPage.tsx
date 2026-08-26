@@ -9,7 +9,7 @@ import {
   UploadSimpleIcon,
   XIcon,
 } from "@phosphor-icons/react";
-import { useCallback, useEffect, useState, type ChangeEvent, type DragEvent, type SubmitEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type ChangeEvent, type DragEvent, type SubmitEvent } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import {
@@ -23,6 +23,7 @@ import {
 } from "../api/recipes";
 import type { RecipeImage, RecipeInput } from "../api/types";
 import { AutoGrowTextarea } from "../components/AutoGrowTextarea";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Skeleton } from "../components/Skeleton";
 import { TagInput } from "../components/TagInput";
 import { generateId } from "../lib/id";
@@ -153,6 +154,8 @@ export function RecipeFormPage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [isDraggingImage, setIsDraggingImage] = useState(false);
+  const [pendingDeleteImageId, setPendingDeleteImageId] = useState<number | null>(null);
+  const submitErrorRef = useRef<HTMLParagraphElement>(null);
 
   useEffect(() => {
     if (!isEditMode) {
@@ -199,6 +202,12 @@ export function RecipeFormPage() {
       cancelled = true;
     };
   }, [isEditMode, recipeId]);
+
+  // Per docs/design-system.md#forms: a freshly-set submit error moves focus
+  // to its banner rather than just appearing silently above the fields.
+  useEffect(() => {
+    if (submitError) submitErrorRef.current?.focus();
+  }, [submitError]);
 
   const updateIngredient = useCallback((index: number, field: keyof IngredientRow, value: string) => {
     setIngredients((prev) => prev.map((row, i) => (i === index ? { ...row, [field]: value } : row)));
@@ -267,14 +276,17 @@ export function RecipeFormPage() {
     setImages((prev) => prev.filter((image) => image.id !== imageId));
   }, []);
 
-  const handleImageDelete = useCallback(
-    (imageId: number) => {
-      deleteRecipeImage(recipeId, imageId)
-        .then(() => removeImageFromState(imageId))
-        .catch(() => showToast("Failed to delete image"));
-    },
-    [recipeId, removeImageFromState, showToast],
-  );
+  // Deletion always goes through ConfirmDialog first — see
+  // docs/design-system.md#confirmation-dialogs, "always paired with a
+  // confirmation step for actual deletes."
+  const confirmImageDelete = useCallback(() => {
+    if (pendingDeleteImageId === null) return;
+    const imageId = pendingDeleteImageId;
+    setPendingDeleteImageId(null);
+    deleteRecipeImage(recipeId, imageId)
+      .then(() => removeImageFromState(imageId))
+      .catch(() => showToast("Failed to delete image"));
+  }, [pendingDeleteImageId, recipeId, removeImageFromState, showToast]);
 
   const handleSubmit = useCallback(
     (event: SubmitEvent<HTMLFormElement>) => {
@@ -370,7 +382,11 @@ export function RecipeFormPage() {
       </Link>
       <h1 className="font-display text-2xl font-extrabold text-ink">{isEditMode ? "Edit recipe" : "New recipe"}</h1>
 
-      {submitError && <p className={errorBannerClass}>{submitError}</p>}
+      {submitError && (
+        <p ref={submitErrorRef} tabIndex={-1} role="alert" className={errorBannerClass}>
+          {submitError}
+        </p>
+      )}
 
       <section className={sectionCardClass}>
         <h2 className={sectionHeadingClass}>
@@ -384,8 +400,10 @@ export function RecipeFormPage() {
             </label>
             <input
               id="title"
+              name="title"
+              autoComplete="off"
               required
-              placeholder="Grandma's Sunday Ragù"
+              placeholder="Grandma’s Sunday Ragù"
               value={title}
               onChange={(event) => setTitle(event.target.value)}
               className={`mt-1 w-full ${inputClass}`}
@@ -397,6 +415,8 @@ export function RecipeFormPage() {
             </label>
             <AutoGrowTextarea
               id="description"
+              name="description"
+              autoComplete="off"
               placeholder="A few sentences about this recipe…"
               value={description}
               onChange={(event) => setDescription(event.target.value)}
@@ -409,7 +429,10 @@ export function RecipeFormPage() {
             </label>
             <input
               id="servings"
+              name="servings"
+              autoComplete="off"
               type="number"
+              inputMode="numeric"
               min={1}
               placeholder="4"
               value={servings}
@@ -424,7 +447,10 @@ export function RecipeFormPage() {
               </label>
               <input
                 id="prepTime"
+                name="prepTimeMinutes"
+                autoComplete="off"
                 type="number"
+                inputMode="numeric"
                 min={0}
                 placeholder="20"
                 value={prepTimeMinutes}
@@ -438,7 +464,10 @@ export function RecipeFormPage() {
               </label>
               <input
                 id="cookTime"
+                name="cookTimeMinutes"
+                autoComplete="off"
                 type="number"
+                inputMode="numeric"
                 min={0}
                 placeholder="30"
                 value={cookTimeMinutes}
@@ -458,19 +487,37 @@ export function RecipeFormPage() {
         <div className="mt-3 space-y-2">
           {ingredients.map((row, index) => (
             <div key={row.id} className="flex flex-wrap items-start gap-2 rounded-sm border border-border bg-surface p-2">
+              <label htmlFor={`ingredient-quantity-${row.id}`} className="sr-only">
+                Ingredient {index + 1} quantity
+              </label>
               <input
+                id={`ingredient-quantity-${row.id}`}
+                name={`ingredient-quantity-${row.id}`}
+                autoComplete="off"
                 placeholder="Qty"
                 value={row.quantity}
                 onChange={(event) => updateIngredient(index, "quantity", event.target.value)}
                 className={`w-20 ${inputClass}`}
               />
+              <label htmlFor={`ingredient-unit-${row.id}`} className="sr-only">
+                Ingredient {index + 1} unit
+              </label>
               <input
+                id={`ingredient-unit-${row.id}`}
+                name={`ingredient-unit-${row.id}`}
+                autoComplete="off"
                 placeholder="Unit"
                 value={row.unit}
                 onChange={(event) => updateIngredient(index, "unit", event.target.value)}
                 className={`w-24 ${inputClass}`}
               />
+              <label htmlFor={`ingredient-name-${row.id}`} className="sr-only">
+                Ingredient {index + 1} name
+              </label>
               <input
+                id={`ingredient-name-${row.id}`}
+                name={`ingredient-name-${row.id}`}
+                autoComplete="off"
                 placeholder="Ingredient"
                 value={row.name}
                 onChange={(event) => updateIngredient(index, "name", event.target.value)}
@@ -502,7 +549,13 @@ export function RecipeFormPage() {
           {steps.map((row, index) => (
             <div key={row.id} className="flex items-start gap-2">
               <span className="mt-2.5 w-5 flex-shrink-0 text-sm text-ink-faint">{index + 1}.</span>
+              <label htmlFor={`step-instruction-${row.id}`} className="sr-only">
+                Step {index + 1} instructions
+              </label>
               <AutoGrowTextarea
+                id={`step-instruction-${row.id}`}
+                name={`step-instruction-${row.id}`}
+                autoComplete="off"
                 placeholder="Instructions"
                 value={row.instruction}
                 onChange={(event) => updateStep(index, event.target.value)}
@@ -534,7 +587,7 @@ export function RecipeFormPage() {
           <label htmlFor="tags" className="sr-only">
             Tags
           </label>
-          <TagInput id="tags" value={tags} onChange={setTags} />
+          <TagInput id="tags" name="tags" value={tags} onChange={setTags} />
           <p className="mt-1 text-xs text-ink-faint">Press Enter or comma to add a tag.</p>
         </div>
       </section>
@@ -557,7 +610,7 @@ export function RecipeFormPage() {
                     />
                     <button
                       type="button"
-                      onClick={() => handleImageDelete(image.id)}
+                      onClick={() => setPendingDeleteImageId(image.id)}
                       aria-label="Remove photo"
                       className="absolute -right-2.5 -top-2.5 flex h-9 w-9 items-center justify-center rounded-full bg-surface text-ink-muted shadow-md hover:text-danger-500"
                     >
@@ -597,6 +650,15 @@ export function RecipeFormPage() {
       <button type="submit" disabled={submitting} className={`w-full sm:w-auto ${buttonClass("primary")}`}>
         {submitting ? "Saving…" : "Save recipe"}
       </button>
+
+      <ConfirmDialog
+        open={pendingDeleteImageId !== null}
+        title="Remove this photo?"
+        message="This can't be undone."
+        confirmLabel="Remove"
+        onConfirm={confirmImageDelete}
+        onCancel={() => setPendingDeleteImageId(null)}
+      />
     </form>
   );
 }

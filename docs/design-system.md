@@ -382,8 +382,13 @@ card. The neutral-200/dark-border values above are the corrected, more
 visible versions; don't quietly soften them back down for "subtlety."
 
 **Every text/number input carries an example placeholder** (e.g. Title →
-"Grandma's Sunday Ragù", not empty) — an empty form reads as a raw scaffold;
-a form full of plausible examples reads as guided.
+"Grandma’s Sunday Ragù", not empty) — an empty form reads as a raw scaffold;
+a form full of plausible examples reads as guided. Placeholder and other
+user-facing copy uses curly apostrophes/quotes (’‘”“) and an ellipsis
+character (…) rather than the ASCII `'`/`"`/`...` — written as the literal
+Unicode character in JSX text content, or the `&rsquo;`-style entity where a
+literal character would be awkward to read in the source (e.g. next to other
+punctuation), as `ImportDialog` already does for "We&rsquo;ll".
 
 ### Cards (recipe cards) — photo-forward grid, not a list row
 
@@ -539,6 +544,37 @@ Photos) — breaking the page into visibly distinct chunks instead of one
 continuous scroll of identical-looking fields. Combined with the
 placeholder-example rule under Inputs above, the goal is that a blank new
 recipe form feels like a guided sequence, not a raw table-insert form.
+
+**Added 2026-08-26, from a Web Interface Guidelines review.** Two rules that
+apply across every form in the app, not just the recipe form above:
+
+- **Every `<input>`/`<textarea>` carries a `name` (and a real `autocomplete`
+  token where one applies — `username`/`current-password`/`new-password`/
+  `email` for auth, `url` for the import dialog).** For a field that's
+  genuinely app-specific data with no meaningful autofill (a recipe's
+  ingredient rows, a tag draft, a collection name), `name` is still present
+  for correctness, paired with `autoComplete="off"` rather than a guessed-at
+  token that would produce wrong suggestions. A dynamically-repeated row
+  (ingredients, steps) gets a `name`/`id` scoped to that row's own stable id
+  (`ingredient-quantity-${row.id}`), not the array index, so it stays correct
+  across reordering.
+- **Every field has a real `<label>`, even where the visual design has no
+  room for one.** A placeholder (Qty/Unit/Ingredient on each ingredient row,
+  a bare rename input replacing a page's `<h1>`) is not a substitute — it
+  disappears on input and isn't announced as a label by assistive tech. Where
+  the visual design genuinely doesn't have space for a persistent label (the
+  ingredient/step rows, the inline collection-rename field), use a `sr-only`
+  `<label>` tied via `htmlFor`/`id` instead of skipping the label — same
+  pattern already used for `TagInput`'s label on the recipe form.
+- **Errors — focus follows the error.** A submit error's inline banner
+  (`errorBannerClass`, `role="alert"`) is also `tabIndex={-1}` and receives
+  focus the moment it's set (`AuthLayout` does this once for both auth forms;
+  `RecipeFormPage`'s save-error banner does it locally) — a screen reader or
+  keyboard user stays on the field they were on otherwise, with no signal a
+  submit even happened. This is decorative-adjacent but not covered by the
+  Motion section's reduced-motion exemption: it's assistive-tech focus
+  movement, not an animation, and always happens regardless of motion
+  preference.
 
 ### File upload — a dropzone, not a bare `<input type="file">`
 

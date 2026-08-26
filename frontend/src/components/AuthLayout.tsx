@@ -1,4 +1,4 @@
-import type { ReactNode, SubmitEvent } from "react";
+import { useEffect, useRef, type ReactNode, type SubmitEvent } from "react";
 import { errorBannerClass } from "../styles";
 
 interface AuthLayoutProps {
@@ -10,6 +10,16 @@ interface AuthLayoutProps {
 }
 
 export function AuthLayout({ title, error, onSubmit, children, footer }: Readonly<AuthLayoutProps>) {
+  const errorRef = useRef<HTMLParagraphElement>(null);
+
+  // Per docs/design-system.md#forms: a freshly-set submit error moves focus
+  // to the banner (tabIndex={-1} makes an otherwise non-interactive <p> a
+  // valid focus target) instead of just appearing silently above the fields
+  // a screen reader user is still on.
+  useEffect(() => {
+    if (error) errorRef.current?.focus();
+  }, [error]);
+
   return (
     <div
       className="flex min-h-dvh items-center justify-center px-4 py-[max(1.5rem,env(safe-area-inset-top))]"
@@ -17,7 +27,11 @@ export function AuthLayout({ title, error, onSubmit, children, footer }: Readonl
     >
       <form onSubmit={onSubmit} className="glass w-full max-w-sm animate-pop-in space-y-4 rounded-xl p-6 sm:p-8">
         <h1 className="font-display text-2xl font-extrabold text-ink">{title}</h1>
-        {error && <p className={errorBannerClass}>{error}</p>}
+        {error && (
+          <p ref={errorRef} tabIndex={-1} role="alert" className={errorBannerClass}>
+            {error}
+          </p>
+        )}
         {children}
         {footer}
       </form>

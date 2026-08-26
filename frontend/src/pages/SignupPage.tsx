@@ -50,6 +50,7 @@ export function SignupPage() {
         </label>
         <input
           id="email"
+          name="email"
           type="email"
           required
           autoComplete="email"
@@ -64,6 +65,7 @@ export function SignupPage() {
         </label>
         <input
           id="username"
+          name="username"
           required
           minLength={3}
           maxLength={32}
@@ -78,7 +80,14 @@ export function SignupPage() {
         <label htmlFor="password" className={labelClass}>
           Password
         </label>
-        <PasswordInput id="password" required autoComplete="new-password" value={password} onChange={setPassword} />
+        <PasswordInput
+          id="password"
+          name="new-password"
+          required
+          autoComplete="new-password"
+          value={password}
+          onChange={setPassword}
+        />
       </div>
       <button type="submit" disabled={submitting} className={`w-full ${buttonClass("primary")}`}>
         {submitting ? "Creating account…" : "Sign up"}
