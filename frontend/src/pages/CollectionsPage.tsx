@@ -71,7 +71,7 @@ export function CollectionsPage() {
 
       {!loading && collections?.length === 0 && (
         <div className="flex flex-col items-center gap-3 py-16 text-center">
-          <div className="flex h-32 w-32 items-center justify-center rounded-full bg-citrus-50 text-citrus-500 dark:bg-citrus-500/15 dark:text-citrus-400">
+          <div className="flex h-32 w-32 items-center justify-center rounded-full bg-sauce-50 text-sauce-500 dark:bg-sauce-500/15 dark:text-sauce-400">
             <FolderIcon size={56} />
           </div>
           <h2 className="font-display text-lg font-bold text-ink">No collections yet</h2>
@@ -88,9 +88,9 @@ export function CollectionsPage() {
             <li key={collection.id} className="flex items-center justify-between gap-3 px-4 py-3">
               <Link
                 to={`/collections/${collection.id}`}
-                className="flex min-w-0 items-center gap-2 text-ink hover:text-citrus-600"
+                className="flex min-w-0 items-center gap-2 text-ink hover:text-sauce-600"
               >
-                <FolderIcon size={20} className="flex-shrink-0 text-citrus-500" />
+                <FolderIcon size={20} className="flex-shrink-0 text-sauce-500" />
                 <span className="truncate font-medium">{collection.name}</span>
                 <span className="flex-shrink-0 text-sm text-ink-muted">
                   ({collection.recipeCount})

@@ -1676,3 +1676,63 @@ through its animated value, fading everything inside it uniformly while
 the (unanimated) page background renders correctly — confirmed by
 re-capturing after a `waitForTimeout` past the animation's duration, which
 rendered crisp and correctly contrasted every time.
+
+## 2026-08-26: citrus and teal tokens renamed to sauce and sage
+
+**Decision:** Renamed the design tokens themselves — `--color-citrus-*` →
+`--color-sauce-*`, `--color-teal-*` → `--color-sage-*`, and every Tailwind
+class referencing them (`bg-citrus-500` → `bg-sauce-500`, `text-teal-500` →
+`text-sage-500`, etc.) across `frontend/src`. Also added `--color-sage-100`
+(`#DBE0CE`) — the palette had a `100` tint for the primary family
+(`citrus-100`/now `sauce-100`) but not the secondary one, and one real spot
+(`TagChip`'s default-variant hover fill) had been silently relying on
+Tailwind's own built-in `teal-100` swatch as an unintended fallback.
+
+**Why now, reversing the original pass's call:** both the original
+2026-08-26 entry and its same-day structural follow-up explicitly kept the
+old names, reasoning that "renaming every call site app-wide is a much
+larger, riskier change than reskinning the token" bundled into an
+already-large visual change. Requested directly once that change had shipped
+and been verified stable — with the bigger, riskier work (colors, structure,
+every page) already done and confirmed working, the rename became exactly
+the small, mechanical, low-risk cleanup the earlier entries described it as
+being *in isolation*, just not worth bundling in at the time.
+
+**How, to keep a mechanical rename mechanical:** a literal find-and-replace
+of the token-name substrings (`citrus-` → `sauce-`, `teal-` → `sage-`)
+across every `.tsx`/`.ts`/`.css` file that referenced them, verified by grep
+before and after. The one deliberate exclusion: `decisions.md`'s and
+`design-system.md`'s historical mentions of **"Citrus Pop"** (the old
+design direction's proper name, e.g. "supersedes Citrus Pop") were left
+untouched — that's a name in prose, not a token, and per this file's own
+"don't edit history" rule the old design's name doesn't change just because
+its tokens got renamed out from under it. `design-system.md`'s current
+(non-historical) sections were updated to the new names, including two
+spots whose surrounding sentence had explicitly explained *why the rename
+wasn't happening* — those got rewritten, not just substituted, since a
+find-and-replace would have left them self-contradictory (see that doc's
+Color section).
+
+**Found and fixed along the way, not part of the original ask:** two
+pre-existing bugs in the styles being renamed, both the same class of issue
+already caught once before in this app (`buttonClass`'s secondary variant,
+fixed in the original 2026-08-26 pass) — a class referencing a shade that
+was never defined in the theme, silently falling back to Tailwind's own
+default color of the same family name instead of this app's palette:
+- `TagChip`'s default variant used `hover:bg-teal-100` (now `sage-100`,
+  added as a real token above, closing the gap rather than routing around
+  it).
+- `TagInput`'s remove-tag button used `text-teal-600 hover:text-teal-800
+  dark:hover:text-teal-100` — three more undefined shades. Rather than
+  inventing yet more one-off tokens, this one was fixed to match the
+  convention already used by every other remove/× control in the app
+  (`RecipeFormPage`'s `removeButtonClass`, `RecipeCollectionsEditor`'s chip
+  remove button): base `sage-700`/`dark:sage-300` (both real, matching the
+  chip's own text color), hover to `danger-500` in both themes — consistent
+  with the rest of the app instead of a fourth ad hoc sage shade.
+
+**Verification:** `pnpm lint`/`test`/`build` all pass (89 frontend tests).
+Since this changed only token/class *names*, not values, the rendered
+output should be pixel-identical to before — confirmed by re-capturing the
+recipe list and detail pages live and comparing against the prior pass's
+screenshots.

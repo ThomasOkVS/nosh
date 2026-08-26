@@ -51,13 +51,13 @@ function Stepper({ seenStages }: Readonly<{ seenStages: ImportStage[] }>) {
         return (
           <li key={`${stage}-${index}`} className="flex items-center gap-2 text-sm">
             {isCurrent ? (
-              <CircleNotchIcon size={16} className="flex-shrink-0 animate-spin text-citrus-500" />
+              <CircleNotchIcon size={16} className="flex-shrink-0 animate-spin text-sauce-500" />
             ) : (
               <CheckIcon size={16} weight="bold" className="flex-shrink-0 text-success-500" />
             )}
             <span className={isCurrent ? "text-ink" : "text-ink-muted"}>{STEP_LABELS[stage]}</span>
             {isCurrent && AI_STAGES.has(stage) && (
-              <SparkleIcon size={14} weight="fill" className="flex-shrink-0 text-citrus-500" />
+              <SparkleIcon size={14} weight="fill" className="flex-shrink-0 text-sauce-500" />
             )}
           </li>
         );

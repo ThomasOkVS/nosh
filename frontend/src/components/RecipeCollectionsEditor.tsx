@@ -97,7 +97,7 @@ export function RecipeCollectionsEditor({ recipeId }: Readonly<RecipeCollections
   return (
     <section>
       <h2 className={sectionHeadingClass}>
-        <FolderIcon size={20} className="text-citrus-500" />
+        <FolderIcon size={20} className="text-sauce-500" />
         Collections
       </h2>
       <div className="mt-3 flex flex-wrap items-center gap-2">

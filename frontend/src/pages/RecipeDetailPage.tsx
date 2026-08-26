@@ -114,7 +114,7 @@ export function RecipeDetailPage() {
           <img src={recipeImageUrl(recipe.id, heroImage.id)} alt="" className="h-full w-full object-cover" />
         </div>
       ) : (
-        <div className="flex aspect-[16/9] w-full items-center justify-center rounded-lg border border-border bg-citrus-50 text-citrus-500 dark:bg-citrus-500/15 dark:text-citrus-400">
+        <div className="flex aspect-[16/9] w-full items-center justify-center rounded-lg border border-border bg-sauce-50 text-sauce-500 dark:bg-sauce-500/15 dark:text-sauce-400">
           <ImageSquareIcon size={48} />
         </div>
       )}
@@ -189,7 +189,7 @@ export function RecipeDetailPage() {
       {recipe.ingredients.length > 0 && (
         <section>
           <h2 className={sectionHeadingClass}>
-            <ListChecksIcon size={20} className="text-teal-500" />
+            <ListChecksIcon size={20} className="text-sage-500" />
             Ingredients
           </h2>
           {/* An "index" list — mono numerals instead of a bullet dot/checkbox,
@@ -211,7 +211,7 @@ export function RecipeDetailPage() {
       {recipe.steps.length > 0 && (
         <section>
           <h2 className={sectionHeadingClass}>
-            <ListNumbersIcon size={20} className="text-citrus-500" />
+            <ListNumbersIcon size={20} className="text-sauce-500" />
             Steps
           </h2>
           {/* Large serif numerals instead of a circular badge, and a drop cap
@@ -222,14 +222,14 @@ export function RecipeDetailPage() {
               <li key={step.id} className="flex gap-4">
                 <span
                   aria-hidden="true"
-                  className="w-8 flex-shrink-0 font-display text-3xl font-bold italic leading-none text-citrus-500/50"
+                  className="w-8 flex-shrink-0 font-display text-3xl font-bold italic leading-none text-sauce-500/50"
                 >
                   {index + 1}
                 </span>
                 <p
                   className={`pt-1 text-ink ${
                     index === 0
-                      ? "first-letter:float-left first-letter:mr-1 first-letter:font-display first-letter:text-4xl first-letter:font-bold first-letter:italic first-letter:leading-[0.8] first-letter:text-citrus-600 dark:first-letter:text-citrus-400"
+                      ? "first-letter:float-left first-letter:mr-1 first-letter:font-display first-letter:text-4xl first-letter:font-bold first-letter:italic first-letter:leading-[0.8] first-letter:text-sauce-600 dark:first-letter:text-sauce-400"
                       : ""
                   }`}
                 >

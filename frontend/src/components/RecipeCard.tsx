@@ -58,7 +58,7 @@ export function RecipeCard({ recipe, onRemove }: Readonly<RecipeCardProps>) {
         {thumbnail ? (
           <img src={recipeImageUrl(recipe.id, thumbnail.id)} alt="" className="h-full w-full object-cover" />
         ) : (
-          <div className="flex h-full w-full items-center justify-center bg-citrus-50 text-citrus-500 dark:bg-citrus-500/15 dark:text-citrus-400">
+          <div className="flex h-full w-full items-center justify-center bg-sauce-50 text-sauce-500 dark:bg-sauce-500/15 dark:text-sauce-400">
             <ImageSquareIcon size={32} />
           </div>
         )}

@@ -5,9 +5,9 @@ export type TagChipVariant = "default" | "editorial";
 // is a small-caps hairline-underlined label rather than a pill, which the
 // old shared rounded-full/px-2/py-0.5 base couldn't express.
 const VARIANT_CLASS: Record<TagChipVariant, string> = {
-  default: "rounded-full px-2 py-0.5 text-xs bg-teal-50 text-teal-700 hover:bg-teal-100 dark:bg-teal-500/15 dark:text-teal-300",
+  default: "rounded-full px-2 py-0.5 text-xs bg-sage-50 text-sage-700 hover:bg-sage-100 dark:bg-sage-500/15 dark:text-sage-300",
   editorial:
-    "border-b border-border pb-0.5 font-mono text-[11px] uppercase tracking-wider text-ink-muted hover:border-citrus-500 hover:text-citrus-600 dark:hover:text-citrus-400",
+    "border-b border-border pb-0.5 font-mono text-[11px] uppercase tracking-wider text-ink-muted hover:border-sauce-500 hover:text-sauce-600 dark:hover:text-sauce-400",
 };
 
 interface TagChipProps {

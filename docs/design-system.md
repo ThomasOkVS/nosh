@@ -38,12 +38,14 @@ pages** (masthead page titles, `AuthLayout`'s gradient removed, the last two
 pill-shaped nav controls squared off). See
 [decisions.md](decisions.md#2026-08-26-cookbook-editorial-rolled-out-to-the-rest-of-the-app)
 for the second pass's specifics. As of that entry, every page in the app
-reflects both the token layer and this doc's structural patterns — this
-note is kept for future readers who need to know *when* each part landed,
-not to flag anything as currently incomplete. The one deliberately-deferred
-item is the `citrus-*`/`teal-*` token *names* (still describing colors they
-no longer are), tracked in [backlog.md](backlog.md) as a separate,
-low-value refactor, not a visual gap.
+reflects both the token layer and this doc's structural patterns. A third,
+same-day pass renamed the `citrus-*`/`teal-*` tokens themselves to
+`sauce-*`/`sage-*` — see
+[decisions.md](decisions.md#2026-08-26-citrus-and-teal-tokens-renamed-to-sauce-and-sage) —
+so as of that entry, both the visual identity and the token names in code
+match Cookbook Editorial throughout. This note is kept for future readers
+who need to know *when* each part landed, not to flag anything as
+currently incomplete.
 
 ## Brand direction
 
@@ -82,34 +84,37 @@ deliberately — most of a screen should read as paper/ink/hairline, with the
 accent reserved for actions, links, and a few signature moments (step
 numerals, focus rings).
 
-### Primary — "citrus" token family, now sauce red
+### Primary — `sauce-*` (formerly `citrus-*`)
 
-Kept the `citrus-*` token *names* (renaming every call site app-wide was a
-much larger, riskier change for no visual benefit — see decisions.md) but
-the hue is now a deep brick/sauce red, not orange.
+Renamed from `citrus-*` to `sauce-*` — see decisions.md for why the initial
+2026-08-26 color swap kept the old token names (avoiding a large, risky
+rename bundled with an already-large visual change) and why a same-day
+follow-up renamed them anyway once that change had been verified stable.
+The hue is a deep brick/sauce red, not orange.
 
 | Token | Hex | Use |
 |---|---|---|
-| `citrus-50` | `#FBEAE6` | tinted backgrounds (no-photo placeholder, step-numeral tint) |
-| `citrus-100` | `#F3D2C9` | subtle badges/chips |
-| `citrus-300` | `#D98071` | decorative, disabled-state accents |
-| `citrus-500` | `#B23A2E` | **primary flat button fill**, primary text/icon accents |
-| `citrus-600` | `#9A2F24` | primary button hover/active, editorial tag-chip hover |
-| `citrus-700` | `#7A2419` | primary button pressed, high-contrast text-on-light use |
+| `sauce-50` | `#FBEAE6` | tinted backgrounds (no-photo placeholder, step-numeral tint) |
+| `sauce-100` | `#F3D2C9` | subtle badges/chips |
+| `sauce-300` | `#D98071` | decorative, disabled-state accents |
+| `sauce-500` | `#B23A2E` | **primary flat button fill**, primary text/icon accents |
+| `sauce-600` | `#9A2F24` | primary button hover/active, editorial tag-chip hover |
+| `sauce-700` | `#7A2419` | primary button pressed, high-contrast text-on-light use |
 
 **No decorative gradient in this direction.** Citrus Pop's orange→pink hero
 gradient is retired — Cookbook Editorial has no hero/gradient moment; paper,
 ink, and a hairline rule carry that weight instead. (The login screen's
 background gradient hasn't been touched yet — see Migration status above.)
 
-### Secondary — "teal" token family, now sage
+### Secondary — `sage-*` (formerly `teal-*`)
 
 | Token | Hex | Use |
 |---|---|---|
-| `teal-50` | `#EEF1E7` | tinted backgrounds (default tag-chip fill) |
-| `teal-300` | `#A3AE82` | decorative accents |
-| `teal-500` | `#5F6B3E` | secondary buttons/links, active nav icon fill |
-| `teal-700` | `#404A29` | secondary text-on-light, default tag-chip text |
+| `sage-50` | `#EEF1E7` | tinted backgrounds (default tag-chip fill) |
+| `sage-100` | `#DBE0CE` | default tag-chip hover fill (new — the original palette had no defined step here, see decisions.md) |
+| `sage-300` | `#A3AE82` | decorative accents |
+| `sage-500` | `#5F6B3E` | secondary buttons/links, active nav icon fill |
+| `sage-700` | `#404A29` | secondary text-on-light, default tag-chip text |
 
 ### Semantic
 
@@ -120,10 +125,10 @@ background gradient hasn't been touched yet — see Migration status above.)
 | `danger-500` | `#A61B4A` | destructive actions, delete confirmation, form errors |
 
 **Deliberately a cooler raspberry/wine, not a brighter version of
-citrus-500.** Under Citrus Pop, danger just had to differ from *orange* —
+sauce-500.** Under Citrus Pop, danger just had to differ from *orange* —
 easy. Now that the primary accent is itself a red, "delete reads as a
 darker brand color" is a real risk again; danger-500 is pulled toward pink/
-magenta (hue ~340°) specifically to stay visually distinct from citrus-500's
+magenta (hue ~340°) specifically to stay visually distinct from sauce-500's
 brick-red (hue ~8°). Don't let these drift closer together for "cohesion."
 
 ### Neutrals — light mode (paper/ink, not warm-neutral-gray)
@@ -154,7 +159,7 @@ nothing to separate from), just shifted warmer to match the paper/ink theme.
 | `ink-muted` (dark) | `#B8AD9B` | secondary text |
 | `ink-faint` (dark) | `#7D7462` | placeholder/faint text |
 
-Citrus/teal/semantic accent tokens stay the same hue in dark mode; verify
+Sauce/sage/semantic accent tokens stay the same hue in dark mode; verify
 contrast per component rather than assuming, same as before.
 
 ### Accessibility floor
@@ -359,8 +364,8 @@ system this app wants:
 
 - Default state: **regular** (outline) weight.
 - Active/selected/emphasis state (active nav item, a toggled filter, a
-  "favorited" heart): **fill** weight, typically in `citrus-500` or
-  `teal-500`.
+  "favorited" heart): **fill** weight, typically in `sauce-500` or
+  `sage-500`.
 
 Standard sizes: 20px inline with body text, 24px for nav/toolbar icons. Icons
 inherit `currentColor` — never hardcode an icon color separately from the
@@ -404,12 +409,12 @@ settles), that's a bug against this rule, not a style nitpick.
 
 ### Buttons
 
-- **Primary:** flat `citrus-500` fill, white text, `radius-md` (**not
+- **Primary:** flat `sauce-500` fill, white text, `radius-md` (**not
   `radius-full`** as of 2026-08-26 — pill CTAs were a Citrus Pop identity
-  marker that doesn't fit hairline/sharp shape language), hover `citrus-600`,
-  pressed `citrus-700` + `scale(0.98)` via `motion-micro`. No gradient — this
+  marker that doesn't fit hairline/sharp shape language), hover `sauce-600`,
+  pressed `sauce-700` + `scale(0.98)` via `motion-micro`. No gradient — this
   direction doesn't have one (see Color).
-- **Secondary:** `teal-500` text/border on transparent or `neutral-0`
+- **Secondary:** `sage-500` text/border on transparent or `neutral-0`
   fill, `radius-md`.
 - **Destructive:** icon-only or ghost by default (text `danger-500`, no
   fill), *not* a bold filled pill placed as a co-equal peer next to a
@@ -427,7 +432,7 @@ settles), that's a bug against this rule, not a style nitpick.
 
 `radius-sm`, `neutral-200` border (light) / `dark-border` (dark),
 `neutral-0`/`dark-surface` fill, generous padding (`py-2.5 px-4`) for
-comfortable touch targets. Focus state: 2px `citrus-500` ring with a small
+comfortable touch targets. Focus state: 2px `sauce-500` ring with a small
 offset — must stay clearly visible against both flat and glass surroundings;
 don't let the rounded/soft aesthetic soften the focus ring itself.
 
@@ -478,7 +483,7 @@ fix is structural, not cosmetic:
   regardless.
 - Flat surface (not glass — see Elevation), `radius-lg`, hover lift as
   before.
-- Recipes with no photo get the citrus-tinted icon placeholder (see
+- Recipes with no photo get the sauce-tinted icon placeholder (see
   Photography) filling the same `aspect-[4/3]` slot, so the grid rhythm
   never breaks depending on which recipes have photos.
 - **Added 2026-08-26, Cookbook Editorial:** title set in italic Fraunces,
@@ -492,13 +497,13 @@ fix is structural, not cosmetic:
 
 **Two variants as of 2026-08-26** (`TagChip`'s `variant` prop):
 
-- **`default`** (unchanged pill) — `radius-full`, `teal-50`/`citrus-50`-family
+- **`default`** (unchanged pill) — `radius-full`, `sage-50`/`sauce-50`-family
   tinted background with matching darker text, used everywhere outside the
   recipe list/detail pages (`RecipeCollectionsEditor`, forms, etc. — see
   Migration status at the top of this doc).
 - **`editorial`** (new) — the recipe list/detail pages' own treatment: no
   pill/background at all, a small-caps `font-mono` label with a hairline
-  underline (`border-b border-border`), `citrus-500` on hover. Grounded in
+  underline (`border-b border-border`), `sauce-500` on hover. Grounded in
   printed-label/index-card material rather than a UI-chip convention — see
   Brand direction.
 - **`overlay` — removed.** Existed only for the detail hero's now-retired
@@ -525,7 +530,7 @@ recipe card rather than a generic checklist UI:
   (`divide-y`/`border-y border-border`), each row prefixed with a
   `font-mono` two-digit index (`01`, `02`, …) instead of a bullet dot or
   checkbox — no card background per row.
-- **Steps:** a large italic Fraunces numeral (`text-3xl`, `citrus-500/50`,
+- **Steps:** a large italic Fraunces numeral (`text-3xl`, `sauce-500/50`,
   `aria-hidden` since the `<ol>` already conveys order) replaces the old
   circular number badge, sitting to the left of the instruction text with
   no card background. **The first step's first letter is a drop cap**
@@ -535,8 +540,8 @@ recipe card rather than a generic checklist UI:
   restraint everywhere except one place (see Brand direction).
 
 **Original 2026-08-06 version (superseded, for context):** each ingredient a
-`bg-surface-sunken` row with a `teal-500` bullet dot; each step its own
-`bg-surface-sunken` card with a circular `citrus-50`/`citrus-600` number
+`bg-surface-sunken` row with a `sage-500` bullet dot; each step its own
+`bg-surface-sunken` card with a circular `sauce-50`/`sauce-600` number
 badge. That version is still the right model if this pattern is ever needed
 somewhere *outside* the Cookbook Editorial pages.
 
@@ -553,7 +558,7 @@ applies identically whether or not a photo exists:
 
 1. Back link (unchanged, above the photo).
 2. **Hero photo** if one exists (`aspect-[16/9]`, `radius-lg`, hairline
-   border) — or the citrus-tinted icon placeholder in the same slot if not.
+   border) — or the sauce-tinted icon placeholder in the same slot if not.
 3. Below it, in normal flow, a masthead block: title (italic Fraunces) and
    Edit/Delete icon buttons in **one flex row** (`justify-between`, title
    left, buttons right — kept from the overlay era for the same
@@ -574,9 +579,9 @@ for both cases is simpler and still photo-forward.
 ### Navigation / header
 
 Glass panel (see Elevation — now opaque, not blurred), sticky. Wordmark
-"Nosh" set in `display-md`/Fraunces 800, `citrus-500` (now sauce red, was
+"Nosh" set in `display-md`/Fraunces 800, `sauce-500` (now sauce red, was
 orange) — text-only, no icon mark. Active route indicator uses a filled
-Phosphor icon in `citrus-500`/`teal-500` per the mixed-icon rule above.
+Phosphor icon in `sauce-500`/`sage-500` per the mixed-icon rule above.
 
 ### Anchored menus / popovers {#anchored-menus--popovers}
 
@@ -617,8 +622,8 @@ recipe").
 icon-only interim fallback. Both are built from the app's own recipe-card
 shape (photo block + title/meta bars, tilted, per Cards above) rather than
 unrelated stock/clip-art — "no recipes yet" shows a ghost card with a
-`citrus-500` "+" badge (add your first one); "no search results" shows two
-ghost cards under a `teal-500` magnifying glass with an "x" (searched,
+`sauce-500` "+" badge (add your first one); "no search results" shows two
+ghost cards under a `sage-500` magnifying glass with an "x" (searched,
 nothing matched). Colors are Tailwind `fill-*`/`stroke-*` utility classes
 (not raw hex), so both track light/dark automatically like everything else
 — confirmed against real computed styles in both themes, not just visually
@@ -628,7 +633,7 @@ assumed.
 
 Always **contained rounded images**, never full-bleed — see Cards above for
 the reasoning. Standard aspect ratio 4:3 for list thumbnails, 16:9 for the
-recipe detail hero. Missing-photo placeholder: a `citrus-50`/`dark-surface`
+recipe detail hero. Missing-photo placeholder: a `sauce-50`/`dark-surface`
 tinted block with a centered Phosphor "image" icon, not a broken-image icon
 or blank white box.
 
@@ -688,10 +693,10 @@ standard accessible pattern (a `<label>` wrapping a `sr-only` — not
 picker still opens on Enter/Space):
 
 - The **label itself is the visible control**: `radius-lg`, `border-dashed`
-  `border-border`, centered icon (`UploadSimpleIcon`, `citrus-500`) + "Click
+  `border-border`, centered icon (`UploadSimpleIcon`, `sauce-500`) + "Click
   to add a photo, or drag one here" + a small filetypes hint, generous
   padding (`py-8`) so it reads as a drop target, not a button.
-- **Hover:** border shifts to `citrus-500`, subtle `citrus-50` tint.
+- **Hover:** border shifts to `sauce-500`, subtle `sauce-50` tint.
 - **Drag-over:** same treatment as hover, held for the duration of the drag
   (needs `onDragOver`/`onDragLeave` state, not just CSS `:hover`).
 - **Uploading:** label shows "Uploading…" and dims (`opacity-60`,
@@ -739,7 +744,7 @@ picked per situation, not one universal spinner:
 - **No content shape exists yet** (the auth bootstrap check, before any
   route has even been decided — could resolve to the login screen or the
   whole app shell): there's nothing sensible to skeleton. A small centered
-  branded spinner (`CircleNotchIcon`, `citrus-500`, `role="status"`) on the
+  branded spinner (`CircleNotchIcon`, `sauce-500`, `role="status"`) on the
   theme-aware page background is the right weight for what's normally a
   near-instant check — heavier than that would be over-designing a state
   that's rarely visible for more than a flash.
@@ -810,8 +815,8 @@ contained images a bit more room on larger screens without ballooning into
 
 ## Open items
 
-- Exact dark-mode accent-token lightness adjustments (e.g. `citrus-400` vs
-  `citrus-500` on `dark-bg`) should be verified against real contrast
+- Exact dark-mode accent-token lightness adjustments (e.g. `sauce-400` vs
+  `sauce-500` on `dark-bg`) should be verified against real contrast
   numbers during implementation, not assumed from this doc alone. Still
   open after the 2026-08-26 color swap — the new hex values were sanity-
   checked by calculation and a live look at both themes, not measured with

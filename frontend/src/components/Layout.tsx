@@ -7,7 +7,7 @@ export function Layout() {
     <div className="min-h-screen bg-surface-page">
       <header className="glass sticky top-0 z-10 pt-[env(safe-area-inset-top)]">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3 sm:px-6">
-          <Link to="/" className="font-display text-xl font-extrabold text-citrus-500">
+          <Link to="/" className="font-display text-xl font-extrabold text-sauce-500">
             Nosh
           </Link>
           <nav className="flex items-center gap-1">

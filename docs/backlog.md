@@ -47,14 +47,30 @@ priority.
       installs and platforms without SVG-favicon support) are still the old
       orange and weren't regenerated — that needs an image-export step, not
       just a code edit.
-- [ ] Consider renaming the `citrus-*`/`teal-*` design tokens now that they
-      no longer describe their own colors (citrus-* is sauce red, teal-* is
-      sage) — left as-is for both the 2026-08-26 visual change and its
-      same-day follow-up pass, since a mechanical rename across every call
-      site is a separate, low-value refactor on its own merits.
 
 ## Completed
 
+- **2026-08-26 (second follow-up)** — Renamed the `citrus-*`/`teal-*` design
+  tokens to `sauce-*`/`sage-*` (and every class referencing them) now that
+  the color/structure change they belong to has shipped and been verified
+  stable — previously deferred as "a separate, low-value refactor on its
+  own merits," requested directly once the bigger, riskier work was done.
+  Also fixed two pre-existing bugs of the same kind already caught once in
+  the original pass: `TagChip`'s default-variant hover and `TagInput`'s
+  remove-tag button both referenced shades that were never defined in the
+  theme (`teal-100`/`-600`/`-800`), silently falling back to Tailwind's own
+  built-in `teal` swatch. Added a real `sage-100` token to close the first
+  gap (the primary/sauce family already had a `100` tint, the secondary one
+  didn't); the second was aligned with the remove/× convention already used
+  elsewhere in the app (hover to `danger-500`) instead of inventing a
+  fourth one-off shade. See
+  [decisions.md](decisions.md#2026-08-26-citrus-and-teal-tokens-renamed-to-sauce-and-sage)
+  for the full reasoning, including why "Citrus Pop" (the old direction's
+  *name*, in historical doc entries) was deliberately left alone while its
+  *tokens* were renamed. `pnpm lint`/`test`/`build` pass (89 frontend
+  tests). **Verified live** — since only names changed, not values, output
+  should be pixel-identical to the prior pass; confirmed by re-capturing
+  the recipe list and detail pages.
 - **2026-08-26 (same-day follow-up)** — Finished rolling Cookbook Editorial
   out to the rest of the app: `AuthLayout`'s hardcoded Citrus Pop
   orange→pink gradient background replaced with the paper page background

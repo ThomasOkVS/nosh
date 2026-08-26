@@ -95,7 +95,7 @@ export function ToastProvider({ children }: Readonly<{ children: ReactNode }>) {
                   toast.action?.onClick();
                   dismiss(toast.id);
                 }}
-                className="flex-shrink-0 text-sm font-medium text-citrus-600 hover:underline dark:text-citrus-400"
+                className="flex-shrink-0 text-sm font-medium text-sauce-600 hover:underline dark:text-sauce-400"
               >
                 {toast.action.label}
               </button>

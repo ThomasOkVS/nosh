@@ -23,22 +23,29 @@
   --radius-lg: 8px;
   --radius-xl: 12px;
 
-  /* citrus-* keeps its name (renaming every usage app-wide is a much larger,
-     riskier change than reskinning the token — see decisions.md) but now
-     carries the "sauce red" primary accent instead of orange. */
-  --color-citrus-50: #fbeae6;
-  --color-citrus-100: #f3d2c9;
-  --color-citrus-300: #d98071;
-  --color-citrus-400: #c35a48;
-  --color-citrus-500: #b23a2e;
-  --color-citrus-600: #9a2f24;
-  --color-citrus-700: #7a2419;
+  /* Renamed from citrus-* to sauce-* (2026-08-26 follow-up) — the original
+     rename-avoidance rationale ("a much larger, riskier change than
+     reskinning the token") was deliberately revisited and reversed once the
+     color swap itself was verified stable; see decisions.md. Primary accent,
+     "sauce red". */
+  --color-sauce-50: #fbeae6;
+  --color-sauce-100: #f3d2c9;
+  --color-sauce-300: #d98071;
+  --color-sauce-400: #c35a48;
+  --color-sauce-500: #b23a2e;
+  --color-sauce-600: #9a2f24;
+  --color-sauce-700: #7a2419;
 
-  /* teal-* now carries the "sage" secondary accent. */
-  --color-teal-50: #eef1e7;
-  --color-teal-300: #a3ae82;
-  --color-teal-500: #5f6b3e;
-  --color-teal-700: #404a29;
+  /* Renamed from teal-* to sage-* for the same reason. Secondary accent.
+     sage-100 is new (the citrus/sauce family already had a "100" tint;
+     adding the matching sage step fixes two spots — TagChip's default hover
+     and, historically, nothing else — that had been silently falling back
+     to Tailwind's own built-in `teal-100` instead of this app's palette). */
+  --color-sage-50: #eef1e7;
+  --color-sage-100: #dbe0ce;
+  --color-sage-300: #a3ae82;
+  --color-sage-500: #5f6b3e;
+  --color-sage-700: #404a29;
 
   --color-success-50: #eafbf1;
   --color-success-500: #1e9e5a;
@@ -46,7 +53,7 @@
   --color-warning-500: #c98a12;
   --color-danger-50: #fbe9ef;
   /* Deliberately a cooler raspberry/wine, not a brighter version of
-     citrus-500's brick-red — see docs/design-system.md#color for why
+     sauce-500's brick-red — see docs/design-system.md#color for why
      "danger reads as a darker brand color" is a real risk now that the
      primary accent is itself a red. */
   --color-danger-500: #a61b4a;

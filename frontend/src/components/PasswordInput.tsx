@@ -33,7 +33,7 @@ export function PasswordInput({
         autoComplete={autoComplete}
         value={value}
         onChange={(event: ChangeEvent<HTMLInputElement>) => onChange(event.target.value)}
-        className="w-full rounded-sm border border-border bg-surface px-4 py-2.5 pr-11 text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:ring-2 focus:ring-citrus-500 focus:ring-offset-2 focus:ring-offset-transparent"
+        className="w-full rounded-sm border border-border bg-surface px-4 py-2.5 pr-11 text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:ring-2 focus:ring-sauce-500 focus:ring-offset-2 focus:ring-offset-transparent"
       />
       <button
         type="button"
