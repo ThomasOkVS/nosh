@@ -39,27 +39,53 @@ priority.
 
 ### Design system follow-ups (Cookbook Editorial, 2026-08-26)
 
-- [ ] Give the header, auth screens (login/signup), recipe form, and the
-      collections pages' own chrome (list header, create/rename forms, empty
-      states) a structural Cookbook Editorial pass — they currently only
-      inherited the global token swap (colors/fonts/radius), not the
-      pattern changes (index lists, mono metadata, editorial tag chips,
-      sharp shape language) applied to the recipe list/detail pages.
-      (`CollectionDetailPage`'s own recipe grid is already covered — it
-      reuses `RecipeCard`, which got the full treatment.) See
-      [design-system.md](design-system.md)'s "Migration status" note.
-- [ ] Redesign or remove `AuthLayout`'s login/signup background — it's still
-      the literal Citrus Pop orange→pink gradient, hardcoded rather than
-      token-derived, so it didn't shift with the rest of the app and now
-      sits oddly next to the new sauce-red brand color.
+- [ ] Regenerate the raster PWA icon set (`icon-192.png`, `icon-512.png`,
+      `icon-maskable-512.png`, `apple-touch-icon.png`) from the updated
+      source SVG — `frontend/public/icon.svg` and the PWA manifest's
+      `theme_color`/`background_color` were recolored to the new sauce-red/
+      paper palette, but the PNG fallbacks (used by iOS home-screen
+      installs and platforms without SVG-favicon support) are still the old
+      orange and weren't regenerated — that needs an image-export step, not
+      just a code edit.
 - [ ] Consider renaming the `citrus-*`/`teal-*` design tokens now that they
       no longer describe their own colors (citrus-* is sauce red, teal-* is
-      sage) — left as-is for the 2026-08-26 visual change since a mechanical
-      rename across every call site is a separate, low-value refactor on its
-      own merits.
+      sage) — left as-is for both the 2026-08-26 visual change and its
+      same-day follow-up pass, since a mechanical rename across every call
+      site is a separate, low-value refactor on its own merits.
 
 ## Completed
 
+- **2026-08-26 (same-day follow-up)** — Finished rolling Cookbook Editorial
+  out to the rest of the app: `AuthLayout`'s hardcoded Citrus Pop
+  orange→pink gradient background replaced with the paper page background
+  used everywhere else (its `.glass` card and title were already
+  token-driven, just needed the gradient itself gone and the title
+  italicized to match); the header's two pill-shaped nav controls
+  (`Layout`'s "Collections" link, `UserMenu`'s trigger) squared off to
+  `radius-md` along with everything else that dropped pill shapes; page
+  titles on `CollectionsPage`, `CollectionDetailPage`, and `RecipeFormPage`
+  restyled to the same italic-Fraunces masthead treatment as the recipe
+  list/detail pages (`CollectionsPage`/`CollectionDetailPage` also gained a
+  hairline rule and, on the list, a mono item-count caption); and
+  `RecipeFormSkeleton`'s loading bars had their leftover `rounded-full`
+  dropped to match the sharper skeleton style already applied elsewhere.
+  Also caught two stray Citrus Pop remnants a hex-value grep turned up that
+  weren't part of the original scope: the PWA manifest's `theme_color`/
+  `background_color` (`vite.config.ts`) and the SVG app icon/favicon
+  (`frontend/public/icon.svg`) were still the old orange — both recolored;
+  the raster PNG icon set generated from that SVG wasn't (tracked above,
+  needs an image-export step). The recipe form's own section
+  cards/inputs/buttons needed no changes — they already fully inherited the
+  new look via the shared `sectionCardClass`/`inputClass`/`buttonClass`
+  utilities from the original pass. See
+  [decisions.md](decisions.md#2026-08-26-cookbook-editorial-rolled-out-to-the-rest-of-the-app)
+  for the reasoning. `pnpm lint`/`test`/`build` pass (89 frontend tests).
+  **Verified live**, both themes: login/signup (confirmed the gradient is
+  gone and the entrance-animated card still renders correctly — a
+  screenshot taken mid-animation looked washed out on first pass, purely a
+  script-timing artifact, resolved by waiting for `animate-pop-in` to
+  settle before capturing), Collections, a collection's detail page, and
+  the new-recipe form.
 - **2026-08-26** — New design direction, "Cookbook Editorial", replaces
   "Citrus Pop": paper/ink palette with a sauce-red primary and sage
   secondary, Fraunces (serif, italic) + IBM Plex Mono (new, printed-label

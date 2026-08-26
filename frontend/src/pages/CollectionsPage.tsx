@@ -37,29 +37,35 @@ export function CollectionsPage() {
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="font-display text-2xl font-extrabold text-ink">Collections</h1>
-        <form onSubmit={handleCreate} className="flex gap-2">
-          <label htmlFor="new-collection-name" className="sr-only">
-            Collection name
-          </label>
-          <input
-            id="new-collection-name"
-            name="name"
-            type="text"
-            autoComplete="off"
-            placeholder="New collection…"
-            value={newName}
-            onChange={(event) => setNewName(event.target.value)}
-            className={`w-full sm:w-64 ${inputClass}`}
-          />
-          <button type="submit" disabled={!newName.trim()} className={buttonClass("primary")}>
-            <PlusIcon size={18} weight="bold" />
-            Create
-          </button>
-        </form>
+    <div className="space-y-6">
+      <div className="border-b border-border pb-4">
+        <h1 className="font-display text-3xl font-bold italic text-ink sm:text-4xl">Collections</h1>
+        {!loading && collections && collections.length > 0 && (
+          <p className="mt-1 font-mono text-xs uppercase tracking-wider text-ink-muted">
+            {collections.length} collection{collections.length === 1 ? "" : "s"}
+          </p>
+        )}
       </div>
+
+      <form onSubmit={handleCreate} className="flex gap-2">
+        <label htmlFor="new-collection-name" className="sr-only">
+          Collection name
+        </label>
+        <input
+          id="new-collection-name"
+          name="name"
+          type="text"
+          autoComplete="off"
+          placeholder="New collection…"
+          value={newName}
+          onChange={(event) => setNewName(event.target.value)}
+          className={`w-full sm:w-64 ${inputClass}`}
+        />
+        <button type="submit" disabled={!newName.trim()} className={buttonClass("primary")}>
+          <PlusIcon size={18} weight="bold" />
+          Create
+        </button>
+      </form>
 
       {error && <p className={errorBannerClass}>{error}</p>}
 

@@ -25,24 +25,25 @@ for all three and why Cookbook Editorial won). Every section below now
 describes Cookbook Editorial; where a value or pattern changed, the old
 Citrus Pop version is noted for context rather than kept as a live option.
 
-**Migration status — read this before touching any page.** The token layer
-(color/type/radius/glass, all in `frontend/src/index.css` + `styles.ts`) was
-swapped **globally** at the project owner's explicit direction, so every page
-picks up the new palette/fonts/shape automatically. Bespoke *structural*
-rework (index-style ingredient list, serif step numerals, masthead layout,
-etc.) was scoped to the **recipe list and recipe detail pages**, plus the
-shared components they needed changed to get there: `RecipeCard`/
-`RecipeCardSkeleton` and `TagChip`'s new `editorial` variant. Because
-`RecipeCard` is also reused by `CollectionDetailPage` (its "recipes in this
-collection" grid), that page's card grid already renders with the full
-structural treatment too — component reuse, not a deliberate pass over that
-page. Its own chrome (header, create-collection form, empty state) is still
-untouched. The header, auth screens, recipe form, and the rest of the
-collections pages are still Citrus Pop's *structure* wearing Cookbook
-Editorial's *colors*. That's an intentional, scoped first step, not an
-oversight: don't assume any page other than recipe list/detail fully
-reflects this doc's component patterns until it gets its own pass (tracked
-in [backlog.md](backlog.md)).
+**Migration status.** The token layer (color/type/radius/glass, all in
+`frontend/src/index.css` + `styles.ts`) was swapped **globally** on
+2026-08-26, so every page has always picked up the new palette/fonts/shape
+automatically. Bespoke *structural* rework followed in two passes the same
+day: first the **recipe list and recipe detail pages** (plus the shared
+`RecipeCard`/`RecipeCardSkeleton` and `TagChip`'s new `editorial` variant —
+which is also why `CollectionDetailPage`'s recipe grid got the treatment for
+free, via reusing `RecipeCard`), then a same-day follow-up covering the
+**header, auth screens, recipe form, and the rest of the collections
+pages** (masthead page titles, `AuthLayout`'s gradient removed, the last two
+pill-shaped nav controls squared off). See
+[decisions.md](decisions.md#2026-08-26-cookbook-editorial-rolled-out-to-the-rest-of-the-app)
+for the second pass's specifics. As of that entry, every page in the app
+reflects both the token layer and this doc's structural patterns — this
+note is kept for future readers who need to know *when* each part landed,
+not to flag anything as currently incomplete. The one deliberately-deferred
+item is the `citrus-*`/`teal-*` token *names* (still describing colors they
+no longer are), tracked in [backlog.md](backlog.md) as a separate,
+low-value refactor, not a visual gap.
 
 ## Brand direction
 
@@ -815,11 +816,18 @@ contained images a bit more room on larger screens without ballooning into
   open after the 2026-08-26 color swap — the new hex values were sanity-
   checked by calculation and a live look at both themes, not measured with
   a contrast-checking tool.
-- **New 2026-08-26:** the header, auth screens, recipe form, and collections
-  pages only received the global token swap, not a structural Cookbook
-  Editorial pass (pill buttons/inputs, the login screen's retired-in-spirit
-  gradient background, etc. are all still there, just recolored) — see
-  Migration status at the top of this doc and [backlog.md](backlog.md).
+- The raster PWA icon set (`icon-192.png`, `icon-512.png`,
+  `icon-maskable-512.png`, `apple-touch-icon.png`) still shows the old
+  Citrus Pop orange — only the SVG source icon and the manifest's
+  `theme_color`/`background_color` were recolored to Cookbook Editorial
+  during the 2026-08-26 follow-up, since regenerating the PNGs needs an
+  image-export step rather than a text edit. Tracked in
+  [backlog.md](backlog.md).
+
+Resolved 2026-08-26 (see Migration status at the top of this doc and
+[decisions.md](decisions.md#2026-08-26-cookbook-editorial-rolled-out-to-the-rest-of-the-app)):
+the header, auth screens, recipe form, and collections pages' own structural
+Cookbook Editorial pass — previously the single open item here.
 
 Resolved 2026-08-08 (see Toasts, Empty states, and the Inputs ring-offset
 note above): the `window.alert()` error banners, the icon-only empty-state

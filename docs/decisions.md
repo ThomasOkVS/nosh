@@ -1609,3 +1609,70 @@ neutral names now that they no longer mean "orange"/"teal" (rejected for
 this pass — a mechanical rename across every file that references them is
 a large, separate, low-value refactor; tracked in backlog.md instead of
 bundled into a visual change).
+
+## 2026-08-26: Cookbook Editorial rolled out to the rest of the app
+
+**Decision:** Finished the migration the same-day entry above deliberately
+left incomplete — gave the header, auth screens, recipe form, and
+collections pages the structural pass that was previously scoped out:
+
+- `AuthLayout`'s hardcoded Citrus Pop gradient background (`linear-gradient
+  (135deg, #FF7A1A 0%, #FF3D81 100%)`, inline in the component, so the
+  global token swap couldn't have touched it) replaced with the same
+  `bg-surface-page` every other screen uses. Cookbook Editorial has no
+  gradient/hero moment (see design-system.md#color), so this isn't a
+  reskin of the gradient, it's removing it.
+- The two remaining pill-shaped nav controls (`Layout`'s "Collections"
+  link, `UserMenu`'s username trigger) moved from `rounded-full` to
+  `rounded-md`, matching every button's move away from pills in the
+  original pass.
+- `CollectionsPage`, `CollectionDetailPage`, and `RecipeFormPage`'s page
+  titles switched to the same italic-Fraunces masthead voice as the recipe
+  list/detail pages (the first two also gained a hairline rule under the
+  title; the list page added a mono item-count caption matching
+  `RecipeListPage`'s).
+- `RecipeFormSkeleton`'s loading bars dropped their leftover `rounded-full`
+  to match `RecipeCardSkeleton`/`RecipeDetailSkeleton`'s sharper bars.
+
+**Why now, and why not bundled into the original pass:** the project owner
+asked directly to "tackle the items you added to the backlog to finish the
+style transition" — a deliberate, explicit go-ahead for the wider-blast-
+radius work the original pass had scoped out on its own initiative.
+
+**Found along the way, fixed even though not originally backlogged:** a
+grep for the old Citrus Pop hex values (done to make sure nothing was
+missed before calling this finished) turned up two more hardcoded
+remnants outside `frontend/src`: the PWA manifest's `theme_color`
+(`#ff7a1a`) and `background_color` (`#fdfcfb`) in `vite.config.ts`, and the
+SVG app icon/favicon `frontend/public/icon.svg`'s fill color — neither is
+part of the token system so the global swap couldn't reach them either.
+Both recolored to the new sauce-red/paper values. The raster PNG icon set
+generated from that SVG (`icon-192.png`, `icon-512.png`,
+`icon-maskable-512.png`, `apple-touch-icon.png`) was **not** regenerated —
+that's an image-export step, not a text edit, and there's no script in the
+repo that produced them originally; tracked in backlog.md rather than
+attempted without the right tooling.
+
+**Explicitly left as-is, on purpose:** the `citrus-*`/`teal-*` token rename
+— still a separate, low-value refactor on its own merits, not something
+"finishing the transition" requires (the colors are already correct; only
+the token *names* are stale). `RecipeFormPage`'s section cards, inputs, and
+buttons needed no changes at all — they were already fully token-driven
+from the original pass (`sectionCardClass`, `inputClass`, `buttonClass`),
+which is itself a confirmation that pass's "keep shared utilities, don't
+rename/restructure them" approach paid off here.
+
+**Verification:** `pnpm lint`/`test`/`build` all pass (89 frontend tests,
+one unrelated flaky debounce-timing test re-ran clean in isolation).
+Verified live, both themes: login and signup screens, the Collections list,
+a collection's detail page, and the new-recipe form. One false alarm during
+verification worth recording: a login-page screenshot taken immediately
+after navigation looked washed-out/low-contrast, reproducing the same
+symptom from the original pass's verification — this time confirmed
+definitively as a screenshot-timing artifact, not a rendering bug: the
+`.glass` card uses `animate-pop-in` (a 400ms fade/scale-in), and a
+screenshot taken before that settles catches the card's `opacity` partway
+through its animated value, fading everything inside it uniformly while
+the (unanimated) page background renders correctly — confirmed by
+re-capturing after a `waitForTimeout` past the animation's duration, which
+rendered crisp and correctly contrasted every time.

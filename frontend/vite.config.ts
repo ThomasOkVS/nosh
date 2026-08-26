@@ -27,8 +27,10 @@ export default defineConfig({
         description: "A self-hosted recipe manager",
         start_url: "/",
         display: "standalone",
-        background_color: "#fdfcfb",
-        theme_color: "#ff7a1a",
+        // Cookbook Editorial (2026-08-26) — paper page background, sauce-red
+        // brand accent, replacing Citrus Pop's neutral-25/orange.
+        background_color: "#f6f1e7",
+        theme_color: "#b23a2e",
         icons: [
           {
             src: "icon.svg",

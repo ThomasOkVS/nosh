@@ -100,7 +100,7 @@ export function CollectionDetailPage() {
             </button>
           </form>
         ) : (
-          <h1 className="font-display text-2xl font-extrabold text-ink">{data.collection.name}</h1>
+          <h1 className="font-display text-2xl font-bold italic text-ink sm:text-3xl">{data.collection.name}</h1>
         )}
         {!renaming && (
           <div className="flex flex-shrink-0 gap-2">

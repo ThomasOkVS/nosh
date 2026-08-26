@@ -13,7 +13,7 @@ export function Layout() {
           <nav className="flex items-center gap-1">
             <Link
               to="/collections"
-              className="flex h-11 items-center rounded-full px-3 text-sm text-ink-muted transition-colors duration-standard ease-standard hover:bg-surface-sunken hover:text-ink"
+              className="flex h-11 items-center rounded-md px-3 text-sm text-ink-muted transition-colors duration-standard ease-standard hover:bg-surface-sunken hover:text-ink"
             >
               Collections
             </Link>

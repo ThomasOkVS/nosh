@@ -86,9 +86,9 @@ function RecipeFormSkeleton() {
         <ArrowLeftIcon size={16} />
         All recipes
       </Link>
-      <Skeleton className="h-8 w-1/2 rounded-full" />
+      <Skeleton className="h-8 w-1/2" />
       <div className={sectionCardClass}>
-        <Skeleton className="h-5 w-24 rounded-full" />
+        <Skeleton className="h-5 w-24" />
         <div className="mt-3 space-y-3">
           <Skeleton className="h-10 w-full rounded-sm" />
           <Skeleton className="h-16 w-full rounded-sm" />
@@ -96,7 +96,7 @@ function RecipeFormSkeleton() {
         </div>
       </div>
       <div className={sectionCardClass}>
-        <Skeleton className="h-5 w-28 rounded-full" />
+        <Skeleton className="h-5 w-28" />
         <Skeleton className="mt-3 h-12 w-full rounded-sm" />
       </div>
     </div>
@@ -380,7 +380,9 @@ export function RecipeFormPage() {
         <ArrowLeftIcon size={16} />
         All recipes
       </Link>
-      <h1 className="font-display text-2xl font-extrabold text-ink">{isEditMode ? "Edit recipe" : "New recipe"}</h1>
+      <h1 className="font-display text-2xl font-bold italic text-ink sm:text-3xl">
+        {isEditMode ? "Edit recipe" : "New recipe"}
+      </h1>
 
       {submitError && (
         <p ref={submitErrorRef} tabIndex={-1} role="alert" className={errorBannerClass}>
