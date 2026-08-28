@@ -17,11 +17,11 @@ export function EmptyRecipesIllustration({ className }: Readonly<IllustrationPro
     <svg viewBox="0 0 160 160" className={className} aria-hidden="true">
       <g transform="rotate(-6 80 82)">
         <rect x="34" y="26" width="92" height="112" rx="16" className="fill-surface-sunken stroke-border" strokeWidth="2" />
-        <rect x="46" y="38" width="68" height="46" rx="10" className="fill-citrus-50 dark:fill-citrus-500/15" />
+        <rect x="46" y="38" width="68" height="46" rx="10" className="fill-sauce-50 dark:fill-sauce-500/15" />
         <rect x="46" y="94" width="48" height="8" rx="4" className="fill-border" />
         <rect x="46" y="108" width="34" height="8" rx="4" className="fill-border" />
       </g>
-      <circle cx="120" cy="118" r="20" className="fill-citrus-500" />
+      <circle cx="120" cy="118" r="20" className="fill-sauce-500" />
       <path d="M120 109v18M111 118h18" className="stroke-white" strokeWidth="4" strokeLinecap="round" />
     </svg>
   );
@@ -50,9 +50,9 @@ export function EmptySearchIllustration({ className }: Readonly<IllustrationProp
         strokeWidth="2"
         transform="rotate(7 81 73)"
       />
-      <circle cx="100" cy="64" r="26" className="fill-surface stroke-teal-500" strokeWidth="6" />
-      <path d="M91 64h18M100 55v18" className="stroke-teal-500" strokeWidth="4" strokeLinecap="round" transform="rotate(45 100 64)" />
-      <line x1="119" y1="83" x2="138" y2="102" className="stroke-teal-500" strokeWidth="8" strokeLinecap="round" />
+      <circle cx="100" cy="64" r="26" className="fill-surface stroke-sage-500" strokeWidth="6" />
+      <path d="M91 64h18M100 55v18" className="stroke-sage-500" strokeWidth="4" strokeLinecap="round" transform="rotate(45 100 64)" />
+      <line x1="119" y1="83" x2="138" y2="102" className="stroke-sage-500" strokeWidth="8" strokeLinecap="round" />
     </svg>
   );
 }

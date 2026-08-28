@@ -37,35 +37,41 @@ export function CollectionsPage() {
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="font-display text-2xl font-extrabold text-ink">Collections</h1>
-        <form onSubmit={handleCreate} className="flex gap-2">
-          <label htmlFor="new-collection-name" className="sr-only">
-            Collection name
-          </label>
-          <input
-            id="new-collection-name"
-            name="name"
-            type="text"
-            autoComplete="off"
-            placeholder="New collection…"
-            value={newName}
-            onChange={(event) => setNewName(event.target.value)}
-            className={`w-full sm:w-64 ${inputClass}`}
-          />
-          <button type="submit" disabled={!newName.trim()} className={buttonClass("primary")}>
-            <PlusIcon size={18} weight="bold" />
-            Create
-          </button>
-        </form>
+    <div className="space-y-6">
+      <div className="border-b border-border pb-4">
+        <h1 className="font-display text-3xl font-bold italic text-ink sm:text-4xl">Collections</h1>
+        {!loading && collections && collections.length > 0 && (
+          <p className="mt-1 font-mono text-xs uppercase tracking-wider text-ink-muted">
+            {collections.length} collection{collections.length === 1 ? "" : "s"}
+          </p>
+        )}
       </div>
+
+      <form onSubmit={handleCreate} className="flex gap-2">
+        <label htmlFor="new-collection-name" className="sr-only">
+          Collection name
+        </label>
+        <input
+          id="new-collection-name"
+          name="name"
+          type="text"
+          autoComplete="off"
+          placeholder="New collection…"
+          value={newName}
+          onChange={(event) => setNewName(event.target.value)}
+          className={`w-full sm:w-64 ${inputClass}`}
+        />
+        <button type="submit" disabled={!newName.trim()} className={buttonClass("primary")}>
+          <PlusIcon size={18} weight="bold" />
+          Create
+        </button>
+      </form>
 
       {error && <p className={errorBannerClass}>{error}</p>}
 
       {!loading && collections?.length === 0 && (
         <div className="flex flex-col items-center gap-3 py-16 text-center">
-          <div className="flex h-32 w-32 items-center justify-center rounded-full bg-citrus-50 text-citrus-500 dark:bg-citrus-500/15 dark:text-citrus-400">
+          <div className="flex h-32 w-32 items-center justify-center rounded-full bg-sauce-50 text-sauce-500 dark:bg-sauce-500/15 dark:text-sauce-400">
             <FolderIcon size={56} />
           </div>
           <h2 className="font-display text-lg font-bold text-ink">No collections yet</h2>
@@ -82,9 +88,9 @@ export function CollectionsPage() {
             <li key={collection.id} className="flex items-center justify-between gap-3 px-4 py-3">
               <Link
                 to={`/collections/${collection.id}`}
-                className="flex min-w-0 items-center gap-2 text-ink hover:text-citrus-600"
+                className="flex min-w-0 items-center gap-2 text-ink hover:text-sauce-600"
               >
-                <FolderIcon size={20} className="flex-shrink-0 text-citrus-500" />
+                <FolderIcon size={20} className="flex-shrink-0 text-sauce-500" />
                 <span className="truncate font-medium">{collection.name}</span>
                 <span className="flex-shrink-0 text-sm text-ink-muted">
                   ({collection.recipeCount})

@@ -42,18 +42,24 @@ export function TagInput({ id, name, value, onChange }: Readonly<TagInputProps>)
   );
 
   return (
-    <div className="mt-1 flex flex-wrap items-center gap-2 rounded-sm border border-border bg-surface px-4 py-2.5 text-sm focus-within:ring-2 focus-within:ring-citrus-500 focus-within:ring-offset-2 focus-within:ring-offset-transparent">
+    <div className="mt-1 flex flex-wrap items-center gap-2 rounded-sm border border-border bg-surface px-4 py-2.5 text-sm focus-within:ring-2 focus-within:ring-sauce-500 focus-within:ring-offset-2 focus-within:ring-offset-transparent">
       {value.map((tag) => (
         <span
           key={tag}
-          className="flex items-center gap-1 rounded-full bg-teal-50 px-2 py-0.5 capitalize text-teal-700 dark:bg-teal-500/15 dark:text-teal-300"
+          className="flex items-center gap-1 rounded-full bg-sage-50 px-2 py-0.5 capitalize text-sage-700 dark:bg-sage-500/15 dark:text-sage-300"
         >
           {tag}
           <button
             type="button"
             onClick={() => removeTag(tag)}
             aria-label={`Remove ${tag}`}
-            className="relative text-teal-600 hover:text-teal-800 before:absolute before:-inset-2.5 before:content-[''] dark:text-teal-300 dark:hover:text-teal-100"
+            // text-sage-700 (not -600, which isn't a defined token — same
+            // class of bug as buttonClass's old secondary text color, see
+            // docs/decisions.md). Hover goes to danger-500, matching every
+            // other remove/× control's convention app-wide (RecipeFormPage's
+            // removeButtonClass, RecipeCollectionsEditor's chip remove
+            // button), rather than a nonexistent darker sage shade.
+            className="relative text-sage-700 hover:text-danger-500 before:absolute before:-inset-2.5 before:content-[''] dark:text-sage-300 dark:hover:text-danger-500"
           >
             <XIcon size={12} weight="bold" />
           </button>

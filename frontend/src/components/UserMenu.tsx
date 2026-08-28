@@ -71,7 +71,7 @@ export function UserMenu() {
         onClick={() => setOpen((prev) => !prev)}
         aria-haspopup="menu"
         aria-expanded={open}
-        className="flex h-11 items-center gap-1.5 rounded-full px-2 text-sm text-ink-muted transition-colors duration-standard ease-standard hover:bg-surface-sunken hover:text-ink sm:px-3"
+        className="flex h-11 items-center gap-1.5 rounded-md px-2 text-sm text-ink-muted transition-colors duration-standard ease-standard hover:bg-surface-sunken hover:text-ink sm:px-3"
       >
         <span className="max-w-24 truncate sm:max-w-none">{user.username}</span>
         <CaretDownIcon

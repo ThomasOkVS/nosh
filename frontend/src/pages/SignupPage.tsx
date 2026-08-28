@@ -38,7 +38,7 @@ export function SignupPage() {
       footer={
         <p className="text-center text-sm text-ink-muted">
           Already have an account?{" "}
-          <Link to="/login" className="font-medium text-citrus-600 hover:text-citrus-700 dark:text-citrus-400">
+          <Link to="/login" className="font-medium text-sauce-600 hover:text-sauce-700 dark:text-sauce-400">
             Log in
           </Link>
         </p>

@@ -37,8 +37,93 @@ priority.
 - [ ] Native-feeling mobile experience (MVP ships as a responsive PWA; this
       is a further step beyond that).
 
+### Design system follow-ups (Cookbook Editorial, 2026-08-26)
+
+- [ ] Regenerate the raster PWA icon set (`icon-192.png`, `icon-512.png`,
+      `icon-maskable-512.png`, `apple-touch-icon.png`) from the updated
+      source SVG — `frontend/public/icon.svg` and the PWA manifest's
+      `theme_color`/`background_color` were recolored to the new sauce-red/
+      paper palette, but the PNG fallbacks (used by iOS home-screen
+      installs and platforms without SVG-favicon support) are still the old
+      orange and weren't regenerated — that needs an image-export step, not
+      just a code edit.
+
 ## Completed
 
+- **2026-08-26 (second follow-up)** — Renamed the `citrus-*`/`teal-*` design
+  tokens to `sauce-*`/`sage-*` (and every class referencing them) now that
+  the color/structure change they belong to has shipped and been verified
+  stable — previously deferred as "a separate, low-value refactor on its
+  own merits," requested directly once the bigger, riskier work was done.
+  Also fixed two pre-existing bugs of the same kind already caught once in
+  the original pass: `TagChip`'s default-variant hover and `TagInput`'s
+  remove-tag button both referenced shades that were never defined in the
+  theme (`teal-100`/`-600`/`-800`), silently falling back to Tailwind's own
+  built-in `teal` swatch. Added a real `sage-100` token to close the first
+  gap (the primary/sauce family already had a `100` tint, the secondary one
+  didn't); the second was aligned with the remove/× convention already used
+  elsewhere in the app (hover to `danger-500`) instead of inventing a
+  fourth one-off shade. See
+  [decisions.md](decisions.md#2026-08-26-citrus-and-teal-tokens-renamed-to-sauce-and-sage)
+  for the full reasoning, including why "Citrus Pop" (the old direction's
+  *name*, in historical doc entries) was deliberately left alone while its
+  *tokens* were renamed. `pnpm lint`/`test`/`build` pass (89 frontend
+  tests). **Verified live** — since only names changed, not values, output
+  should be pixel-identical to the prior pass; confirmed by re-capturing
+  the recipe list and detail pages.
+- **2026-08-26 (same-day follow-up)** — Finished rolling Cookbook Editorial
+  out to the rest of the app: `AuthLayout`'s hardcoded Citrus Pop
+  orange→pink gradient background replaced with the paper page background
+  used everywhere else (its `.glass` card and title were already
+  token-driven, just needed the gradient itself gone and the title
+  italicized to match); the header's two pill-shaped nav controls
+  (`Layout`'s "Collections" link, `UserMenu`'s trigger) squared off to
+  `radius-md` along with everything else that dropped pill shapes; page
+  titles on `CollectionsPage`, `CollectionDetailPage`, and `RecipeFormPage`
+  restyled to the same italic-Fraunces masthead treatment as the recipe
+  list/detail pages (`CollectionsPage`/`CollectionDetailPage` also gained a
+  hairline rule and, on the list, a mono item-count caption); and
+  `RecipeFormSkeleton`'s loading bars had their leftover `rounded-full`
+  dropped to match the sharper skeleton style already applied elsewhere.
+  Also caught two stray Citrus Pop remnants a hex-value grep turned up that
+  weren't part of the original scope: the PWA manifest's `theme_color`/
+  `background_color` (`vite.config.ts`) and the SVG app icon/favicon
+  (`frontend/public/icon.svg`) were still the old orange — both recolored;
+  the raster PNG icon set generated from that SVG wasn't (tracked above,
+  needs an image-export step). The recipe form's own section
+  cards/inputs/buttons needed no changes — they already fully inherited the
+  new look via the shared `sectionCardClass`/`inputClass`/`buttonClass`
+  utilities from the original pass. See
+  [decisions.md](decisions.md#2026-08-26-cookbook-editorial-rolled-out-to-the-rest-of-the-app)
+  for the reasoning. `pnpm lint`/`test`/`build` pass (89 frontend tests).
+  **Verified live**, both themes: login/signup (confirmed the gradient is
+  gone and the entrance-animated card still renders correctly — a
+  screenshot taken mid-animation looked washed out on first pass, purely a
+  script-timing artifact, resolved by waiting for `animate-pop-in` to
+  settle before capturing), Collections, a collection's detail page, and
+  the new-recipe form.
+- **2026-08-26** — New design direction, "Cookbook Editorial", replaces
+  "Citrus Pop": paper/ink palette with a sauce-red primary and sage
+  secondary, Fraunces (serif, italic) + IBM Plex Mono (new, printed-label
+  metadata) alongside unchanged Inter, sharp/hairline shapes instead of
+  very-rounded, glass/blur and the gradient dropped app-wide. Token layer
+  (`index.css`, `styles.ts`) swapped globally per the project owner's
+  direction, so every page picked up the new colors/fonts/shape
+  immediately; structural rework (index-style ingredient list, large serif
+  step numerals with a first-step drop cap, a masthead detail layout
+  replacing the old photo-overlay panel, a new `TagChip` `editorial`
+  variant) was scoped to the recipe list and detail pages only, per
+  explicit instruction. See
+  [decisions.md](decisions.md#2026-08-26-design-direction-replaced-cookbook-editorial-supersedes-citrus-pop)
+  for the full reasoning and [design-system.md](design-system.md) for the
+  updated Color/Typography/Shape/Elevation/Cards/Tags/Detail-page-layout
+  sections. `pnpm lint`/`test`/`build` all pass (87 frontend tests, all
+  pre-existing). **Verified live** against the real backend + seeded demo
+  data via a headless-browser script (both themes, a no-photo recipe, the
+  delete confirmation dialog, and the login screen — the last two to check
+  the global glass/token change didn't break pages this pass didn't edit
+  directly). Follow-up structural work on the rest of the app is tracked
+  above under "Design system follow-ups."
 - **2026-08-26** — Web Interface Guidelines review of `frontend/src` (accessibility/forms/state) fixed: every form input now carries a real `name` (and `autoComplete`, a live token where one applies, otherwise `"off"`), including the recipe form's dynamically-repeated ingredient/step rows, scoped to each row's stable id rather than its index; every previously placeholder-only field (ingredient Qty/Unit/Name, the collection create/rename inputs) got a real `sr-only` `<label>`; login/signup/recipe-form submit errors now move focus to their banner the moment they're set (`AuthLayout`, `RecipeFormPage`) instead of appearing silently; deleting a recipe photo now goes through `ConfirmDialog` like every other delete in the app, instead of firing on a single click; the recipe list's search query is now mirrored into the URL (`?q=…`) alongside the tag filter that was already there, so a search is shareable/refresh-safe; and the "Grandma's Sunday Ragù" placeholder's straight apostrophe was fixed to match the rest of the app's curly-quote copy (design-system.md's own copy of that example string had the same typo, fixed too). See [design-system.md#forms](design-system.md#forms) for the two new form conventions (`name`/label requirements, focus-follows-the-error) this pass established. **Deliberately not changed**, both reviewed and rejected as fixes: `prefers-reduced-motion` support (the app's [existing documented decision](design-system.md#reduced-motion--explicit-trade-off) is to ignore it) and list virtualization (no list in the app is anywhere near the guideline's 50-item threshold at personal-recipe-collection scale, and it would mean a new dependency for no real benefit — see [../CLAUDE.md](../CLAUDE.md)'s "don't introduce unnecessary dependencies"). `pnpm lint`/`test` pass on the frontend package, including new coverage for the photo-delete confirmation and the URL-synced search query. **Not verified live** — this was a code-level review/fix pass, not exercised against the running dev server.
 - **2026-08-19** — Recipe organization: collections and tag-based browsing
   shipped. Collections are simple named lists (many-to-many with recipes, no

@@ -1,8 +1,13 @@
-export type TagChipVariant = "default" | "overlay";
+export type TagChipVariant = "default" | "editorial";
 
+// Each variant supplies its own shape/spacing/type, not just color — the
+// "editorial" variant (recipe list/detail, see docs/design-system.md#tagschips)
+// is a small-caps hairline-underlined label rather than a pill, which the
+// old shared rounded-full/px-2/py-0.5 base couldn't express.
 const VARIANT_CLASS: Record<TagChipVariant, string> = {
-  default: "bg-teal-50 text-teal-700 hover:bg-teal-100 dark:bg-teal-500/15 dark:text-teal-300",
-  overlay: "bg-white/20 text-white hover:bg-white/30",
+  default: "rounded-full px-2 py-0.5 text-xs bg-sage-50 text-sage-700 hover:bg-sage-100 dark:bg-sage-500/15 dark:text-sage-300",
+  editorial:
+    "border-b border-border pb-0.5 font-mono text-[11px] uppercase tracking-wider text-ink-muted hover:border-sauce-500 hover:text-sauce-600 dark:hover:text-sauce-400",
 };
 
 interface TagChipProps {
@@ -28,7 +33,7 @@ export function TagChip({ tag, variant = "default", onClick }: Readonly<TagChipP
         event.stopPropagation();
         onClick(tag);
       }}
-      className={`rounded-full px-2 py-0.5 text-xs capitalize transition-colors duration-standard ease-standard ${VARIANT_CLASS[variant]}`}
+      className={`${variant === "editorial" ? "" : "capitalize"} transition-colors duration-standard ease-standard ${VARIANT_CLASS[variant]}`}
     >
       {tag}
     </button>

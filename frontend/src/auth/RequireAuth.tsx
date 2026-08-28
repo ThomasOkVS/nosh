@@ -15,7 +15,7 @@ export function RequireAuth() {
       // <output> has an implicit "status" role, and is announced more
       // consistently across assistive tech than role="status" on a <div>.
       <output aria-label="Loading" className="flex min-h-dvh items-center justify-center bg-surface-page">
-        <CircleNotchIcon size={28} className="animate-spin text-citrus-500" aria-hidden="true" />
+        <CircleNotchIcon size={28} className="animate-spin text-sauce-500" aria-hidden="true" />
       </output>
     );
   }

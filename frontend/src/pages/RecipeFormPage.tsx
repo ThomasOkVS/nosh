@@ -86,9 +86,9 @@ function RecipeFormSkeleton() {
         <ArrowLeftIcon size={16} />
         All recipes
       </Link>
-      <Skeleton className="h-8 w-1/2 rounded-full" />
+      <Skeleton className="h-8 w-1/2" />
       <div className={sectionCardClass}>
-        <Skeleton className="h-5 w-24 rounded-full" />
+        <Skeleton className="h-5 w-24" />
         <div className="mt-3 space-y-3">
           <Skeleton className="h-10 w-full rounded-sm" />
           <Skeleton className="h-16 w-full rounded-sm" />
@@ -96,7 +96,7 @@ function RecipeFormSkeleton() {
         </div>
       </div>
       <div className={sectionCardClass}>
-        <Skeleton className="h-5 w-28 rounded-full" />
+        <Skeleton className="h-5 w-28" />
         <Skeleton className="mt-3 h-12 w-full rounded-sm" />
       </div>
     </div>
@@ -369,9 +369,9 @@ export function RecipeFormPage() {
   if (uploadingImage) {
     dropzoneStateClass = "cursor-not-allowed border-border opacity-60";
   } else if (isDraggingImage) {
-    dropzoneStateClass = "cursor-pointer border-citrus-500 bg-citrus-50 dark:bg-citrus-500/10";
+    dropzoneStateClass = "cursor-pointer border-sauce-500 bg-sauce-50 dark:bg-sauce-500/10";
   } else {
-    dropzoneStateClass = "cursor-pointer border-border hover:border-citrus-500 hover:bg-citrus-50 dark:hover:bg-citrus-500/10";
+    dropzoneStateClass = "cursor-pointer border-border hover:border-sauce-500 hover:bg-sauce-50 dark:hover:bg-sauce-500/10";
   }
 
   return (
@@ -380,7 +380,9 @@ export function RecipeFormPage() {
         <ArrowLeftIcon size={16} />
         All recipes
       </Link>
-      <h1 className="font-display text-2xl font-extrabold text-ink">{isEditMode ? "Edit recipe" : "New recipe"}</h1>
+      <h1 className="font-display text-2xl font-bold italic text-ink sm:text-3xl">
+        {isEditMode ? "Edit recipe" : "New recipe"}
+      </h1>
 
       {submitError && (
         <p ref={submitErrorRef} tabIndex={-1} role="alert" className={errorBannerClass}>
@@ -390,7 +392,7 @@ export function RecipeFormPage() {
 
       <section className={sectionCardClass}>
         <h2 className={sectionHeadingClass}>
-          <BookOpenIcon size={20} className="text-citrus-500" />
+          <BookOpenIcon size={20} className="text-sauce-500" />
           Basics
         </h2>
         <div className="mt-3 grid gap-4 sm:grid-cols-2">
@@ -481,7 +483,7 @@ export function RecipeFormPage() {
 
       <section className={sectionCardClass}>
         <h2 className={sectionHeadingClass}>
-          <ListChecksIcon size={20} className="text-teal-500" />
+          <ListChecksIcon size={20} className="text-sage-500" />
           Ingredients
         </h2>
         <div className="mt-3 space-y-2">
@@ -542,7 +544,7 @@ export function RecipeFormPage() {
 
       <section className={sectionCardClass}>
         <h2 className={sectionHeadingClass}>
-          <ListNumbersIcon size={20} className="text-citrus-500" />
+          <ListNumbersIcon size={20} className="text-sauce-500" />
           Steps
         </h2>
         <div className="mt-3 space-y-2">
@@ -580,7 +582,7 @@ export function RecipeFormPage() {
 
       <section className={sectionCardClass}>
         <h2 className={sectionHeadingClass}>
-          <TagIcon size={20} className="text-teal-500" />
+          <TagIcon size={20} className="text-sage-500" />
           Tags
         </h2>
         <div className="mt-3">
@@ -594,7 +596,7 @@ export function RecipeFormPage() {
 
       <section className={sectionCardClass}>
         <h2 className={sectionHeadingClass}>
-          <CameraIcon size={20} className="text-citrus-500" />
+          <CameraIcon size={20} className="text-sauce-500" />
           Photos
         </h2>
         {isEditMode ? (
@@ -627,7 +629,7 @@ export function RecipeFormPage() {
               onDrop={handleImageDrop}
               className={`${dropzoneBaseClass} ${dropzoneStateClass}`}
             >
-              <UploadSimpleIcon size={24} className="text-citrus-500" />
+              <UploadSimpleIcon size={24} className="text-sauce-500" />
               <span className="text-sm font-medium text-ink">
                 {uploadingImage ? "Uploading…" : "Click to add a photo, or drag one here"}
               </span>
