@@ -1736,3 +1736,156 @@ Since this changed only token/class *names*, not values, the rendered
 output should be pixel-identical to before — confirmed by re-capturing the
 recipe list and detail pages live and comparing against the prior pass's
 screenshots.
+
+## 2026-08-28: Collections redesigned as a nested, mandatory hierarchy; becomes the home page {#2026-08-28-collections-redesigned-as-a-nested-mandatory-hierarchy-becomes-the-home-page}
+
+**Decision:** Collections are no longer a flat, optional, many-to-many
+grouping — they're a nested, filesystem-like hierarchy (`collections.
+parent_id`, self-referencing, unlimited depth), and every recipe belongs to
+exactly one collection, always (`recipes.collection_id`, `NOT NULL`,
+replacing the `recipe_collections` join table outright). The collections tree
+becomes the app's home page (`/`); the recipe list moves to `/recipes`,
+reachable via a new "All recipes" nav link (replacing the old single
+"Collections" link, now redundant since the logo goes home). This
+**explicitly supersedes the 2026-08-19 entry above** on every point where
+they now disagree:
+
+- That entry's claim "deleting a collection never deletes its recipes;
+  deleting a recipe never deletes other collections it wasn't the only member
+  of" is **reversed**. Deleting a collection now cascades destructively —
+  every sub-collection and every recipe anywhere in its subtree is deleted
+  too, matching a literal "delete the folder and everything in it," chosen
+  directly over promoting contents to the parent or blocking a non-empty
+  delete.
+- Collections are no longer "structurally identical to tags" — tags stay
+  exactly as they were (optional, many-to-many, global vocabulary); a
+  collection is now a mandatory, to-one, per-user hierarchy. The two concepts
+  diverge further than the original entry's framing anticipated.
+- "Collection membership isn't part of `RecipeInput`" still holds for
+  *editing* a recipe (`updateRecipe` never touches `collection_id` — moving a
+  recipe is a separate action, `PATCH /recipes/:id/collection`), but no
+  longer holds for *creating* one: `POST /recipes` now accepts an optional
+  `collectionId`, resolved to the caller's auto-created "Other" collection
+  when omitted (`ensureDefaultCollection`), since a recipe can no longer be
+  created with zero collections to backfill later.
+
+**Why exactly one collection, filesystem-style, not "one-or-more, never
+zero."** Requested directly, framed explicitly as wanting recipes "stored in
+some sort of file structure" — a recipe is a file, a collection is a folder,
+and a file lives in exactly one folder at a time, moved rather than
+multiply-filed. A hybrid "still many-to-many, just never empty" model was
+considered and rejected: it would have kept the old chips-and-popover
+membership UI's shape while contradicting the "file structure" mental model
+directly, for no requested benefit.
+
+**Why two partial unique indexes instead of one `UNIQUE(user_id, parent_id,
+name)`.** Postgres treats `NULL <> NULL` in a unique constraint, so a single
+constraint on `(user_id, parent_id, name)` would not stop two root-level
+collections (`parent_id IS NULL`) from both being named "Other" — two
+different rows, both NULL in that column, no conflict detected.
+`collections_root_sibling_name_idx` (`WHERE parent_id IS NULL`) and
+`collections_child_sibling_name_idx` (`WHERE parent_id IS NOT NULL`) enforce
+sibling-name-uniqueness for the two cases separately, which is the standard
+fix for this exact gotcha.
+
+**Why `ON DELETE CASCADE` at the database level, with file cleanup done by
+the route beforehand rather than after.** Letting Postgres cascade the row
+deletion (`collections.parent_id` and `recipes.collection_id` both cascade)
+means a whole subtree — collections, recipes, ingredients, steps, images
+rows, tags links — is removed correctly in one statement, with no risk of
+missing a level in application code. The one thing a DB cascade can't do is
+touch the filesystem, so `getCollectionSubtreeImagePaths` (a recursive CTE)
+collects every image file path in the subtree *before* the delete runs — the
+rows won't exist to query afterward — and the route unlinks them from disk
+afterward, best-effort, the same pattern the existing single-recipe delete
+already used.
+
+**Migration data-loss rule — and why it isn't actually lossy.** Existing
+recipes with zero prior collection memberships get the new "Other"
+collection; recipes with exactly one keep it; recipes that were in *more
+than one* (allowed under the old many-to-many model) keep only the **lowest
+collection id** among their old memberships as `recipes.collection_id` —
+the new model has no column to hold more than one. The migration was
+initially written (and this entry initially claimed) that the rest are
+"silently dropped... only seed/demo data existed at migration time, so this
+had no real-world impact." **That claim was wrong and was never actually
+checked** — [deployment.md](deployment.md) records Nosh as live in
+production since 2026-08-19, with `SEED_DEMO_DATA` off there, meaning
+production has had nine days of whatever real collections the project owner
+actually created, entirely unverified for multi-membership recipes before
+this migration was first written. Caught when asked directly "have you
+thought about migrations... how do we account for this" — the honest answer
+at that point was "the mechanism to *run* a migration on redeploy was
+accounted for, its safety on real existing data was not." Fixed properly
+rather than just checking production first: the migration now creates
+`recipe_collections_archive_1700000000010`, a full snapshot of the
+many-to-many table taken before anything is collapsed, so no membership
+data is actually destroyed regardless of what production turns out to
+contain. `down()` restores the exact original multi-membership state from
+this archive (falling back to reconstructing one membership per recipe from
+`recipes.collection_id` only if the archive was deliberately cleaned up
+first), which was verified directly: rolling a seeded two-collection recipe
+forward and back through the migration in an isolated scratch database
+reproduced the original two rows exactly, not a collapsed one. A
+`RAISE NOTICE` reporting the affected count was also added but turned out to
+be a dead end worth recording — Postgres does emit it (confirmed via raw
+`psql`), but `node-pg-migrate`'s CLI, which `pnpm migrate up` and every
+documented deploy step actually run, never listens for the `NOTICE` event,
+so it's silently swallowed there. Left in as a harmless best-effort (visible
+if this file is ever run directly through `psql`), but the archive table —
+not the notice — is the real, verified safety net; **the deploy runbook
+should query it for any `recipe_id` with more than one archived row before
+trusting the migration ran clean.**
+
+**Reparenting existing collections is in scope, not deferred.** A
+collection's parent can be changed after creation (folded into
+`PUT /collections/:id` alongside rename, as one "edit collection" action,
+rather than a second endpoint), guarded by a recursive-CTE cycle check
+(`wouldCreateCycle`) that rejects moving a collection underneath its own
+descendant. Requested directly over deferring it — a folder hierarchy that
+can only be shaped once at creation time undercuts the "file structure"
+framing this whole redesign is built around.
+
+**Alternatives considered:** promoting a deleted collection's contents to its
+parent, or blocking deletion while it's non-empty (both rejected — the
+project owner explicitly chose the literal, destructive "delete the folder
+and everything in it" semantics); a `collectionId` field on `RecipeInput`
+shared by create and update (rejected — would let a full-replace `PUT` on a
+recipe's other fields silently relocate it if the field were ever
+omitted/defaulted on the client; keeping `updateRecipe` structurally unable
+to touch `collection_id` closes that class of bug at the type level, not just
+by convention); deferring collection reparenting to a later pass (rejected,
+see above).
+
+`pnpm lint`/`test`/`build` pass on both packages (frontend and backend test
+suites both green, including new coverage for nesting, sibling-name
+uniqueness across different parents, cycle rejection on reparent,
+cascade-delete behavior, and the default-collection fallback on recipe
+creation). New migration (`1700000000010_nest-collections`) applied by hand
+against the dev database via `pnpm migrate up` — same manual step the
+2026-08-19 collections migration needed, the dev backend container still
+doesn't auto-migrate on start.
+
+**Verified live, and caught a real bug the test suite missed.** A headless
+Playwright script (`chromium.launch()`, no test runner) drove the actual dev
+stack end-to-end against seeded demo data: home page → nested collection
+creation → moving a recipe via the picker (breadcrumb updates) → "All
+recipes" staying collection-agnostic → deleting a collection with nested
+contents. That last step surfaced a genuine bug: `CollectionsPage`'s
+`confirmDelete` called `deleteCollection` then `navigate()`, but never
+`reloadAll()` — deleting a **nested** collection happens to self-correct
+(navigating to its parent changes the `:id` param, which `getCollectionContents`
+already depends on and refetches), but deleting a **root-level** collection
+navigates to `/`, where the home view renders purely from `allCollections`,
+which nothing had invalidated. The result: after deleting a root-level
+collection, the home page kept showing it, stale, until some unrelated
+action happened to call `reloadAll()`. Every one of the 9 unit tests written
+for this feature passed regardless, because none of them exercised a
+root-level delete specifically — the existing delete test used a nested
+collection, whose parent-navigation path happens to hide the bug. Fixed by
+calling `reloadAll()` in `confirmDelete`'s success handler before navigating,
+and a new regression test (`CollectionsPage.test.tsx`, "deletes a root-level
+collection and reflects that on the home page it navigates back to") pins
+down the specific case the rest of the suite couldn't reach. Re-verified live
+after the fix: full walkthrough passes end-to-end, including confirming the
+deleted collection's old URL now 404s.

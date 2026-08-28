@@ -82,10 +82,13 @@ even though there is exactly one user today — see
 - **tags** — `id`, `name`
 - **recipe_tags** — `recipe_id`, `tag_id` (join table)
 - **recipe_images** — `id`, `recipe_id`, `file_path`, `position`
-- **collections** — `id`, `user_id`, `name`, `created_at`. A named,
-  user-curated grouping of recipes — see [Collections](#collections) below for
-  how this differs from tags.
-- **recipe_collections** — `recipe_id`, `collection_id` (join table)
+- **collections** — `id`, `user_id`, `parent_id` (nullable, self-referencing,
+  `ON DELETE CASCADE`), `name`, `created_at`. A named, user-curated,
+  *nestable* folder — see [Collections](#collections) below for how this
+  differs from tags.
+- **recipes.collection_id** — `NOT NULL`, `ON DELETE CASCADE` — every recipe
+  belongs to exactly one collection, always (see Collections below); there is
+  no `recipe_collections` join table any more, this is a plain to-one FK.
 
 Not modeled yet, deliberately: ratings/notes, nutrition facts, meal plans,
 grocery lists. These are post-MVP (see [index.md](index.md)) and will get their
@@ -93,18 +96,58 @@ own migrations when built, rather than speculative columns now.
 
 ## Collections
 
-Collections are many-to-many with recipes, structurally identical to
-`tags`/`recipe_tags` — but kept as a genuinely separate concept rather than
-folded into tags, because a collection is explicitly named and
-created/renamed/deleted by the user (`collections.user_id` gives it the same
-ownership identity `recipes` has), whereas a tag is attribute-like: free-text,
-and implicitly created/destroyed as a side effect of editing a recipe's tag
-list. Membership isn't part of `RecipeInput`/the recipe create-update payload
-— like image upload, it's a side-effecting relationship managed through its
-own endpoints (`POST`/`DELETE /collections/:id/recipes/:id`), only once a real
-recipe id exists. See
-[decisions.md](decisions.md#2026-08-19-collections-added-as-a-first-class-concept-distinct-from-tags-tag-browsing-via-a-query-param)
-for the full reasoning.
+Collections are nested, folder-like containers: `collections.parent_id`
+self-references `collections.id` (nullable — `NULL` means a root/top-level
+collection), with unlimited nesting depth. A collection is explicitly named
+and created/renamed/moved/deleted by the user (`collections.user_id` gives it
+the same ownership identity `recipes` has), which is what keeps it a
+genuinely separate concept from `tags` — a tag is attribute-like: free-text,
+global (not per-user), and implicitly created/destroyed as a side effect of
+editing a recipe's tag list, whereas a collection is a first-class,
+user-managed object with its own CRUD and — unlike a tag — every recipe must
+belong to exactly one.
+
+**Every recipe belongs to exactly one collection, always** — `recipes.
+collection_id` is a `NOT NULL` foreign key, not a many-to-many join table.
+Moving a recipe changes that single value (`PATCH /recipes/:id/collection`);
+there is no way to remove a recipe from its collection without moving it to
+another one. A recipe created with no explicit `collectionId` falls back to
+the owner's "Other" collection, auto-created on demand
+(`ensureDefaultCollection` in `backend/src/repositories/collections.ts`) —
+an ordinary collection with no special protection, renamable/deletable like
+any other.
+
+**Sibling name uniqueness needs two partial indexes, not one plain
+constraint.** Two collections may share a name as long as they aren't
+siblings (different parents, or one root-level and one not), but Postgres
+treats `NULL <> NULL` in a unique constraint — a single
+`UNIQUE(user_id, parent_id, name)` would let two root-level collections both
+be named "Other". `collections_root_sibling_name_idx` (`WHERE parent_id IS
+NULL`) and `collections_child_sibling_name_idx` (`WHERE parent_id IS NOT
+NULL`) enforce the two cases separately.
+
+**Deleting a collection cascades destructively**: `ON DELETE CASCADE` on both
+`collections.parent_id` and `recipes.collection_id` means deleting a
+collection recursively deletes every sub-collection and every recipe nested
+anywhere inside it, in one `DELETE` statement — a deliberate choice, matching
+a literal "delete the folder and everything in it" over promoting contents to
+the parent or blocking a non-empty delete. Since that cascade happens at the
+database level, it never touches the filesystem — the route
+(`backend/src/routes/collections.ts`) collects every image file path in the
+subtree via a recursive CTE (`getCollectionSubtreeImagePaths`) *before*
+issuing the delete (the rows won't exist to query afterward), then unlinks
+those files.
+
+**A recursive CTE (`WITH RECURSIVE`) is used in exactly two places**, both in
+`backend/src/repositories/collections.ts`: the file-path collection above,
+and `wouldCreateCycle`, which rejects reparenting a collection underneath its
+own descendant before the `UPDATE` runs. Both walk the tree in one round trip
+rather than one query per level — the standard Postgres pattern for
+unknown-depth tree traversal.
+
+See
+[decisions.md](decisions.md#2026-08-28-collections-redesigned-as-a-nested-mandatory-hierarchy-becomes-the-home-page)
+for the full reasoning and what this supersedes.
 
 ## Search
 
@@ -118,9 +161,13 @@ param on `GET /recipes` and `GET /recipes/search`, combinable with the
 full-text query — an `EXISTS` subquery against `recipe_tags`/`tags` rather than
 a `JOIN`, so it can't multiply rows or disturb `ORDER BY`/`ts_rank`. Reached by
 clicking a tag chip on a recipe card or the detail page, which hands off to the
-list page pre-filtered via `/?tag=…`; there's no separate "browse all tags"
-listing UI — an early version had one (backed by a `GET /recipes/tags`
-endpoint), but it read as clutter above the recipe grid and was removed.
+recipe list page (`/recipes`) pre-filtered via `/recipes?tag=…`; there's no
+separate "browse all tags" listing UI — an early version had one (backed by a
+`GET /recipes/tags` endpoint), but it read as clutter above the recipe grid
+and was removed. This is a separate, flat filter over *all* of a user's
+recipes regardless of collection — collection browsing is a different,
+tree-structured navigation path (see [Collections](#collections)), not
+another filter on this same list.
 
 Since the search corpus spans four tables, `search_vector` can't be a single
 `GENERATED ALWAYS AS` column (Postgres generated columns only see their own

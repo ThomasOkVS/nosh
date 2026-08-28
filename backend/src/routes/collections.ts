@@ -1,19 +1,20 @@
+import fsPromises from "node:fs/promises";
+import path from "node:path";
 import type { NextFunction, Request, Response } from "express";
 import { Router } from "express";
 import type { Pool } from "pg";
 import { requireAuth } from "../middleware/requireAuth";
 import {
-  addRecipeToCollection,
   createCollection,
   deleteCollection,
   findCollectionOwnerId,
   getCollectionById,
+  getCollectionSubtreeImagePaths,
   listCollectionsByUser,
-  listRecipesInCollection,
-  removeRecipeFromCollection,
-  renameCollection,
+  updateCollection,
+  wouldCreateCycle,
 } from "../repositories/collections";
-import { findRecipeOwnerId } from "../repositories/recipes";
+import { listRecipesByCollection } from "../repositories/recipes";
 import { collectionSchema } from "../validation/collections";
 
 function parseId(raw: string | undefined): number | null {
@@ -50,9 +51,29 @@ function requireCollectionOwnership(pool: Pool) {
   };
 }
 
-export function createCollectionsRouter(pool: Pool): Router {
+export function createCollectionsRouter(pool: Pool, uploadsDir: string): Router {
   const router = Router();
   router.use(requireAuth);
+
+  /** A `parentId` supplied in a request body is just a number until it's
+   * checked -- this confirms it's a real collection belonging to the caller
+   * before it's allowed to become another collection's parent, the same way
+   * every other body-supplied foreign id in this app is checked. */
+  async function requireOwnedParentOrNull(
+    userId: number,
+    parentId: number | null,
+    res: Response,
+  ): Promise<boolean> {
+    if (parentId === null) {
+      return true;
+    }
+    const ownerId = await findCollectionOwnerId(pool, parentId);
+    if (ownerId === null || ownerId !== userId) {
+      res.status(404).json({ error: "Parent collection not found" });
+      return false;
+    }
+    return true;
+  }
 
   router.post("/", async (req, res, next) => {
     const parsed = collectionSchema.safeParse(req.body);
@@ -67,7 +88,10 @@ export function createCollectionsRouter(pool: Pool): Router {
     }
 
     try {
-      const collection = await createCollection(pool, userId, parsed.data.name);
+      if (!(await requireOwnedParentOrNull(userId, parsed.data.parentId, res))) {
+        return;
+      }
+      const collection = await createCollection(pool, userId, parsed.data.name, parsed.data.parentId);
       res.status(201).json(collection);
     } catch (err) {
       next(err);
@@ -89,9 +113,13 @@ export function createCollectionsRouter(pool: Pool): Router {
     }
   });
 
+  /** Renames and/or reparents a collection in one call -- see
+   * `updateCollection`'s doc comment for why these are treated as one "edit
+   * collection" action rather than two endpoints. */
   router.put("/:id", requireCollectionOwnership(pool), async (req, res, next) => {
     const id = parseId(req.params.id);
-    if (id === null) {
+    const userId = req.session.userId;
+    if (id === null || userId === undefined) {
       res.status(400).json({ error: "Invalid collection id" });
       return;
     }
@@ -102,7 +130,18 @@ export function createCollectionsRouter(pool: Pool): Router {
     }
 
     try {
-      const collection = await renameCollection(pool, id, parsed.data.name);
+      if (!(await requireOwnedParentOrNull(userId, parsed.data.parentId, res))) {
+        return;
+      }
+      if (parsed.data.parentId !== null && (await wouldCreateCycle(pool, id, parsed.data.parentId))) {
+        res.status(400).json({ error: "A collection can't be moved inside itself or its own contents" });
+        return;
+      }
+
+      const collection = await updateCollection(pool, id, {
+        name: parsed.data.name,
+        parentId: parsed.data.parentId,
+      });
       if (!collection) {
         res.status(404).json({ error: "Collection not found" });
         return;
@@ -113,6 +152,12 @@ export function createCollectionsRouter(pool: Pool): Router {
     }
   });
 
+  /** Deleting a collection cascades at the database level to every
+   * sub-collection and recipe nested inside it (see the migration and
+   * `getCollectionSubtreeImagePaths`'s doc comment), so this collects every
+   * image file path in that subtree *before* deleting -- the rows won't
+   * exist to query afterward -- and unlinks them best-effort afterward, the
+   * same pattern the single-recipe delete route already uses. */
   router.delete("/:id", requireCollectionOwnership(pool), async (req, res, next) => {
     const id = parseId(req.params.id);
     if (id === null) {
@@ -121,11 +166,17 @@ export function createCollectionsRouter(pool: Pool): Router {
     }
 
     try {
+      const imageFilePaths = await getCollectionSubtreeImagePaths(pool, id);
       const deleted = await deleteCollection(pool, id);
       if (!deleted) {
         res.status(404).json({ error: "Collection not found" });
         return;
       }
+      await Promise.all(
+        imageFilePaths.map((filePath) =>
+          fsPromises.unlink(path.join(uploadsDir, filePath)).catch(() => undefined),
+        ),
+      );
       res.status(204).end();
     } catch (err) {
       next(err);
@@ -134,79 +185,24 @@ export function createCollectionsRouter(pool: Pool): Router {
 
   router.get("/:id/recipes", requireCollectionOwnership(pool), async (req, res, next) => {
     const id = parseId(req.params.id);
-    if (id === null) {
+    const userId = req.session.userId;
+    if (id === null || userId === undefined) {
       res.status(400).json({ error: "Invalid collection id" });
       return;
     }
 
     try {
-      const [collection, recipes] = await Promise.all([
+      const [collection, allCollections, recipes] = await Promise.all([
         getCollectionById(pool, id),
-        listRecipesInCollection(pool, id),
+        listCollectionsByUser(pool, userId),
+        listRecipesByCollection(pool, id),
       ]);
       if (!collection) {
         res.status(404).json({ error: "Collection not found" });
         return;
       }
-      res.json({ collection, recipes });
-    } catch (err) {
-      next(err);
-    }
-  });
-
-  /**
-   * Linking a recipe into a collection touches two owned resources, so
-   * `requireCollectionOwnership` above only proves the *collection* belongs
-   * to this user — without this extra check, a user could still link
-   * someone else's recipe id into their own collection.
-   */
-  async function requireOwnRecipe(req: Request, res: Response): Promise<number | null> {
-    const recipeId = parseId(req.params.recipeId);
-    if (recipeId === null) {
-      res.status(400).json({ error: "Invalid recipe id" });
-      return null;
-    }
-    const ownerId = await findRecipeOwnerId(pool, recipeId);
-    if (ownerId === null || ownerId !== req.session.userId) {
-      res.status(404).json({ error: "Recipe not found" });
-      return null;
-    }
-    return recipeId;
-  }
-
-  router.post("/:id/recipes/:recipeId", requireCollectionOwnership(pool), async (req, res, next) => {
-    const id = parseId(req.params.id);
-    if (id === null) {
-      res.status(400).json({ error: "Invalid collection id" });
-      return;
-    }
-
-    try {
-      const recipeId = await requireOwnRecipe(req, res);
-      if (recipeId === null) {
-        return;
-      }
-      await addRecipeToCollection(pool, recipeId, id);
-      res.status(201).end();
-    } catch (err) {
-      next(err);
-    }
-  });
-
-  router.delete("/:id/recipes/:recipeId", requireCollectionOwnership(pool), async (req, res, next) => {
-    const id = parseId(req.params.id);
-    if (id === null) {
-      res.status(400).json({ error: "Invalid collection id" });
-      return;
-    }
-
-    try {
-      const recipeId = await requireOwnRecipe(req, res);
-      if (recipeId === null) {
-        return;
-      }
-      await removeRecipeFromCollection(pool, recipeId, id);
-      res.status(204).end();
+      const subCollections = allCollections.filter((c) => c.parentId === id);
+      res.json({ collection, subCollections, recipes });
     } catch (err) {
       next(err);
     }

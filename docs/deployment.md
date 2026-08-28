@@ -151,6 +151,27 @@ migration that ships alongside an update still needs the manual
 `pnpm migrate up` step above; Watchtower only replaces the running
 container, it doesn't run one-off commands inside it.
 
+**A migration that reshapes existing data needs a check, not just a run.**
+The first-deploy step above is against an empty database, so nothing there
+is at risk — but a later update's migration runs against whatever real data
+production has accumulated since. `1700000000010_nest-collections` (added
+2026-08-28) is the concrete example: it collapses a recipe that was in more
+than one collection down to just one, and the migration was *initially*
+written assuming that case couldn't occur in real data — an assumption that
+was never actually checked against this box's real database, only against
+local seed/demo data. It was fixed to archive the exact pre-migration state
+before collapsing anything (`recipe_collections_archive_1700000000010`), so
+nothing is destroyed even if the assumption was wrong — see
+[decisions.md](decisions.md#2026-08-28-collections-redesigned-as-a-nested-mandatory-hierarchy-becomes-the-home-page)
+for the full story. The general lesson for any future migration that
+collapses, merges, or drops a relationship rather than just adding a column:
+run `pnpm migrate up`, then **before** trusting it, run whatever query the
+migration's own comments say to (for this one:
+`SELECT recipe_id, COUNT(*) FROM recipe_collections_archive_1700000000010 GROUP BY recipe_id HAVING COUNT(*) > 1;`
+— any rows returned name a recipe that had more than one collection and
+kept only the lowest id; nothing is lost, but it's now single-collection and
+the operator should know that happened).
+
 To roll back, set `TAG` in `.env` to a previous build's short git SHA (each
 image is published under both `:latest` and `:<sha>` — see
 [decisions.md](decisions.md)) and run

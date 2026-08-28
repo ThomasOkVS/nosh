@@ -12,6 +12,7 @@ import {
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type DragEvent, type SubmitEvent } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { ApiError } from "../api/client";
+import { listCollections } from "../api/collections";
 import {
   attachRecipeImageFromUrl,
   createRecipe,
@@ -23,9 +24,11 @@ import {
 } from "../api/recipes";
 import type { RecipeImage, RecipeInput } from "../api/types";
 import { AutoGrowTextarea } from "../components/AutoGrowTextarea";
+import { CollectionSelect } from "../components/CollectionSelect";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Skeleton } from "../components/Skeleton";
 import { TagInput } from "../components/TagInput";
+import { useAsync } from "../hooks/useAsync";
 import { generateId } from "../lib/id";
 import { buttonClass, errorBannerClass, inputClass, labelClass, sectionCardClass, sectionHeadingClass } from "../styles";
 import { useToast } from "../toast/ToastContext";
@@ -82,7 +85,7 @@ function importedImageUrlFrom(state: unknown): string | null {
 function RecipeFormSkeleton() {
   return (
     <div className="space-y-6">
-      <Link to="/" className="inline-flex items-center gap-1 text-sm text-ink-muted hover:text-ink">
+      <Link to="/recipes" className="inline-flex items-center gap-1 text-sm text-ink-muted hover:text-ink">
         <ArrowLeftIcon size={16} />
         All recipes
       </Link>
@@ -147,6 +150,11 @@ export function RecipeFormPage() {
   const [tags, setTags] = useState<string[]>(imported?.tags ?? []);
   const [images, setImages] = useState<RecipeImage[]>([]);
   const [sourceUrl, setSourceUrl] = useState<string | null>(imported?.sourceUrl ?? null);
+  // Only offered on create — moving an existing recipe is a separate action
+  // (RecipeCollectionPicker, on the detail page), not something the edit
+  // form does. Left unselected, the backend falls back to "Other".
+  const [collectionId, setCollectionId] = useState<number | null>(null);
+  const { data: collections } = useAsync(listCollections);
 
   const [loading, setLoading] = useState(isEditMode);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -312,6 +320,7 @@ export function RecipeFormPage() {
           .map((row) => ({ instruction: row.instruction.trim() })),
         tags,
         sourceUrl,
+        collectionId,
       };
 
       const submit = isEditMode
@@ -348,6 +357,7 @@ export function RecipeFormPage() {
       steps,
       tags,
       sourceUrl,
+      collectionId,
       isEditMode,
       recipeId,
       navigate,
@@ -376,7 +386,7 @@ export function RecipeFormPage() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      <Link to="/" className="inline-flex items-center gap-1 text-sm text-ink-muted hover:text-ink">
+      <Link to="/recipes" className="inline-flex items-center gap-1 text-sm text-ink-muted hover:text-ink">
         <ArrowLeftIcon size={16} />
         All recipes
       </Link>
@@ -478,6 +488,21 @@ export function RecipeFormPage() {
               />
             </div>
           </div>
+          {!isEditMode && collections && (
+            <div className="sm:col-span-2">
+              <label htmlFor="collectionId" className={labelClass}>
+                Collection
+              </label>
+              <CollectionSelect
+                id="collectionId"
+                collections={collections}
+                value={collectionId}
+                onChange={setCollectionId}
+                placeholderLabel="Other (default)"
+                className={`mt-1 w-full ${inputClass}`}
+              />
+            </div>
+          )}
         </div>
       </section>
 

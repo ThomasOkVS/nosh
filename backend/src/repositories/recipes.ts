@@ -1,6 +1,7 @@
 import type { Pool, PoolClient } from "pg";
 import { withTransaction } from "../db/transaction";
 import { groupBy } from "../utils/groupBy";
+import { ensureDefaultCollection } from "./collections";
 import type { RecipeInput } from "../validation/recipes";
 
 export interface Ingredient {
@@ -26,6 +27,7 @@ export interface RecipeImage {
 export interface Recipe {
   id: number;
   userId: number;
+  collectionId: number;
   title: string;
   description: string | null;
   servings: number | null;
@@ -43,6 +45,7 @@ export interface Recipe {
 export interface RecipeRow {
   id: number;
   user_id: number;
+  collection_id: number;
   title: string;
   description: string | null;
   servings: number | null;
@@ -54,7 +57,7 @@ export interface RecipeRow {
 }
 
 export const RECIPE_COLUMNS = `
-  id, user_id, title, description, servings, prep_time_minutes, cook_time_minutes,
+  id, user_id, collection_id, title, description, servings, prep_time_minutes, cook_time_minutes,
   source_url, created_at, updated_at
 `;
 
@@ -117,6 +120,7 @@ function toRecipe(
   return {
     id: row.id,
     userId: row.user_id,
+    collectionId: row.collection_id,
     title: row.title,
     description: row.description,
     servings: row.servings,
@@ -187,13 +191,21 @@ export async function createRecipe(
   userId: number,
   input: RecipeInput,
 ): Promise<Recipe> {
+  // Resolved before the transaction below: ensureDefaultCollection is its
+  // own idempotent get-or-create, independently safe to call outside a
+  // transaction, and every recipe must resolve to *some* collection -- this
+  // is what makes "every recipe belongs to exactly one collection" hold
+  // regardless of whether the caller supplied one.
+  const collectionId = input.collectionId ?? (await ensureDefaultCollection(pool, userId));
+
   const recipeId = await withTransaction(pool, async (client) => {
     const result = await client.query<{ id: number }>(
-      `INSERT INTO recipes (user_id, title, description, servings, prep_time_minutes, cook_time_minutes, source_url)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `INSERT INTO recipes (user_id, collection_id, title, description, servings, prep_time_minutes, cook_time_minutes, source_url)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        RETURNING id`,
       [
         userId,
+        collectionId,
         input.title,
         input.description,
         input.servings,
@@ -277,6 +289,34 @@ export async function listRecipesByUser(
     [userId, ...tagFilter.params],
   );
   return assembleRecipes(pool, result.rows);
+}
+
+export async function listRecipesByCollection(pool: Pool, collectionId: number): Promise<Recipe[]> {
+  const result = await pool.query<RecipeRow>(
+    `SELECT ${RECIPE_COLUMNS} FROM recipes WHERE collection_id = $1 ORDER BY created_at DESC`,
+    [collectionId],
+  );
+  return assembleRecipes(pool, result.rows);
+}
+
+/** Moves a recipe to a different collection -- the only way a recipe's
+ * collection ever changes; `updateRecipe` below deliberately never touches
+ * `collection_id`. No ownership checks here -- the route layer verifies both
+ * the recipe and the target collection belong to the caller before calling
+ * this. */
+export async function moveRecipe(
+  pool: Pool,
+  id: number,
+  collectionId: number,
+): Promise<Recipe | null> {
+  const result = await pool.query(`UPDATE recipes SET collection_id = $2 WHERE id = $1`, [
+    id,
+    collectionId,
+  ]);
+  if ((result.rowCount ?? 0) === 0) {
+    return null;
+  }
+  return findRecipeById(pool, id);
 }
 
 export async function updateRecipe(

@@ -1,5 +1,5 @@
 import { apiFetch, apiUrl } from "./client";
-import type { Recipe, RecipeCollectionSummary, RecipeImage, RecipeInput } from "./types";
+import type { Recipe, RecipeImage, RecipeInput } from "./types";
 
 export function listRecipes(tag?: string): Promise<Recipe[]> {
   return apiFetch<Recipe[]>(`/recipes${tag ? `?tag=${encodeURIComponent(tag)}` : ""}`);
@@ -11,8 +11,14 @@ export function searchRecipes(query: string, tag?: string): Promise<Recipe[]> {
   return apiFetch<Recipe[]>(`/recipes/search?${params.toString()}`);
 }
 
-export function listRecipeCollections(recipeId: number): Promise<RecipeCollectionSummary[]> {
-  return apiFetch<RecipeCollectionSummary[]>(`/recipes/${recipeId}/collections`);
+/** Moves a recipe to a different collection — the only way its collection
+ * ever changes; a recipe always belongs to exactly one, so there's no
+ * "unset" counterpart. */
+export function moveRecipeCollection(recipeId: number, collectionId: number): Promise<Recipe> {
+  return apiFetch<Recipe>(`/recipes/${recipeId}/collection`, {
+    method: "PATCH",
+    body: { collectionId },
+  });
 }
 
 export function getRecipe(id: number): Promise<Recipe> {
