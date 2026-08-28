@@ -1889,3 +1889,106 @@ collection and reflects that on the home page it navigates back to") pins
 down the specific case the rest of the suite couldn't reach. Re-verified live
 after the fix: full walkthrough passes end-to-end, including confirming the
 deleted collection's old URL now 404s.
+
+## 2026-08-28: Weekly meal planner — single ongoing calendar, date-keyed entries, CASCADE on recipe delete {#2026-08-28-weekly-meal-planner}
+
+**Decision:** A weekly meal planner ships as one new table,
+`meal_plan_entries(id, user_id, planned_on, recipe_id)` with
+`UNIQUE(user_id, planned_on)` — no `meal_plans` entity, no per-plan
+name/create/switch UI. Every user has exactly one ongoing calendar; the
+frontend just browses it week by week (`GET /meal-plan?start&end`,
+Monday-start, one recipe per day). Scope confirmed directly with the project
+owner before starting, per [CLAUDE.md](../CLAUDE.md)'s rule against building
+ahead of the "Planned (post-MVP)" list — three concrete questions (slots per
+day, single calendar vs. named plans, week-start day) settled the shape
+before any code was written, rather than guessing.
+
+**Why a range-based endpoint (`start`/`end`), not `?week=`.** The next
+roadmap item, grocery list generation from planned meals, needs exactly
+"every recipe planned in date range X–Y" — giving the *current* feature that
+same shape means the future one can query this table/endpoint unchanged
+instead of needing a new one. `UNIQUE(user_id, planned_on)` already produces
+a btree with `user_id` leading, which serves that range query directly, so
+no separate index was added for it.
+
+**Why `ON DELETE CASCADE` on `recipe_id`, not a nullable `SET NULL`.** An
+entry carries no data of its own beyond "which recipe, which day" — no note,
+no servings override, nothing worth keeping once the recipe it points at is
+gone. `SET NULL` would leave an orphaned row occupying the
+`UNIQUE(user_id, planned_on)` slot with a null recipe, forcing
+`recipeId: number | null` through the repository, the domain type, the API
+response, and every UI call site that touches it — a null-check that exists
+purely to work around a self-inflicted schema gap. `CASCADE` instead makes
+"a day with a deleted recipe is simply empty again" a type-level guarantee,
+and matches the CASCADE-everywhere precedent this schema already uses
+(`collections.parent_id`, `recipes.collection_id`, `recipe_images.recipe_id`).
+Verified live, not just via the migration file: deleting a recipe with a
+planned entry (via `/recipes`) empties its day on the meal-plan page
+immediately, and a backend router test (`removes a meal plan entry when its
+recipe is deleted`) proves the same at the API level.
+
+**The DATE-serialization gotcha, and why it's worth recording.**
+`meal_plan_entries.planned_on` is this schema's first plain `DATE` column —
+every existing timestamp (`created_at`/`updated_at` everywhere) is
+`TIMESTAMPTZ`, but a meal-plan slot is a calendar day, not a point in time.
+`pg`'s default type parser turns a `DATE` into a JS `Date` at local
+midnight; `JSON.stringify`-ing that later converts to UTC, which silently
+shifts the date a day earlier on any host east of UTC — including the
+homelab's own timezone. Confirmed empirically before writing the repository
+layer (not assumed): a raw `INSERT ... RETURNING planned_on::text` against
+the dev database round-tripped `'2026-08-24'` exactly, so every query in
+`backend/src/repositories/mealPlan.ts` casts explicitly
+(`planned_on::text AS date`) instead of letting `pg` hand back a `Date`. The
+same class of bug governs the frontend: `frontend/src/lib/week.ts`'s week
+math is built from a `Date`'s *local* calendar fields, never
+`toISOString()`, which reads UTC fields. Live verification specifically
+targeted this: assigning a recipe to a Monday and confirming it renders
+under the Monday column (not Sunday or Tuesday) is the concrete check that
+would catch a day-shift regression here.
+
+**Alternatives considered and rejected:**
+- A `meal_plans` entity users create/name/switch between (e.g. "Week of Aug
+  24," "Vacation week") — rejected; confirmed out of scope directly with the
+  project owner in favor of the smaller "single ongoing calendar" shape.
+- Breakfast/lunch/dinner slots per day — also rejected the same way; one
+  recipe per day is enough for "what's cooking each day," which is all the
+  grocery-list roadmap item actually needs downstream.
+- A `?week=` query param instead of `start`/`end` — rejected because it
+  would need redefining (or a second endpoint) the moment the grocery-list
+  feature needs an arbitrary range instead of a fixed week.
+
+No new dependency, on either side: `zod`'s `z.iso.date()` (already available
+in the pinned zod v4) validates the wire format; there was no date library
+in `frontend/package.json` before this feature and CLAUDE.md's "no
+unnecessary dependencies" rule ruled out adding one, so week math is a small
+hand-rolled module (`frontend/src/lib/week.ts`) instead, following the
+existing `frontend/src/lib/` pattern (`id.ts`, `collectionTree.ts`,
+`recipeDrag.ts`).
+
+`pnpm lint`/`test`/`build` pass on both packages: backend 222 tests
+(including 9 new router tests covering the upsert-replaces-not-duplicates
+path, cross-user isolation, range validation, and the CASCADE-on-delete
+behavior above); frontend 121 tests (15 new for `lib/week.ts` — including
+DST-transition weeks and local-vs-UTC date construction — plus new coverage
+for `MealPlanPage` and `RecipePickerDialog`). One pre-existing, unrelated
+frontend test (`RecipeListPage`'s URL-search-sync test) was already failing
+on `main` before this work started — confirmed by stashing every change and
+re-running it in isolation — and is untouched by this change.
+
+New migration (`1700000000011_create-meal-plan-entries`) applied by hand
+against the dev database via `pnpm migrate up` — same manual step every
+prior migration in this repo has needed, the dev backend container still
+doesn't auto-migrate on start. **Verified live** end-to-end against the
+running dev stack with seeded demo data, both themes, desktop and mobile
+widths: assigning a recipe to a day, replacing it with a different recipe on
+the same day (the UPSERT branch, not a fresh insert), clearing a day,
+prev/next week navigation with the URL's `?week=` round-tripping (reloading
+directly at a `?week=…` URL restores that week, not today's), the
+today-highlight landing on the correct day, the Monday-specific
+day-shift check above, and the recipe-delete cascade. This work was also
+where the session moved into a dedicated git worktree
+(`.claude/worktrees/weekly-meal-planner`, branch `feat/weekly-meal-planner`)
+partway through, at the project owner's request — the dev stack (same
+named Postgres/uploads volumes, same project name) was stopped and
+restarted from the worktree directory rather than the original checkout so
+live verification exercised the worktree's own files.

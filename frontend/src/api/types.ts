@@ -88,3 +88,11 @@ export interface CollectionContents {
   subCollections: Collection[];
   recipes: Recipe[];
 }
+
+/** One day's meal-plan assignment. `date` is a plain "YYYY-MM-DD" string,
+ * never a Date — see lib/week.ts for why. */
+export interface MealPlanEntry {
+  id: number;
+  date: string;
+  recipe: Recipe;
+}

@@ -8,6 +8,7 @@ import { errorHandler } from "./middleware/errorHandler";
 import { createAuthRouter } from "./routes/auth";
 import { createCollectionsRouter } from "./routes/collections";
 import { createImportRouter } from "./routes/import";
+import { createMealPlanRouter } from "./routes/mealPlan";
 import { createRecipesRouter } from "./routes/recipes";
 import type { SocialVideoDownloadFn } from "./services/socialVideo";
 
@@ -70,6 +71,7 @@ export function createApp(deps: AppDeps): Express {
   app.use("/auth", createAuthRouter(pool));
   app.use("/recipes", createRecipesRouter(pool, uploadsDir, fetchImpl));
   app.use("/collections", createCollectionsRouter(pool, uploadsDir));
+  app.use("/meal-plan", createMealPlanRouter(pool));
   app.use("/import", createImportRouter({ geminiExtract, geminiVideoExtract, downloadSocialVideo }));
 
   app.use(errorHandler);

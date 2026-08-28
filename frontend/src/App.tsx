@@ -5,6 +5,7 @@ import { Layout } from "./components/Layout";
 import { ImportProvider } from "./import/ImportProvider";
 import { CollectionsPage } from "./pages/CollectionsPage";
 import { LoginPage } from "./pages/LoginPage";
+import { MealPlanPage } from "./pages/MealPlanPage";
 import { RecipeDetailPage } from "./pages/RecipeDetailPage";
 import { RecipeFormPage } from "./pages/RecipeFormPage";
 import { RecipeListPage } from "./pages/RecipeListPage";
@@ -33,6 +34,7 @@ function App() {
                 <Route element={<Layout />}>
                   <Route path="/" element={<CollectionsPage />} />
                   <Route path="/collections/:id" element={<CollectionsPage />} />
+                  <Route path="/meal-plan" element={<MealPlanPage />} />
                   <Route path="/recipes" element={<RecipeListPage />} />
                   {/* The `key`s force a remount when moving between create and
                     * edit (and between two different recipes). Both routes
