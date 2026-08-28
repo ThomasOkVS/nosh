@@ -37,12 +37,44 @@ exports.up = (pgm) => {
       SELECT id, 'Other' FROM users
       ON CONFLICT (user_id, name) WHERE parent_id IS NULL DO NOTHING;
 
+    -- Full snapshot of the many-to-many table before anything below touches
+    -- it, kept around after recipe_collections itself is dropped. The
+    -- backfill below collapses a recipe that was in more than one
+    -- collection down to just one (see below) -- this table is what makes
+    -- that recoverable rather than a silent, permanent loss: a human can
+    -- read the original membership list straight out of it at any time,
+    -- and down() restores from it exactly rather than only reconstructing
+    -- one membership per recipe.
+    CREATE TABLE recipe_collections_archive_1700000000010 AS
+      SELECT * FROM recipe_collections;
+
+    -- Best-effort only: this RAISE NOTICE is visible if this file is ever
+    -- run directly through psql, but node-pg-migrate's own CLI -- what
+    -- \`pnpm migrate up\` and every documented deploy step actually run --
+    -- never listens for Postgres NOTICE events, so it is silently
+    -- swallowed there (confirmed empirically, not assumed). The archive
+    -- table above is the real safety net; verify with:
+    --   SELECT recipe_id, COUNT(*) FROM recipe_collections_archive_1700000000010
+    --   GROUP BY recipe_id HAVING COUNT(*) > 1;
+    -- after running this migration, per docs/deployment.md.
+    DO $do$
+    DECLARE
+      multi_membership_count INTEGER;
+    BEGIN
+      SELECT COUNT(*) INTO multi_membership_count FROM (
+        SELECT recipe_id FROM recipe_collections GROUP BY recipe_id HAVING COUNT(*) > 1
+      ) affected;
+      IF multi_membership_count > 0 THEN
+        RAISE NOTICE 'nest-collections migration: % recipe(s) were filed in more than one collection; only the lowest collection id is kept as recipes.collection_id for each. The full original membership list is preserved in recipe_collections_archive_1700000000010 for review/manual recovery.', multi_membership_count;
+      END IF;
+    END $do$;
+
     -- Backfill collection_id from the many-to-many recipe_collections table
     -- being dropped below. Deterministic rule for the (formerly allowed)
     -- case of a recipe belonging to more than one collection: keep the
-    -- lowest collection id and drop the rest -- a real, acknowledged
-    -- data-loss choice (documented in docs/decisions.md), even though
-    -- today's only data is seed/demo content.
+    -- lowest collection id and drop the rest here -- documented in
+    -- docs/decisions.md -- but nothing is actually destroyed: the archive
+    -- table above holds every dropped membership.
     UPDATE recipes r SET collection_id = sub.collection_id
     FROM (
       SELECT DISTINCT ON (rc.recipe_id) rc.recipe_id, rc.collection_id
@@ -61,6 +93,7 @@ exports.up = (pgm) => {
 
     -- Fully replaced by the to-one recipes.collection_id FK above -- kept
     -- alongside it would just be a second, now-redundant source of truth.
+    -- (The archive table above keeps its original contents regardless.)
     DROP TABLE recipe_collections;
   `);
 };
@@ -74,11 +107,22 @@ exports.down = (pgm) => {
     );
     CREATE INDEX recipe_collections_collection_id_idx ON recipe_collections (collection_id);
 
-    -- Restores each recipe's one collection as a single membership row.
-    -- Structural rollback only -- any second/third membership the up()
-    -- migration's "lowest id wins" rule collapsed away is not recoverable.
-    INSERT INTO recipe_collections (recipe_id, collection_id)
-      SELECT id, collection_id FROM recipes WHERE collection_id IS NOT NULL;
+    -- Restore the exact pre-migration membership set from up()'s archive
+    -- when it's still there -- this is what makes rolling back this
+    -- migration lossless rather than merely structural. Falls back to
+    -- reconstructing one membership per recipe from recipes.collection_id
+    -- only if the archive was deliberately cleaned up in the meantime.
+    DO $do$
+    BEGIN
+      IF to_regclass('recipe_collections_archive_1700000000010') IS NOT NULL THEN
+        INSERT INTO recipe_collections (recipe_id, collection_id)
+          SELECT recipe_id, collection_id FROM recipe_collections_archive_1700000000010;
+        DROP TABLE recipe_collections_archive_1700000000010;
+      ELSE
+        INSERT INTO recipe_collections (recipe_id, collection_id)
+          SELECT id, collection_id FROM recipes WHERE collection_id IS NOT NULL;
+      END IF;
+    END $do$;
 
     ALTER TABLE recipes DROP COLUMN collection_id;
 

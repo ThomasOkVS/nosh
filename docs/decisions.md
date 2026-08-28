@@ -1800,15 +1800,42 @@ rows won't exist to query afterward — and the route unlinks them from disk
 afterward, best-effort, the same pattern the existing single-recipe delete
 already used.
 
-**Migration data-loss rule, acknowledged.** Existing recipes with zero prior
-collection memberships get the new "Other" collection; recipes with exactly
-one keep it; recipes that were in *more than one* (allowed under the old
-many-to-many model) keep only the **lowest collection id** among their old
-memberships — the rest are silently dropped, since the new model has no
-column to hold more than one. Only seed/demo data existed at migration time,
-so this had no real-world impact, but the rule itself is a genuine,
-deliberate data-loss choice, not an oversight, and is called out here so a
-future reader doesn't have to reverse-engineer it from the migration SQL.
+**Migration data-loss rule — and why it isn't actually lossy.** Existing
+recipes with zero prior collection memberships get the new "Other"
+collection; recipes with exactly one keep it; recipes that were in *more
+than one* (allowed under the old many-to-many model) keep only the **lowest
+collection id** among their old memberships as `recipes.collection_id` —
+the new model has no column to hold more than one. The migration was
+initially written (and this entry initially claimed) that the rest are
+"silently dropped... only seed/demo data existed at migration time, so this
+had no real-world impact." **That claim was wrong and was never actually
+checked** — [deployment.md](deployment.md) records Nosh as live in
+production since 2026-08-19, with `SEED_DEMO_DATA` off there, meaning
+production has had nine days of whatever real collections the project owner
+actually created, entirely unverified for multi-membership recipes before
+this migration was first written. Caught when asked directly "have you
+thought about migrations... how do we account for this" — the honest answer
+at that point was "the mechanism to *run* a migration on redeploy was
+accounted for, its safety on real existing data was not." Fixed properly
+rather than just checking production first: the migration now creates
+`recipe_collections_archive_1700000000010`, a full snapshot of the
+many-to-many table taken before anything is collapsed, so no membership
+data is actually destroyed regardless of what production turns out to
+contain. `down()` restores the exact original multi-membership state from
+this archive (falling back to reconstructing one membership per recipe from
+`recipes.collection_id` only if the archive was deliberately cleaned up
+first), which was verified directly: rolling a seeded two-collection recipe
+forward and back through the migration in an isolated scratch database
+reproduced the original two rows exactly, not a collapsed one. A
+`RAISE NOTICE` reporting the affected count was also added but turned out to
+be a dead end worth recording — Postgres does emit it (confirmed via raw
+`psql`), but `node-pg-migrate`'s CLI, which `pnpm migrate up` and every
+documented deploy step actually run, never listens for the `NOTICE` event,
+so it's silently swallowed there. Left in as a harmless best-effort (visible
+if this file is ever run directly through `psql`), but the archive table —
+not the notice — is the real, verified safety net; **the deploy runbook
+should query it for any `recipe_id` with more than one archived row before
+trusting the migration ran clean.**
 
 **Reparenting existing collections is in scope, not deferred.** A
 collection's parent can be changed after creation (folded into
