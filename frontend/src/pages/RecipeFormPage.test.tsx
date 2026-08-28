@@ -109,6 +109,7 @@ describe("RecipeFormPage", () => {
         steps: [{ instruction: "Simmer everything." }],
         tags: ["soup", "dinner"],
         sourceUrl: null,
+        collectionId: null,
       }),
     );
   });
@@ -233,6 +234,7 @@ describe("RecipeFormPage", () => {
     vi.spyOn(recipesApi, "getRecipe").mockResolvedValue({
       id: 42,
       userId: 1,
+      collectionId: 1,
       title: "Tomato soup",
       description: null,
       servings: null,

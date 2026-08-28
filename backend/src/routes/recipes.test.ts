@@ -229,29 +229,82 @@ describe("recipe routes", () => {
     expect(mismatched.body).toHaveLength(0);
   });
 
-  it("lists the collections a recipe belongs to", async () => {
+  it("defaults a new recipe to the owner's 'Other' collection when none is given", async () => {
+    const app = createTestApp();
+    const agent = await signedInAgent(app, "alice@example.com");
+
+    const createRes = await agent.post("/recipes").send(samplePayload);
+    expect(createRes.status).toBe(201);
+    expect(createRes.body.collectionId).toEqual(expect.any(Number));
+
+    const collections = await agent.get("/collections");
+    const other = collections.body.find((c: { name: string }) => c.name === "Other");
+    expect(other).toBeDefined();
+    expect(createRes.body.collectionId).toBe(other.id);
+  });
+
+  it("creates a recipe directly into a given collection", async () => {
+    const app = createTestApp();
+    const agent = await signedInAgent(app, "alice@example.com");
+    const collectionRes = await agent.post("/collections").send({ name: "Weeknight dinners" });
+
+    const createRes = await agent
+      .post("/recipes")
+      .send({ ...samplePayload, collectionId: collectionRes.body.id });
+
+    expect(createRes.status).toBe(201);
+    expect(createRes.body.collectionId).toBe(collectionRes.body.id);
+  });
+
+  it("refuses to create a recipe in another user's collection", async () => {
+    const app = createTestApp();
+    const alice = await signedInAgent(app, "alice@example.com");
+    const bob = await signedInAgent(app, "bob@example.com");
+    const bobsCollection = await bob.post("/collections").send({ name: "Bob's list" });
+
+    const res = await alice
+      .post("/recipes")
+      .send({ ...samplePayload, collectionId: bobsCollection.body.id });
+    expect(res.status).toBe(404);
+  });
+
+  it("moves a recipe to a different collection", async () => {
     const app = createTestApp();
     const agent = await signedInAgent(app, "alice@example.com");
     const createRes = await agent.post("/recipes").send(samplePayload);
-
-    const empty = await agent.get(`/recipes/${createRes.body.id}/collections`);
-    expect(empty.status).toBe(200);
-    expect(empty.body).toEqual([]);
-
     const collectionRes = await agent.post("/collections").send({ name: "Weeknight dinners" });
-    await agent.post(`/collections/${collectionRes.body.id}/recipes/${createRes.body.id}`);
 
-    const populated = await agent.get(`/recipes/${createRes.body.id}/collections`);
-    expect(populated.body).toEqual([{ id: collectionRes.body.id, name: "Weeknight dinners" }]);
+    const moveRes = await agent
+      .patch(`/recipes/${createRes.body.id}/collection`)
+      .send({ collectionId: collectionRes.body.id });
+
+    expect(moveRes.status).toBe(200);
+    expect(moveRes.body.collectionId).toBe(collectionRes.body.id);
   });
 
-  it("hides another user's recipe's collections behind a 404", async () => {
+  it("refuses to move a recipe into another user's collection", async () => {
     const app = createTestApp();
     const alice = await signedInAgent(app, "alice@example.com");
     const bob = await signedInAgent(app, "bob@example.com");
     const createRes = await alice.post("/recipes").send(samplePayload);
+    const bobsCollection = await bob.post("/collections").send({ name: "Bob's list" });
 
-    const res = await bob.get(`/recipes/${createRes.body.id}/collections`);
+    const res = await alice
+      .patch(`/recipes/${createRes.body.id}/collection`)
+      .send({ collectionId: bobsCollection.body.id });
+    expect(res.status).toBe(404);
+  });
+
+  it("refuses to move another user's recipe", async () => {
+    const app = createTestApp();
+    const alice = await signedInAgent(app, "alice@example.com");
+    const bob = await signedInAgent(app, "bob@example.com");
+    const createRes = await alice.post("/recipes").send(samplePayload);
+    const collectionRes = await bob.post("/collections").send({ name: "Bob's list" });
+
+    const res = await bob
+      .patch(`/recipes/${createRes.body.id}/collection`)
+      .send({ collectionId: collectionRes.body.id });
     expect(res.status).toBe(404);
   });
 

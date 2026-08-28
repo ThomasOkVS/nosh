@@ -11,7 +11,7 @@ import { useCallback, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { deleteRecipe, getRecipe, recipeImageUrl } from "../api/recipes";
 import { ConfirmDialog } from "../components/ConfirmDialog";
-import { RecipeCollectionsEditor } from "../components/RecipeCollectionsEditor";
+import { RecipeCollectionPicker } from "../components/RecipeCollectionPicker";
 import { Skeleton } from "../components/Skeleton";
 import { TagChip } from "../components/TagChip";
 import { useAsync } from "../hooks/useAsync";
@@ -40,7 +40,7 @@ function parseSourceLink(sourceUrl: string | null): { href: string; hostname: st
 function RecipeDetailSkeleton() {
   return (
     <div className="space-y-6">
-      <Link to="/" className="inline-flex items-center gap-1 text-sm text-ink-muted hover:text-ink">
+      <Link to="/recipes" className="inline-flex items-center gap-1 text-sm text-ink-muted hover:text-ink">
         <ArrowLeftIcon size={16} />
         All recipes
       </Link>
@@ -65,11 +65,11 @@ export function RecipeDetailPage() {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const fetchRecipe = useCallback(() => getRecipe(recipeId), [recipeId]);
-  const { data: recipe, loading, error } = useAsync(fetchRecipe);
+  const { data: recipe, loading, error, reload } = useAsync(fetchRecipe);
 
   const confirmDelete = useCallback(() => {
     deleteRecipe(recipeId)
-      .then(() => navigate("/"))
+      .then(() => navigate("/recipes"))
       .catch(() => showToast("Failed to delete recipe"));
   }, [recipeId, navigate, showToast]);
 
@@ -95,7 +95,7 @@ export function RecipeDetailPage() {
 
   return (
     <div className="space-y-6">
-      <Link to="/" className="inline-flex items-center gap-1 text-sm text-ink-muted hover:text-ink">
+      <Link to="/recipes" className="inline-flex items-center gap-1 text-sm text-ink-muted hover:text-ink">
         <ArrowLeftIcon size={16} />
         All recipes
       </Link>
@@ -152,7 +152,7 @@ export function RecipeDetailPage() {
                 key={tag}
                 tag={tag}
                 variant="editorial"
-                onClick={(t) => navigate(`/?tag=${encodeURIComponent(t)}`)}
+                onClick={(t) => navigate(`/recipes?tag=${encodeURIComponent(t)}`)}
               />
             ))}
           </div>
@@ -184,7 +184,11 @@ export function RecipeDetailPage() {
         </div>
       )}
 
-      <RecipeCollectionsEditor recipeId={recipe.id} />
+      <RecipeCollectionPicker
+        recipeId={recipe.id}
+        collectionId={recipe.collectionId}
+        onMoved={reload}
+      />
 
       {recipe.ingredients.length > 0 && (
         <section>

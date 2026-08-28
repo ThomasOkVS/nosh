@@ -69,7 +69,7 @@ export function createApp(deps: AppDeps): Express {
 
   app.use("/auth", createAuthRouter(pool));
   app.use("/recipes", createRecipesRouter(pool, uploadsDir, fetchImpl));
-  app.use("/collections", createCollectionsRouter(pool));
+  app.use("/collections", createCollectionsRouter(pool, uploadsDir));
   app.use("/import", createImportRouter({ geminiExtract, geminiVideoExtract, downloadSocialVideo }));
 
   app.use(errorHandler);

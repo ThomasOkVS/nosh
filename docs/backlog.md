@@ -50,6 +50,42 @@ priority.
 
 ## Completed
 
+- **2026-08-28** — Collections redesigned from a flat, optional,
+  many-to-many grouping into a nested, mandatory hierarchy, and made the
+  app's home page. Collections can now contain sub-collections (unlimited
+  depth, `collections.parent_id`); every recipe belongs to exactly one
+  collection, always (`recipes.collection_id NOT NULL`, replacing the
+  `recipe_collections` join table), defaulting to an auto-created "Other"
+  collection when none is chosen. The collections tree is now `/`; the
+  recipe list moved to `/recipes`, reachable via a new "All recipes" nav
+  link. Deleting a collection now cascades destructively to its
+  sub-collections and their recipes (including uploaded photos, cleaned up
+  from disk) — a real behavior change from the old "delete never touches
+  recipes" model, chosen directly by the project owner. Reparenting an
+  existing collection is supported (guarded by a cycle check), not deferred.
+  `RecipeCollectionsEditor` (chips + multi-add popover) was replaced by
+  `RecipeCollectionPicker` (single-select "move to…", since a recipe can no
+  longer have zero or multiple collections); `CollectionsPage` and
+  `CollectionDetailPage` were collapsed into one component that renders both
+  home (`/`) and any collection's folder view (`/collections/:id`). See
+  [decisions.md](decisions.md#2026-08-28-collections-redesigned-as-a-nested-mandatory-hierarchy-becomes-the-home-page)
+  for the full reasoning, including the two-partial-unique-indexes fix for a
+  Postgres NULL-uniqueness gotcha and the migration's acknowledged
+  data-loss rule for recipes that were previously in more than one
+  collection. `pnpm lint`/`test`/`build` pass on both packages (backend:
+  213 tests, including new coverage for nesting, cycle rejection, cascade
+  delete, and default-collection fallback; frontend: 87 tests). New
+  migration (`1700000000010_nest-collections`) applied against the dev
+  database via `pnpm migrate up`. **Verified live** via a headless
+  Playwright script against the real running dev stack + seeded demo data:
+  home page, nested collection creation, moving a recipe via the picker,
+  the "All recipes" page staying collection-agnostic, and a cascading
+  delete with nested contents — which caught a real bug (home page showing
+  a stale, already-deleted root-level collection because `confirmDelete`
+  never reloaded `allCollections`, only `getCollectionContents`), fixed,
+  and re-verified. See
+  [decisions.md](decisions.md#2026-08-28-collections-redesigned-as-a-nested-mandatory-hierarchy-becomes-the-home-page)
+  for the full story and the new regression test it prompted.
 - **2026-08-26 (second follow-up)** — Renamed the `citrus-*`/`teal-*` design
   tokens to `sauce-*`/`sage-*` (and every class referencing them) now that
   the color/structure change they belong to has shipped and been verified

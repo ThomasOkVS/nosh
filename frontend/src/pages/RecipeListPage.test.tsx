@@ -19,6 +19,7 @@ function makeRecipe(overrides: Partial<Recipe> = {}): Recipe {
   return {
     id: 1,
     userId: 1,
+    collectionId: 1,
     title: "Tomato soup",
     description: null,
     servings: 4,

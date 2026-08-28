@@ -31,8 +31,10 @@ Citrus Pop version is noted for context rather than kept as a live option.
 automatically. Bespoke *structural* rework followed in two passes the same
 day: first the **recipe list and recipe detail pages** (plus the shared
 `RecipeCard`/`RecipeCardSkeleton` and `TagChip`'s new `editorial` variant —
-which is also why `CollectionDetailPage`'s recipe grid got the treatment for
-free, via reusing `RecipeCard`), then a same-day follow-up covering the
+which is also why the collection-detail recipe grid (then
+`CollectionDetailPage`, folded into `CollectionsPage` by the 2026-08-28
+collections redesign — see [decisions.md](decisions.md)) got the treatment
+for free, via reusing `RecipeCard`), then a same-day follow-up covering the
 **header, auth screens, recipe form, and the rest of the collections
 pages** (masthead page titles, `AuthLayout`'s gradient removed, the last two
 pill-shaped nav controls squared off). See
@@ -246,10 +248,10 @@ float over other content (usually a photo or a colored/gradient background).
 
 **2026-08-26: glass/blur dropped app-wide.** Cookbook Editorial has no
 translucent surfaces — `.glass`/`.glass-menu` keep their **names** and call
-sites (header, `ConfirmDialog`, `ImportDialog`, `UserMenu`, toasts,
-`RecipeCollectionsEditor`'s popover) unchanged, but now render as an opaque
-card-stock surface with a hairline border, no `backdrop-filter`. This is a
-token/utility-level change only — none of those component files needed
+sites (header, `ConfirmDialog`, `ImportDialog`, `UserMenu`, toasts) unchanged,
+but now render as an opaque card-stock surface with a hairline border, no
+`backdrop-filter`. This is a token/utility-level change only — none of those
+component files needed
 editing. See [decisions.md](decisions.md#2026-08-26-design-direction-replaced-cookbook-editorial-supersedes-citrus-pop).
 
 ### `.glass`
@@ -493,14 +495,45 @@ fix is structural, not cosmetic:
   replaced color/pill-coded metadata. Tags use the `editorial` `TagChip`
   variant below the meta line (see Tags/chips).
 
+### Drag and drop — moving a recipe between collections
+
+**Added 2026-08-28.** On the collections folder view (`CollectionsPage`), a
+recipe card can be dragged onto a sub-collection row or an ancestor in the
+breadcrumb trail to move it there — a desktop-only complement to the
+always-available "move" dropdown on the recipe detail page
+(`RecipeCollectionPicker`), not a replacement for it: native HTML5
+drag-and-drop has no touch equivalent, and this app's primary target device
+(see Responsive strategy) is a phone, so the picker stays the
+accessible/mobile-reachable path regardless.
+
+- **Drag source:** `RecipeCard` takes a `draggable` prop (default `false`,
+  enabled only where `CollectionsPage` renders it — `RecipeListPage`'s flat
+  grid has no folders to drop into, so its cards aren't draggable). The
+  payload rides in a dedicated `dataTransfer` MIME type
+  (`application/x-nosh-recipe-id`), not the browser's native link-drag
+  default: `RecipeCard` renders as an `<a>`, and anchors are natively
+  draggable with the link's own URL as their default drag payload, which
+  every drop target must ignore rather than accidentally act on.
+- **Drop targets:** each sub-collection row, and every *ancestor* breadcrumb
+  crumb — not the current collection itself (that's where the card already
+  is), and never "Home", since a recipe can never be parentless. Hover
+  feedback reuses the same `sauce-500` border / `sauce-50` tint the
+  file-upload dropzone already established (see File upload), so "you can
+  drop this here" reads consistently rather than inventing a second visual
+  language for the same idea.
+- **Safety net:** the page's root element calls `preventDefault()` on both
+  `dragover` and `drop` unconditionally. Without it, releasing a drag
+  outside a recognized target falls back to the browser's native behavior
+  for a dropped link — navigating the whole page to the recipe's URL.
+
 ### Tags/chips
 
 **Two variants as of 2026-08-26** (`TagChip`'s `variant` prop):
 
 - **`default`** (unchanged pill) — `radius-full`, `sage-50`/`sauce-50`-family
   tinted background with matching darker text, used everywhere outside the
-  recipe list/detail pages (`RecipeCollectionsEditor`, forms, etc. — see
-  Migration status at the top of this doc).
+  recipe list/detail pages (forms, etc. — see Migration status at the top of
+  this doc).
 - **`editorial`** (new) — the recipe list/detail pages' own treatment: no
   pill/background at all, a small-caps `font-mono` label with a hairline
   underline (`border-b border-border`), `sauce-500` on hover. Grounded in

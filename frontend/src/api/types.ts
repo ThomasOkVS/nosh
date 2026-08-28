@@ -27,6 +27,7 @@ export interface RecipeImage {
 export interface Recipe {
   id: number;
   userId: number;
+  collectionId: number;
   title: string;
   description: string | null;
   servings: number | null;
@@ -61,16 +62,29 @@ export interface RecipeInput {
   steps: StepInput[];
   tags: string[];
   sourceUrl: string | null;
+  // Only meaningful on create (a new recipe with no explicit choice falls
+  // back to the owner's "Other" collection server-side) — editing a recipe
+  // never moves it; that's a separate action, see RecipeCollectionPicker.
+  // Optional (unlike the rest of this interface) so call sites that only
+  // ever build an edit-mode payload, or imported/pre-fill data that never
+  // carries a collection, aren't forced to spell out a value that's ignored
+  // anyway.
+  collectionId?: number | null;
 }
 
 export interface Collection {
   id: number;
+  parentId: number | null;
   name: string;
   createdAt: string;
   recipeCount: number;
 }
 
-export interface RecipeCollectionSummary {
-  id: number;
-  name: string;
+/** The response shape for a single collection's contents: the collection
+ * itself, the sub-collections nested directly inside it, and the recipes
+ * filed directly in it — everything one "folder view" needs in one call. */
+export interface CollectionContents {
+  collection: Collection;
+  subCollections: Collection[];
+  recipes: Recipe[];
 }

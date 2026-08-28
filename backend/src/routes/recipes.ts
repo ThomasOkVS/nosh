@@ -7,7 +7,7 @@ import { Router } from "express";
 import multer from "multer";
 import type { Pool } from "pg";
 import { requireAuth } from "../middleware/requireAuth";
-import { listCollectionsForRecipe } from "../repositories/collections";
+import { findCollectionOwnerId } from "../repositories/collections";
 import {
   addRecipeImage,
   createRecipe,
@@ -17,6 +17,7 @@ import {
   findRecipeOwnerId,
   getRecipeImage,
   listRecipesByUser,
+  moveRecipe,
   searchRecipes,
   updateRecipe,
 } from "../repositories/recipes";
@@ -29,7 +30,7 @@ import {
 } from "../services/imageFromUrl";
 import { InvalidUrlError } from "../services/recipeExtraction";
 import { importRequestSchema } from "../validation/import";
-import { recipeSchema } from "../validation/recipes";
+import { moveRecipeSchema, recipeSchema } from "../validation/recipes";
 
 function statusForImageFetchError(err: unknown): number {
   if (err instanceof InvalidUrlError) return 400;
@@ -126,6 +127,13 @@ export function createRecipesRouter(
     }
 
     try {
+      if (parsed.data.collectionId !== null) {
+        const ownerId = await findCollectionOwnerId(pool, parsed.data.collectionId);
+        if (ownerId === null || ownerId !== userId) {
+          res.status(404).json({ error: "Collection not found" });
+          return;
+        }
+      }
       const recipe = await createRecipe(pool, userId, parsed.data);
       res.status(201).json(recipe);
     } catch (err) {
@@ -189,16 +197,37 @@ export function createRecipesRouter(
     }
   });
 
-  router.get("/:id/collections", requireRecipeOwnership(pool), async (req, res, next) => {
+  /**
+   * Moving a recipe touches two owned resources, so `requireRecipeOwnership`
+   * above only proves the *recipe* belongs to this user -- without this
+   * extra check, a user could move their own recipe into someone else's
+   * collection.
+   */
+  router.patch("/:id/collection", requireRecipeOwnership(pool), async (req, res, next) => {
     const id = parseId(req.params.id);
-    if (id === null) {
+    const userId = req.session.userId;
+    if (id === null || userId === undefined) {
       res.status(400).json({ error: "Invalid recipe id" });
+      return;
+    }
+    const parsed = moveRecipeSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
       return;
     }
 
     try {
-      const collections = await listCollectionsForRecipe(pool, id);
-      res.json(collections);
+      const ownerId = await findCollectionOwnerId(pool, parsed.data.collectionId);
+      if (ownerId === null || ownerId !== userId) {
+        res.status(404).json({ error: "Collection not found" });
+        return;
+      }
+      const recipe = await moveRecipe(pool, id, parsed.data.collectionId);
+      if (!recipe) {
+        res.status(404).json({ error: "Recipe not found" });
+        return;
+      }
+      res.json(recipe);
     } catch (err) {
       next(err);
     }

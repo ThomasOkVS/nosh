@@ -1,7 +1,9 @@
-import { ImageSquareIcon, XIcon } from "@phosphor-icons/react";
+import { ImageSquareIcon } from "@phosphor-icons/react";
+import type { DragEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { recipeImageUrl } from "../api/recipes";
 import type { Recipe } from "../api/types";
+import { setDraggedRecipeId } from "../lib/recipeDrag";
 import { Skeleton } from "./Skeleton";
 import { TagChip } from "./TagChip";
 
@@ -25,35 +27,28 @@ export function RecipeCardSkeleton() {
 
 interface RecipeCardProps {
   recipe: Recipe;
-  /** Renders a small overlaid remove button when present — used on
-   * `CollectionDetailPage` to drop a recipe from the collection without
-   * navigating to it. */
-  onRemove?: () => void;
+  /** Lets this card be dragged onto a collection drop target (see
+   * docs/design-system.md#drag-and-drop). Off by default — only
+   * `CollectionsPage`'s grid has folders to drop into; `RecipeListPage`'s
+   * flat grid doesn't opt in. */
+  draggable?: boolean;
 }
 
-export function RecipeCard({ recipe, onRemove }: Readonly<RecipeCardProps>) {
+export function RecipeCard({ recipe, draggable = false }: Readonly<RecipeCardProps>) {
   const thumbnail = recipe.images[0];
   const navigate = useNavigate();
+
+  const handleDragStart = (event: DragEvent<HTMLAnchorElement>) => {
+    setDraggedRecipeId(event.dataTransfer, recipe.id);
+  };
 
   return (
     <Link
       to={`/recipes/${recipe.id}`}
+      draggable={draggable}
+      onDragStart={draggable ? handleDragStart : undefined}
       className="relative block overflow-hidden rounded-lg border border-border bg-surface transition-[transform,box-shadow] duration-standard ease-standard hover:-translate-y-0.5 hover:shadow-[0_1px_2px_rgba(35,25,15,0.05),0_8px_20px_rgba(35,25,15,0.1)] dark:hover:shadow-[0_1px_2px_rgba(0,0,0,0.25),0_8px_20px_rgba(0,0,0,0.4)]"
     >
-      {onRemove && (
-        <button
-          type="button"
-          aria-label={`Remove ${recipe.title} from this collection`}
-          onClick={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            onRemove();
-          }}
-          className="absolute right-2 top-2 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-black/40 text-white transition-colors duration-standard ease-standard hover:bg-black/60"
-        >
-          <XIcon size={16} weight="bold" />
-        </button>
-      )}
       <div className="aspect-[4/3] w-full bg-surface-sunken">
         {thumbnail ? (
           <img src={recipeImageUrl(recipe.id, thumbnail.id)} alt="" className="h-full w-full object-cover" />
@@ -82,7 +77,7 @@ export function RecipeCard({ recipe, onRemove }: Readonly<RecipeCardProps>) {
                 key={tag}
                 tag={tag}
                 variant="editorial"
-                onClick={(t) => navigate(`/?tag=${encodeURIComponent(t)}`)}
+                onClick={(t) => navigate(`/recipes?tag=${encodeURIComponent(t)}`)}
               />
             ))}
           </div>

@@ -41,6 +41,9 @@ const DEMO_RECIPES: DemoRecipe[] = [
       ],
       tags: ["belgian", "stew", "comfort food", "dinner"],
       sourceUrl: null,
+      // Every demo recipe lands in the demo user's default "Other"
+      // collection -- createRecipe resolves this automatically.
+      collectionId: null,
     },
   },
   {
@@ -65,6 +68,9 @@ const DEMO_RECIPES: DemoRecipe[] = [
       ],
       tags: ["soup", "comfort food", "vegetarian", "dinner"],
       sourceUrl: null,
+      // Every demo recipe lands in the demo user's default "Other"
+      // collection -- createRecipe resolves this automatically.
+      collectionId: null,
     },
   },
   {
@@ -89,6 +95,9 @@ const DEMO_RECIPES: DemoRecipe[] = [
       ],
       tags: ["pasta", "italian", "dinner", "comfort food"],
       sourceUrl: null,
+      // Every demo recipe lands in the demo user's default "Other"
+      // collection -- createRecipe resolves this automatically.
+      collectionId: null,
     },
   },
   {
@@ -112,6 +121,9 @@ const DEMO_RECIPES: DemoRecipe[] = [
       ],
       tags: ["salad", "vegetarian", "healthy", "lunch"],
       sourceUrl: null,
+      // Every demo recipe lands in the demo user's default "Other"
+      // collection -- createRecipe resolves this automatically.
+      collectionId: null,
     },
   },
   {
@@ -135,6 +147,9 @@ const DEMO_RECIPES: DemoRecipe[] = [
       ],
       tags: ["belgian", "breakfast", "sweet"],
       sourceUrl: null,
+      // Every demo recipe lands in the demo user's default "Other"
+      // collection -- createRecipe resolves this automatically.
+      collectionId: null,
     },
   },
 ];

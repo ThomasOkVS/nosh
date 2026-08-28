@@ -3,6 +3,7 @@ import type { Request } from "express";
 import { Router } from "express";
 import type { Pool } from "pg";
 import { requireAuth } from "../middleware/requireAuth";
+import { ensureDefaultCollection } from "../repositories/collections";
 import { createUser, findUserByEmail, findUserById, findUserByUsername } from "../repositories/users";
 import { loginSchema, signupSchema } from "../validation/auth";
 
@@ -46,6 +47,9 @@ export function createAuthRouter(pool: Pool): Router {
 
       const passwordHash = await argon2.hash(password);
       const user = await createUser(pool, email, username, passwordHash);
+      // So a brand-new account isn't staring at a completely empty
+      // collections home page before creating a first recipe.
+      await ensureDefaultCollection(pool, user.id);
       await regenerateSession(req);
       req.session.userId = user.id;
       res.status(201).json({ id: user.id, email: user.email, username: user.username });

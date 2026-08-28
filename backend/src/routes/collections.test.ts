@@ -26,18 +26,67 @@ describe("collection routes", () => {
     expect(res.status).toBe(401);
   });
 
-  it("creates and lists collections with a recipe count", async () => {
+  it("creates and lists a root-level collection with a recipe count", async () => {
     const app = createTestApp();
     const agent = await signedInAgent(app, "alice@example.com");
 
     const createRes = await agent.post("/collections").send({ name: "Weeknight dinners" });
     expect(createRes.status).toBe(201);
-    expect(createRes.body).toMatchObject({ name: "Weeknight dinners", recipeCount: 0 });
+    expect(createRes.body).toMatchObject({
+      name: "Weeknight dinners",
+      parentId: null,
+      recipeCount: 0,
+    });
 
     const listRes = await agent.get("/collections");
     expect(listRes.status).toBe(200);
-    expect(listRes.body).toHaveLength(1);
-    expect(listRes.body[0]).toMatchObject({ name: "Weeknight dinners", recipeCount: 0 });
+    // Signup already seeded a default "Other" collection, so this user has two.
+    expect(listRes.body).toHaveLength(2);
+    expect(listRes.body).toContainEqual(
+      expect.objectContaining({ name: "Weeknight dinners", parentId: null, recipeCount: 0 }),
+    );
+  });
+
+  it("creates a nested collection under a parent", async () => {
+    const app = createTestApp();
+    const agent = await signedInAgent(app, "alice@example.com");
+    const parentRes = await agent.post("/collections").send({ name: "Baking" });
+
+    const childRes = await agent
+      .post("/collections")
+      .send({ name: "Cookies", parentId: parentRes.body.id });
+
+    expect(childRes.status).toBe(201);
+    expect(childRes.body).toMatchObject({ name: "Cookies", parentId: parentRes.body.id });
+  });
+
+  it("refuses to create a collection under another user's collection", async () => {
+    const app = createTestApp();
+    const alice = await signedInAgent(app, "alice@example.com");
+    const bob = await signedInAgent(app, "bob@example.com");
+    const bobsCollection = await bob.post("/collections").send({ name: "Bob's list" });
+
+    const res = await alice
+      .post("/collections")
+      .send({ name: "Hijacked", parentId: bobsCollection.body.id });
+    expect(res.status).toBe(404);
+  });
+
+  it("allows the same name for collections that are not siblings", async () => {
+    const app = createTestApp();
+    const agent = await signedInAgent(app, "alice@example.com");
+    const parentA = await agent.post("/collections").send({ name: "Baking" });
+    const parentB = await agent.post("/collections").send({ name: "Dinners" });
+
+    const childA = await agent
+      .post("/collections")
+      .send({ name: "Desserts", parentId: parentA.body.id });
+    const childB = await agent
+      .post("/collections")
+      .send({ name: "Desserts", parentId: parentB.body.id });
+
+    expect(childA.status).toBe(201);
+    expect(childB.status).toBe(201);
   });
 
   it("rejects a collection with no name", async () => {
@@ -55,9 +104,53 @@ describe("collection routes", () => {
 
     const renameRes = await agent
       .put(`/collections/${createRes.body.id}`)
-      .send({ name: "Quick dinners" });
+      .send({ name: "Quick dinners", parentId: null });
     expect(renameRes.status).toBe(200);
     expect(renameRes.body.name).toBe("Quick dinners");
+  });
+
+  it("reparents a collection to a different collection", async () => {
+    const app = createTestApp();
+    const agent = await signedInAgent(app, "alice@example.com");
+    const oldParent = await agent.post("/collections").send({ name: "Baking" });
+    const newParent = await agent.post("/collections").send({ name: "Dinners" });
+    const childRes = await agent
+      .post("/collections")
+      .send({ name: "Cookies", parentId: oldParent.body.id });
+
+    const moveRes = await agent
+      .put(`/collections/${childRes.body.id}`)
+      .send({ name: "Cookies", parentId: newParent.body.id });
+
+    expect(moveRes.status).toBe(200);
+    expect(moveRes.body.parentId).toBe(newParent.body.id);
+  });
+
+  it("refuses to reparent a collection into its own descendant", async () => {
+    const app = createTestApp();
+    const agent = await signedInAgent(app, "alice@example.com");
+    const parentRes = await agent.post("/collections").send({ name: "Baking" });
+    const childRes = await agent
+      .post("/collections")
+      .send({ name: "Cookies", parentId: parentRes.body.id });
+
+    const res = await agent
+      .put(`/collections/${parentRes.body.id}`)
+      .send({ name: "Baking", parentId: childRes.body.id });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("refuses to reparent a collection under itself", async () => {
+    const app = createTestApp();
+    const agent = await signedInAgent(app, "alice@example.com");
+    const createRes = await agent.post("/collections").send({ name: "Baking" });
+
+    const res = await agent
+      .put(`/collections/${createRes.body.id}`)
+      .send({ name: "Baking", parentId: createRes.body.id });
+
+    expect(res.status).toBe(400);
   });
 
   it("refuses to rename another user's collection", async () => {
@@ -66,22 +159,30 @@ describe("collection routes", () => {
     const bob = await signedInAgent(app, "bob@example.com");
     const createRes = await alice.post("/collections").send({ name: "Weeknight dinners" });
 
-    const res = await bob.put(`/collections/${createRes.body.id}`).send({ name: "Hijacked" });
+    const res = await bob
+      .put(`/collections/${createRes.body.id}`)
+      .send({ name: "Hijacked", parentId: null });
     expect(res.status).toBe(404);
   });
 
-  it("deletes a collection without touching its recipes", async () => {
+  it("deletes a collection, cascading to its sub-collections and recipes", async () => {
     const app = createTestApp();
     const agent = await signedInAgent(app, "alice@example.com");
-    const collectionRes = await agent.post("/collections").send({ name: "Weeknight dinners" });
-    const recipeRes = await agent.post("/recipes").send(samplePayload);
-    await agent.post(`/collections/${collectionRes.body.id}/recipes/${recipeRes.body.id}`);
+    const parentRes = await agent.post("/collections").send({ name: "Weeknight dinners" });
+    const childRes = await agent
+      .post("/collections")
+      .send({ name: "Soups", parentId: parentRes.body.id });
+    const recipeRes = await agent
+      .post("/recipes")
+      .send({ ...samplePayload, collectionId: childRes.body.id });
 
-    const deleteRes = await agent.delete(`/collections/${collectionRes.body.id}`);
+    const deleteRes = await agent.delete(`/collections/${parentRes.body.id}`);
     expect(deleteRes.status).toBe(204);
 
+    const getChildRes = await agent.get(`/collections/${childRes.body.id}/recipes`);
+    expect(getChildRes.status).toBe(404);
     const getRecipeRes = await agent.get(`/recipes/${recipeRes.body.id}`);
-    expect(getRecipeRes.status).toBe(200);
+    expect(getRecipeRes.status).toBe(404);
   });
 
   it("refuses to delete another user's collection", async () => {
@@ -94,55 +195,22 @@ describe("collection routes", () => {
     expect(res.status).toBe(404);
   });
 
-  it("adds and removes a recipe from a collection", async () => {
+  it("returns a collection's sub-collections and direct recipes together", async () => {
     const app = createTestApp();
     const agent = await signedInAgent(app, "alice@example.com");
-    const collectionRes = await agent.post("/collections").send({ name: "Weeknight dinners" });
-    const recipeRes = await agent.post("/recipes").send(samplePayload);
+    const parentRes = await agent.post("/collections").send({ name: "Weeknight dinners" });
+    const childRes = await agent
+      .post("/collections")
+      .send({ name: "Soups", parentId: parentRes.body.id });
+    const recipeRes = await agent
+      .post("/recipes")
+      .send({ ...samplePayload, collectionId: parentRes.body.id });
 
-    const addRes = await agent.post(
-      `/collections/${collectionRes.body.id}/recipes/${recipeRes.body.id}`,
-    );
-    expect(addRes.status).toBe(201);
-
-    const withRecipe = await agent.get(`/collections/${collectionRes.body.id}/recipes`);
-    expect(withRecipe.body.collection).toMatchObject({ name: "Weeknight dinners", recipeCount: 1 });
-    expect(withRecipe.body.recipes).toHaveLength(1);
-    expect(withRecipe.body.recipes[0].title).toBe("Tomato Soup");
-
-    const removeRes = await agent.delete(
-      `/collections/${collectionRes.body.id}/recipes/${recipeRes.body.id}`,
-    );
-    expect(removeRes.status).toBe(204);
-
-    const withoutRecipe = await agent.get(`/collections/${collectionRes.body.id}/recipes`);
-    expect(withoutRecipe.body.recipes).toHaveLength(0);
-  });
-
-  it("refuses to add another user's recipe into your own collection", async () => {
-    const app = createTestApp();
-    const alice = await signedInAgent(app, "alice@example.com");
-    const bob = await signedInAgent(app, "bob@example.com");
-    const collectionRes = await alice.post("/collections").send({ name: "Weeknight dinners" });
-    const bobsRecipeRes = await bob.post("/recipes").send(samplePayload);
-
-    const res = await alice.post(
-      `/collections/${collectionRes.body.id}/recipes/${bobsRecipeRes.body.id}`,
-    );
-    expect(res.status).toBe(404);
-  });
-
-  it("refuses to add your own recipe into another user's collection", async () => {
-    const app = createTestApp();
-    const alice = await signedInAgent(app, "alice@example.com");
-    const bob = await signedInAgent(app, "bob@example.com");
-    const bobsCollectionRes = await bob.post("/collections").send({ name: "Bob's list" });
-    const alicesRecipeRes = await alice.post("/recipes").send(samplePayload);
-
-    const res = await alice.post(
-      `/collections/${bobsCollectionRes.body.id}/recipes/${alicesRecipeRes.body.id}`,
-    );
-    expect(res.status).toBe(404);
+    const res = await agent.get(`/collections/${parentRes.body.id}/recipes`);
+    expect(res.status).toBe(200);
+    expect(res.body.collection).toMatchObject({ name: "Weeknight dinners", recipeCount: 1 });
+    expect(res.body.subCollections).toEqual([expect.objectContaining({ id: childRes.body.id })]);
+    expect(res.body.recipes).toEqual([expect.objectContaining({ id: recipeRes.body.id })]);
   });
 
   it("404s when fetching another user's collection recipes", async () => {

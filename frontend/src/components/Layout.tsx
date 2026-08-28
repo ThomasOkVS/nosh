@@ -12,10 +12,10 @@ export function Layout() {
           </Link>
           <nav className="flex items-center gap-1">
             <Link
-              to="/collections"
+              to="/recipes"
               className="flex h-11 items-center rounded-md px-3 text-sm text-ink-muted transition-colors duration-standard ease-standard hover:bg-surface-sunken hover:text-ink"
             >
-              Collections
+              All recipes
             </Link>
             <UserMenu />
           </nav>

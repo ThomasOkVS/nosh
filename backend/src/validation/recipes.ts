@@ -24,6 +24,16 @@ export const recipeSchema = z.object({
   // detail page. React blocks javascript: hrefs today, but that shouldn't be
   // the only thing standing between a stored value and an XSS.
   sourceUrl: z.url({ protocol: /^https?$/ }).trim().nullable().default(null),
+  // Only read by `createRecipe` (falls back to the caller's default
+  // collection when omitted) -- `updateRecipe` never touches a recipe's
+  // collection, since moving one is a separate, explicit action
+  // (`PATCH /recipes/:id/collection`), not a side effect of editing its
+  // other fields.
+  collectionId: z.number().int().positive().nullable().default(null),
 });
 
 export type RecipeInput = z.infer<typeof recipeSchema>;
+
+export const moveRecipeSchema = z.object({
+  collectionId: z.number().int().positive(),
+});

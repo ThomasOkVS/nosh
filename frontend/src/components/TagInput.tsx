@@ -57,8 +57,7 @@ export function TagInput({ id, name, value, onChange }: Readonly<TagInputProps>)
             // class of bug as buttonClass's old secondary text color, see
             // docs/decisions.md). Hover goes to danger-500, matching every
             // other remove/× control's convention app-wide (RecipeFormPage's
-            // removeButtonClass, RecipeCollectionsEditor's chip remove
-            // button), rather than a nonexistent darker sage shade.
+            // removeButtonClass), rather than a nonexistent darker sage shade.
             className="relative text-sage-700 hover:text-danger-500 before:absolute before:-inset-2.5 before:content-[''] dark:text-sage-300 dark:hover:text-danger-500"
           >
             <XIcon size={12} weight="bold" />
