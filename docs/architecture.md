@@ -89,10 +89,15 @@ even though there is exactly one user today — see
 - **recipes.collection_id** — `NOT NULL`, `ON DELETE CASCADE` — every recipe
   belongs to exactly one collection, always (see Collections below); there is
   no `recipe_collections` join table any more, this is a plain to-one FK.
+- **meal_plan_entries** — `id`, `user_id`, `planned_on` (`DATE`, mapped to
+  `date` in the API), `recipe_id` (`NOT NULL`, `ON DELETE CASCADE`),
+  `UNIQUE(user_id, planned_on)` — one recipe assigned to one calendar day, at
+  most one entry per user per day. See [Weekly meal planner](#weekly-meal-planner)
+  below.
 
-Not modeled yet, deliberately: ratings/notes, nutrition facts, meal plans,
-grocery lists. These are post-MVP (see [index.md](index.md)) and will get their
-own migrations when built, rather than speculative columns now.
+Not modeled yet, deliberately: ratings/notes, nutrition facts, grocery lists.
+These are post-MVP (see [index.md](index.md)) and will get their own
+migrations when built, rather than speculative columns now.
 
 ## Collections
 
@@ -148,6 +153,48 @@ unknown-depth tree traversal.
 See
 [decisions.md](decisions.md#2026-08-28-collections-redesigned-as-a-nested-mandatory-hierarchy-becomes-the-home-page)
 for the full reasoning and what this supersedes.
+
+## Weekly meal planner {#weekly-meal-planner}
+
+A single ongoing calendar per user — `meal_plan_entries(user_id, planned_on,
+recipe_id)` with `UNIQUE(user_id, planned_on)` — not a `meal_plans` entity a
+user creates/names/switches between. There's exactly one calendar, browsed
+week by week (`GET /meal-plan?start=YYYY-MM-DD&end=YYYY-MM-DD`, always a
+7-day span from the frontend, Monday-start per European convention). The
+range shape is deliberate: "recipes planned in date range X–Y" is exactly
+what the next roadmap item, grocery list generation, will need, so that
+feature can query this same table/endpoint unchanged rather than needing its
+own.
+
+`PUT /meal-plan/:date` assigns (or replaces) the recipe for a day —
+idempotent set-or-replace via `INSERT ... ON CONFLICT (user_id, planned_on)
+DO UPDATE`, the same reasoning as `PUT /collections/:id`. `recipe_id` is
+`NOT NULL` with `ON DELETE CASCADE`: an entry carries no data beyond "which
+recipe, which day," so when the recipe is deleted the day simply goes back
+to empty rather than leaving a null-recipe row behind. See
+[decisions.md](decisions.md#2026-08-28-weekly-meal-planner) for why this was
+chosen over a nullable `SET NULL` FK.
+
+**A `DATE` column needs an explicit text cast on the way out, or dates
+silently shift by a day.** `meal_plan_entries.planned_on` is this schema's
+first plain `DATE` column (everything else is `TIMESTAMPTZ`) — a meal-plan
+slot is a calendar day, not a point in time. `pg`'s default type parser turns
+a `DATE` into a JS `Date` at local midnight; serializing that back out with
+`JSON.stringify` converts to UTC, which silently shifts the date a day
+earlier on any host east of UTC (the homelab's own timezone included). The
+repository (`backend/src/repositories/mealPlan.ts`) casts explicitly
+(`planned_on::text AS date`) in every query instead of letting `pg` hand
+back a `Date` — the fix is one `::text`, but it's easy to reintroduce this
+bug by adding a new query that selects `planned_on` directly. The backend
+never computes a date itself for the same reason: every date in a request is
+a client-supplied `"YYYY-MM-DD"` string, stored/filtered/echoed as-is.
+
+The frontend has no date library (none was a dependency before this
+feature, and CLAUDE.md's "no unnecessary dependencies" rule applies) — week
+math (`startOfWeekMonday`, `addDays`, `weekDates`, `formatWeekLabel`) is
+hand-rolled in `frontend/src/lib/week.ts`, built from a `Date`'s *local*
+calendar fields, never `toISOString()`, which reads UTC fields and would
+shift the same way described above.
 
 ## Search
 

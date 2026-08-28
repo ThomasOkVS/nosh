@@ -17,6 +17,12 @@ export function Layout() {
             >
               All recipes
             </Link>
+            <Link
+              to="/meal-plan"
+              className="flex h-11 items-center rounded-md px-3 text-sm text-ink-muted transition-colors duration-standard ease-standard hover:bg-surface-sunken hover:text-ink"
+            >
+              Meal plan
+            </Link>
             <UserMenu />
           </nav>
         </div>

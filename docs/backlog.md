@@ -28,9 +28,8 @@ priority.
 - [ ] Notes & ratings on recipes.
 - [ ] Nutrition info via an external nutrition database.
 - [ ] Active cooking mode (ingredients can be checked of, cooking steps can be checked off, other ideas?).
-- [ ] Weekly meal planner.
-- [ ] Grocery list generation from planned meals (depends on the meal
-      planner above existing first).
+- [ ] Grocery list generation from planned meals (the weekly meal planner
+      this depended on shipped 2026-08-28 — see Completed below).
 - [ ] Grocery list integration with Belgian supermarkets (Colruyt, Albert
       Heijn, etc.) — depends on grocery list generation above existing
       first.
@@ -50,6 +49,57 @@ priority.
 
 ## Completed
 
+- **2026-08-28** — Weekly meal planner shipped: a single ongoing per-user
+  calendar, not a `meal_plans` entity users create/name/switch between — one
+  new table, `meal_plan_entries(user_id, planned_on, recipe_id)` with
+  `UNIQUE(user_id, planned_on)`, one recipe per day, Monday-start weeks.
+  Scope (one recipe per day, single calendar, Monday start) was confirmed
+  directly with the project owner via three questions before any code was
+  written, per [CLAUDE.md](../CLAUDE.md)'s rule against building ahead of
+  the roadmap. New backend: `GET /meal-plan?start&end` (range-based, not
+  `?week=`, so the next roadmap item — grocery list generation — can query
+  the same endpoint unchanged), `PUT /meal-plan/:date` (idempotent
+  set-or-replace via `ON CONFLICT`), `DELETE /meal-plan/:date`. New
+  frontend: `MealPlanPage` (a 7-column week grid, URL-seeded `?week=`,
+  prev/next navigation, a today-highlight, a skeleton for the initial load
+  per [design-system.md](design-system.md#loading-states)), a new
+  `RecipePickerDialog` modal (search-and-pick, following `ConfirmDialog`'s
+  native-`<dialog>` conventions — there was no existing recipe-search
+  combobox to reuse), and a hand-rolled `lib/week.ts` (no date library was
+  or is a dependency, per CLAUDE.md's "no unnecessary dependencies" rule).
+  `recipe_id` is `NOT NULL` with `ON DELETE CASCADE`, not a nullable
+  `SET NULL` — an entry carries no data beyond "which recipe, which day," so
+  a deleted recipe just empties its day rather than leaving an orphaned
+  null-recipe row. See
+  [decisions.md](decisions.md#2026-08-28-weekly-meal-planner) for the full
+  reasoning, including the DATE-serialization gotcha this feature's the
+  first to hit (`pg` parses `DATE` at local midnight; naive serialization
+  shifts it a day on any host east of UTC — fixed with an explicit
+  `planned_on::text` cast in every query) and why `GET` is range-based
+  rather than week-based. `pnpm lint`/`test`/`build` pass on both packages
+  (backend: 222 tests, including 9 new router tests for the upsert-replace
+  path, cross-user isolation, range validation, and the CASCADE-on-delete
+  behavior; frontend: 121 tests, including 15 new for `lib/week.ts` covering
+  DST-transition weeks and local-vs-UTC date construction, plus new
+  `MealPlanPage`/`RecipePickerDialog` coverage). One pre-existing, unrelated
+  frontend test (`RecipeListPage`'s URL-search-sync test) was already
+  failing before this work started, confirmed by re-running it against an
+  unmodified checkout — left untouched, out of scope for this change.
+  **Verified live** end-to-end against the running dev stack with seeded
+  demo data, both themes, desktop and mobile widths: assigning a recipe to a
+  day, replacing it with a different one on the same day (the UPSERT
+  branch, not a fresh insert), clearing a day, prev/next navigation with the
+  URL's `?week=` round-tripping (a direct reload at a `?week=…` URL restores
+  that week, not today's), the today-highlight landing on the correct day,
+  a recipe assigned specifically to a Monday rendering under the Monday
+  column (the concrete check that would catch a day-shift regression), and
+  deleting a recipe with a planned entry emptying its day on the meal-plan
+  page. Partway through this session moved into a dedicated git worktree
+  (`.claude/worktrees/weekly-meal-planner`, branch
+  `feat/weekly-meal-planner`) at the project owner's request; the dev
+  Docker stack was stopped and restarted from the worktree directory,
+  reusing the same named Postgres/uploads volumes, so live verification ran
+  against the worktree's own files without losing seeded demo data.
 - **2026-08-28** — Collections redesigned from a flat, optional,
   many-to-many grouping into a nested, mandatory hierarchy, and made the
   app's home page. Collections can now contain sub-collections (unlimited
