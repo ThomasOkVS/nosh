@@ -6,6 +6,7 @@ import { ImportProvider } from "./import/ImportProvider";
 import { CollectionsPage } from "./pages/CollectionsPage";
 import { LoginPage } from "./pages/LoginPage";
 import { MealPlanPage } from "./pages/MealPlanPage";
+import { NewRecipePage } from "./pages/NewRecipePage";
 import { RecipeDetailPage } from "./pages/RecipeDetailPage";
 import { RecipeFormPage } from "./pages/RecipeFormPage";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -50,7 +51,7 @@ function App() {
                     * render the same component at the same tree position, so
                     * without them React reconciles instead and the previous
                     * recipe's form state carries over into the next one. */}
-                  <Route path="/recipes/new" element={<RecipeFormPage key="new" />} />
+                  <Route path="/recipes/new" element={<NewRecipePage key="new" />} />
                   <Route path="/recipes/:id" element={<RecipeDetailPage />} />
                   <Route path="/recipes/:id/edit" element={<KeyedRecipeFormPage />} />
                 </Route>

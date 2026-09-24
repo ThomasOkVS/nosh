@@ -20,7 +20,13 @@ export function createTestApp(
   overrides: Partial<
     Pick<
       AppDeps,
-      "geminiExtract" | "geminiVideoExtract" | "downloadSocialVideo" | "fetchImpl" | "magicImport"
+      | "geminiExtract"
+      | "geminiVideoExtract"
+      | "downloadSocialVideo"
+      | "fetchImpl"
+      | "magicImport"
+      | "vapidPublicKey"
+      | "sendPush"
     >
   > = {},
 ): Express {

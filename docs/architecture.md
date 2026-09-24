@@ -99,6 +99,14 @@ even though there is exactly one user today — see
 - **llm_usage** — `usage_day` (`DATE`, Pacific time), `model`, `requests`,
   `prompt_tokens`, `output_tokens`, primary key `(usage_day, model)`. Global,
   not per-user. See [Magic import settings](#magic-import-settings) below.
+- **import_jobs** — `id`, `user_id`, `url`, `collection_id` (nullable,
+  `ON DELETE SET NULL`), `status` (`running`/`done`/`error`/
+  `cancelled`), `seen_stages` (`TEXT[]`), `recipe` (`JSONB`, the unsaved
+  `RecipeInput`), `image_url`, `error_status`, `error_message`, `reviewed_at`,
+  `created_at`, `updated_at`. One row per recipe import — see
+  [Import jobs & push notifications](#import-jobs).
+- **push_subscriptions** — `id`, `user_id`, `endpoint` (`UNIQUE`), `p256dh`,
+  `auth`, `created_at`. One row per device opted into Web Push.
 
 Not modeled yet, deliberately: ratings/notes, nutrition facts, grocery lists.
 These are post-MVP (see [index.md](index.md)) and will get their own
@@ -280,13 +288,12 @@ and center.
 ## Recipe import (URLs) {#recipe-import-urls}
 
 `POST /import` takes `{ url }` and yields an unsaved `RecipeInput` for the
-frontend to pre-fill the normal create form with — nothing is persisted until
-the user reviews it and submits that form through the existing
-`POST /recipes` path. It responds with newline-delimited JSON (a progress line
-per phase, then a result or error line) so the UI can say which extraction
-path is running; see
-[decisions.md](decisions.md#2026-08-11-import-streams-ndjson-progress-instead-of-returning-one-json-object).
-Extraction is two-stage:
+frontend to pre-fill the normal create form with — no *recipe* is persisted
+until the user reviews it and submits that form through the existing
+`POST /recipes` path. The import itself runs as a server-side job that the
+frontend polls for progress and the result, so it survives the app being
+closed mid-import — see [Import jobs & push notifications](#import-jobs)
+below. Extraction is two-stage:
 
 1. **schema.org JSON-LD** — the page's `<script type="application/ld+json">`
    blocks are parsed (via `cheerio`) looking for a `Recipe` node, handling the
@@ -357,7 +364,7 @@ fully proven for that platform.
 ## Recipe photo auto-import {#recipe-photo-auto-import}
 
 Both import paths above discover the recipe's photo alongside its data and
-report it as a separate `imageUrl` field on the `/import` NDJSON result
+report it as a separate `imageUrl` field on the import job
 (never as part of `RecipeInput` — recipe images are their own DB entity, keyed
 off a recipe id that doesn't exist until the recipe is saved, so this rides
 alongside the persisted fields rather than becoming one of them):
@@ -420,6 +427,64 @@ The page labels every number as an estimate: calls made with the same key
 outside Nosh (AI Studio, another app) aren't seen. See
 [decisions.md](decisions.md#2026-09-24-magic-import-settings) for the
 reasoning.
+
+## Import jobs & push notifications {#import-jobs}
+
+An import can take up to a minute (a Reels/TikTok video), and on a phone the
+user wants to start one and put the phone away. So imports are server-side
+jobs rather than a request the client must keep open — see
+[decisions.md](decisions.md#2026-09-24-imports-become-server-side-jobs-with-push-notifications).
+
+**Backend.**
+- `POST /import` validates the URL, inserts an `import_jobs` row and answers
+  `202` with the job straight away.
+- `services/importJobs.ts` then runs the extraction in-process,
+  fire-and-forget. It is not a queue, just an unawaited async function, and
+  each job's `AbortController` sits in an in-memory map so
+  `POST /import/:id/cancel` can stop it.
+- While it runs, each stage is appended to `seen_stages`. At the end the row
+  becomes `done` (with `recipe`/`image_url`) or `error` (with the HTTP status
+  the failure maps to, plus a message).
+- Every job-state write is guarded by `status = 'running'`, so a job that
+  was cancelled mid-flight can't be resurrected by a late result.
+- At boot, `recoverImportJobs` marks rows still `running` as `error`, since
+  their process is gone (a deploy or Watchtower restart). It also prunes
+  finished jobs older than a week.
+
+**Frontend.** `ImportProvider` polls `GET /import/:id` about once a second
+while the page is visible. It pauses when the page is hidden and polls
+immediately on becoming visible again.
+- **Launch restore.** On sign-in or launch it calls `GET /import` (running
+  jobs plus finished-but-unreviewed ones) and restores the newest. That is
+  what makes "close the app, reopen, the result is waiting" work, with or
+  without push.
+- **Marking reviewed.** A result counts as reviewed (`POST /import/:id/reviewed`)
+  once it has been shown: the create form opened with it, or its error
+  displayed.
+- **The `/recipes/new?importId=` route.** A finished import opens this URL.
+  `NewRecipePage` fetches the job when router state doesn't already carry the
+  recipe, as happens when a tapped notification cold-starts the app, and
+  writes it into router state before `RecipeFormPage` mounts.
+
+**Push.**
+- When a job finishes, `services/pushNotifier.ts` sends a Web Push message
+  (via the `web-push` library, VAPID-signed) to each of the user's
+  `push_subscriptions`: "Recipe ready" or "Import failed".
+- `src/sw.ts`, the app's service worker (vite-plugin-pwa `injectManifest`),
+  shows it as a notification. Tapping it focuses or opens the app at the
+  payload's URL.
+- Push services answering 404/410 get the subscription deleted.
+- Opt-in happens from a tap: the import dialog's "Notify me when it's done"
+  button, or a toggle in the user menu. `POST /push/subscriptions` stores
+  the browser's subscription.
+- The public key is served at runtime by `GET /push/vapid-public-key`.
+- With no `VAPID_*` env vars, push is off: the `/push` routes return 503, the
+  UI hides its controls and jobs finish silently.
+- The notification controls are also hidden wherever the browser can't
+  receive pushes. Web Push is secure-context-only, and on iOS it exists only
+  in the app added to the home screen.
+- The sender is injected via `createApp` (`AppDeps.sendPush`), so tests
+  never reach a real push service.
 
 ## Deployment target
 

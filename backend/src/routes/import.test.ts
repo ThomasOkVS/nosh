@@ -3,7 +3,10 @@ import request from "supertest";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GeminiExtractFn, GeminiVideoExtractFn } from "../llm/geminiClient";
 import { VideoTooLargeError, VideoUnavailableError, type SocialVideoDownloadFn } from "../services/socialVideo";
+import { recoverImportJobs } from "../repositories/importJobs";
+import type { SendPushFn } from "../services/pushNotifier";
 import { createTestApp } from "../test/app";
+import { getTestPool } from "../test/db";
 
 async function signedInAgent(
   app: Express,
@@ -37,25 +40,44 @@ const FAKE_VIDEO = { videoBuffer: Buffer.from("fake"), mimeType: "video/mp4", ca
 function stubFetchWithHtml(html: string): void {
   vi.stubGlobal(
     "fetch",
-    vi.fn().mockResolvedValue(new Response(html, { headers: { "content-type": "text/html" } })),
+    // A fresh Response per call — a body can only be read once, and some
+    // tests import more than once.
+    vi.fn().mockImplementation(() =>
+      Promise.resolve(new Response(html, { headers: { "content-type": "text/html" } })),
+    ),
   );
 }
 
-interface ImportMessage {
-  type: "progress" | "result" | "error";
-  stage?: string;
-  recipe?: Record<string, unknown>;
-  status?: number;
-  error?: string;
+interface ImportJobBody {
+  id: number;
+  collectionId: number | null;
+  status: "running" | "done" | "error" | "cancelled";
+  seenStages: string[];
+  recipe: Record<string, unknown> | null;
+  imageUrl: string | null;
+  errorStatus: number | null;
+  errorMessage: string | null;
+  reviewed: boolean;
 }
 
-/** The endpoint streams newline-delimited JSON, so responses are a list of
- * messages rather than one object. */
-function parseNdjson(text: string): ImportMessage[] {
-  return text
-    .split("\n")
-    .filter((line) => line.trim())
-    .map((line) => JSON.parse(line) as ImportMessage);
+type Agent = ReturnType<typeof request.agent>;
+
+/** Starts an import and polls until the background job settles — the same
+ * thing the frontend does, just without the one-second interval. */
+async function importAndWait(agent: Agent, url: string): Promise<ImportJobBody> {
+  const started = await agent.post("/import").send({ url });
+  expect(started.status).toBe(202);
+  return waitForJob(agent, (started.body as ImportJobBody).id);
+}
+
+async function waitForJob(agent: Agent, id: number): Promise<ImportJobBody> {
+  for (let attempt = 0; attempt < 200; attempt++) {
+    const res = await agent.get(`/import/${id}`);
+    const job = res.body as ImportJobBody;
+    if (job.status !== "running") return job;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(`Import job ${id} never finished`);
 }
 
 const RECIPE_JSON_LD_PAGE = `<html><head><script type="application/ld+json">${JSON.stringify({
@@ -78,7 +100,7 @@ describe("import routes", () => {
     expect(res.status).toBe(401);
   });
 
-  it("rejects an invalid body before streaming starts, with a real 400", async () => {
+  it("rejects an invalid body with a 400 and creates no job", async () => {
     stubFetchWithHtml("<html><body>No recipe</body></html>");
     const app = createTestApp({ geminiExtract: fakeGemini({}) });
     const agent = await signedInAgent(app, "importinvalid@example.com");
@@ -86,9 +108,10 @@ describe("import routes", () => {
     const res = await agent.post("/import").send({ url: "not a url" });
     expect(res.status).toBe(400);
     expect(res.body.error).toBeDefined();
+    expect((await agent.get("/import")).body).toEqual([]);
   });
 
-  it("streams progress stages and then the extracted recipe", async () => {
+  it("answers 202 with a running job, which finishes with its stages and the recipe", async () => {
     stubFetchWithHtml("<html><body>No recipe markup here</body></html>");
     const app = createTestApp({
       geminiExtract: fakeGemini({
@@ -99,21 +122,15 @@ describe("import routes", () => {
     });
     const agent = await signedInAgent(app, "importsuccess@example.com");
 
-    const res = await agent.post("/import").send({ url: "https://example.com/recipe" });
-    expect(res.status).toBe(200);
-    expect(res.headers["content-type"]).toContain("application/x-ndjson");
+    const started = await agent.post("/import").send({ url: "https://example.com/recipe" });
+    expect(started.status).toBe(202);
+    expect(started.body).toMatchObject({ status: "running", recipe: null });
 
-    const messages = parseNdjson(res.text);
-    expect(messages.filter((m) => m.type === "progress").map((m) => m.stage)).toEqual([
-      "fetching",
-      "structured-data",
-      "ai",
-    ]);
-
-    const result = messages.at(-1)!;
-    expect(result.type).toBe("result");
-    expect(result.recipe!.title).toBe("Tomato Soup");
-    expect(result.recipe!.sourceUrl).toBe("https://example.com/recipe");
+    const job = await waitForJob(agent, started.body.id);
+    expect(job.status).toBe("done");
+    expect(job.seenStages).toEqual(["fetching", "structured-data", "ai"]);
+    expect(job.recipe!.title).toBe("Tomato Soup");
+    expect(job.recipe!.sourceUrl).toBe("https://example.com/recipe");
   });
 
   it("uses the model saved on the Settings page, and automatic otherwise", async () => {
@@ -126,11 +143,9 @@ describe("import routes", () => {
     const app = createTestApp({ geminiExtract });
     const agent = await signedInAgent(app, "importmodel@example.com");
 
-    await agent.post("/import").send({ url: "https://example.com/recipe" });
+    await importAndWait(agent, "https://example.com/recipe");
     await agent.put("/settings/magic-import").send({ model: "other-model" });
-    // A fresh Response — the first import already consumed the stub's body.
-    stubFetchWithHtml("<html><body>No recipe markup here</body></html>");
-    await agent.post("/import").send({ url: "https://example.com/recipe" });
+    await importAndWait(agent, "https://example.com/recipe");
 
     const models = vi.mocked(geminiExtract).mock.calls.map((call) => call[2]?.model);
     expect(models).toEqual([undefined, "other-model"]);
@@ -142,14 +157,10 @@ describe("import routes", () => {
     const app = createTestApp({ geminiExtract });
     const agent = await signedInAgent(app, "importjsonld@example.com");
 
-    const res = await agent.post("/import").send({ url: "https://example.com/recipe" });
-    const messages = parseNdjson(res.text);
+    const job = await importAndWait(agent, "https://example.com/recipe");
 
-    expect(messages.filter((m) => m.type === "progress").map((m) => m.stage)).toEqual([
-      "fetching",
-      "structured-data",
-    ]);
-    expect(messages.at(-1)!.recipe!.title).toBe("Tomato Soup");
+    expect(job.seenStages).toEqual(["fetching", "structured-data"]);
+    expect(job.recipe!.title).toBe("Tomato Soup");
     expect(geminiExtract).not.toHaveBeenCalled();
   });
 
@@ -158,41 +169,40 @@ describe("import routes", () => {
     const app = createTestApp();
     const agent = await signedInAgent(app, "importnokey@example.com");
 
-    const res = await agent.post("/import").send({ url: "https://example.com/recipe" });
-    expect(parseNdjson(res.text).at(-1)!.recipe!.title).toBe("Tomato Soup");
+    const job = await importAndWait(agent, "https://example.com/recipe");
+    expect(job.recipe!.title).toBe("Tomato Soup");
   });
 
-  it("reports a 503 in-band when the fallback is needed but unconfigured", async () => {
+  it("fails the job with a 503 when the fallback is needed but unconfigured", async () => {
     stubFetchWithHtml("<html><body>No recipe</body></html>");
     const app = createTestApp();
     const agent = await signedInAgent(app, "importunconfigured@example.com");
 
-    const res = await agent.post("/import").send({ url: "https://example.com/recipe" });
-    expect(res.status).toBe(200);
-    expect(parseNdjson(res.text).at(-1)).toMatchObject({ type: "error", status: 503 });
+    const job = await importAndWait(agent, "https://example.com/recipe");
+    expect(job).toMatchObject({ status: "error", errorStatus: 503 });
   });
 
-  it("reports a 422 in-band when no recipe can be extracted", async () => {
+  it("fails the job with a 422 when no recipe can be extracted", async () => {
     stubFetchWithHtml("<html><body>No recipe</body></html>");
     const app = createTestApp({ geminiExtract: fakeGemini({ title: "" }) });
     const agent = await signedInAgent(app, "import422@example.com");
 
-    const res = await agent.post("/import").send({ url: "https://example.com/recipe" });
-    expect(parseNdjson(res.text).at(-1)).toMatchObject({ type: "error", status: 422 });
+    const job = await importAndWait(agent, "https://example.com/recipe");
+    expect(job).toMatchObject({ status: "error", errorStatus: 422 });
   });
 
-  it("reports a 400 in-band for a rejected URL, without fetching it", async () => {
+  it("fails the job with a 400 for a rejected URL, without fetching it", async () => {
     stubFetchWithHtml("<html><body>No recipe</body></html>");
     const app = createTestApp({ geminiExtract: fakeGemini({}) });
     const agent = await signedInAgent(app, "importbadurl@example.com");
 
-    const res = await agent.post("/import").send({ url: "http://localhost/recipe" });
-    expect(parseNdjson(res.text).at(-1)).toMatchObject({ type: "error", status: 400 });
+    const job = await importAndWait(agent, "http://localhost/recipe");
+    expect(job).toMatchObject({ status: "error", errorStatus: 400 });
     expect(fetch).not.toHaveBeenCalled();
   });
 
   describe("social video import (Instagram/TikTok)", () => {
-    it("downloads the video and streams downloading-video/ai progress before the result", async () => {
+    it("downloads the video and records its stages before the result", async () => {
       const downloadSocialVideo = fakeVideoDownload(FAKE_VIDEO);
       const geminiVideoExtract = fakeGeminiVideo({
         title: "Fajitas",
@@ -202,18 +212,12 @@ describe("import routes", () => {
       const app = createTestApp({ downloadSocialVideo, geminiVideoExtract });
       const agent = await signedInAgent(app, "importreel@example.com");
 
-      const res = await agent.post("/import").send({ url: "https://www.instagram.com/p/abc123/" });
-      expect(res.status).toBe(200);
+      const job = await importAndWait(agent, "https://www.instagram.com/p/abc123/");
 
-      const messages = parseNdjson(res.text);
-      expect(messages.filter((m) => m.type === "progress").map((m) => m.stage)).toEqual([
-        "downloading-video",
-        "analyzing-video",
-      ]);
-      const result = messages.at(-1)!;
-      expect(result.type).toBe("result");
-      expect(result.recipe!.title).toBe("Fajitas");
-      expect(result.recipe!.sourceUrl).toBe("https://www.instagram.com/p/abc123/");
+      expect(job.seenStages).toEqual(["downloading-video", "analyzing-video"]);
+      expect(job.status).toBe("done");
+      expect(job.recipe!.title).toBe("Fajitas");
+      expect(job.recipe!.sourceUrl).toBe("https://www.instagram.com/p/abc123/");
       expect(geminiVideoExtract).toHaveBeenCalledWith(
         { buffer: FAKE_VIDEO.videoBuffer, mimeType: FAKE_VIDEO.mimeType },
         FAKE_VIDEO.caption,
@@ -228,36 +232,201 @@ describe("import routes", () => {
       const app = createTestApp({ downloadSocialVideo, geminiVideoExtract });
       const agent = await signedInAgent(app, "importtiktok@example.com");
 
-      const res = await agent.post("/import").send({ url: "https://www.tiktok.com/@chef/video/123" });
-      expect(parseNdjson(res.text).at(-1)!.recipe!.title).toBe("Noodles");
+      const job = await importAndWait(agent, "https://www.tiktok.com/@chef/video/123");
+      expect(job.recipe!.title).toBe("Noodles");
     });
 
-    it("reports a 503 in-band when no AI is configured, without downloading anything", async () => {
+    it("fails the job with a 503 when no AI is configured, without downloading anything", async () => {
       const downloadSocialVideo = fakeVideoDownload(FAKE_VIDEO);
       const app = createTestApp({ downloadSocialVideo });
       const agent = await signedInAgent(app, "importreelnokey@example.com");
 
-      const res = await agent.post("/import").send({ url: "https://www.instagram.com/p/abc123/" });
-      expect(parseNdjson(res.text).at(-1)).toMatchObject({ type: "error", status: 503 });
+      const job = await importAndWait(agent, "https://www.instagram.com/p/abc123/");
+      expect(job).toMatchObject({ status: "error", errorStatus: 503 });
       expect(downloadSocialVideo).not.toHaveBeenCalled();
     });
 
-    it("reports a 502 in-band when the post can't be fetched (private/deleted/blocked)", async () => {
+    it("fails the job with a 502 when the post can't be fetched (private/deleted/blocked)", async () => {
       const downloadSocialVideo = fakeVideoDownload(new VideoUnavailableError("nope"));
       const app = createTestApp({ downloadSocialVideo, geminiVideoExtract: fakeGeminiVideo({}) });
       const agent = await signedInAgent(app, "importreelprivate@example.com");
 
-      const res = await agent.post("/import").send({ url: "https://www.instagram.com/p/abc123/" });
-      expect(parseNdjson(res.text).at(-1)).toMatchObject({ type: "error", status: 502 });
+      const job = await importAndWait(agent, "https://www.instagram.com/p/abc123/");
+      expect(job).toMatchObject({ status: "error", errorStatus: 502 });
     });
 
-    it("reports a 422 in-band when the video is too long/large", async () => {
+    it("fails the job with a 422 when the video is too long/large", async () => {
       const downloadSocialVideo = fakeVideoDownload(new VideoTooLargeError("too long"));
       const app = createTestApp({ downloadSocialVideo, geminiVideoExtract: fakeGeminiVideo({}) });
       const agent = await signedInAgent(app, "importreeltoolong@example.com");
 
-      const res = await agent.post("/import").send({ url: "https://www.instagram.com/p/abc123/" });
-      expect(parseNdjson(res.text).at(-1)).toMatchObject({ type: "error", status: 422 });
+      const job = await importAndWait(agent, "https://www.instagram.com/p/abc123/");
+      expect(job).toMatchObject({ status: "error", errorStatus: 422 });
+    });
+  });
+
+  describe("job lifecycle", () => {
+    /** A download that never finishes on its own — only an abort ends it —
+     * so a test can observe a job while it's still running. */
+    const hangingDownload: SocialVideoDownloadFn = (_url, signal) =>
+      new Promise((_resolve, reject) => {
+        signal?.addEventListener("abort", () => reject(new Error("aborted")));
+      });
+
+    it("lists running and unreviewed jobs as pending until marked reviewed", async () => {
+      stubFetchWithHtml(RECIPE_JSON_LD_PAGE);
+      const app = createTestApp();
+      const agent = await signedInAgent(app, "importpending@example.com");
+
+      const job = await importAndWait(agent, "https://example.com/recipe");
+      const pending = await agent.get("/import");
+      expect(pending.body.map((j: ImportJobBody) => j.id)).toEqual([job.id]);
+
+      expect((await agent.post(`/import/${job.id}/reviewed`)).status).toBe(204);
+      expect((await agent.get("/import")).body).toEqual([]);
+      expect((await agent.get(`/import/${job.id}`)).body.reviewed).toBe(true);
+    });
+
+    it("keeps the folder the import was started from on the job", async () => {
+      stubFetchWithHtml(RECIPE_JSON_LD_PAGE);
+      const app = createTestApp();
+      const agent = await signedInAgent(app, "importfolder@example.com");
+      const folder = await agent.post("/collections").send({ name: "Soups" });
+
+      const started = await agent
+        .post("/import")
+        .send({ url: "https://example.com/recipe", collectionId: folder.body.id });
+      expect(started.status).toBe(202);
+      const job = await waitForJob(agent, started.body.id);
+      expect(job).toMatchObject({ status: "done", collectionId: folder.body.id });
+    });
+
+    it("refuses to file an import in another user's folder", async () => {
+      const app = createTestApp();
+      const owner = await signedInAgent(app, "importfolderowner@example.com");
+      const other = await signedInAgent(app, "importfolderother@example.com");
+      const folder = await owner.post("/collections").send({ name: "Mine" });
+
+      const res = await other
+        .post("/import")
+        .send({ url: "https://example.com/recipe", collectionId: folder.body.id });
+      expect(res.status).toBe(404);
+      expect((await other.get("/import")).body).toEqual([]);
+    });
+
+    it("hides another user's jobs", async () => {
+      stubFetchWithHtml(RECIPE_JSON_LD_PAGE);
+      const app = createTestApp();
+      const owner = await signedInAgent(app, "importowner@example.com");
+      const other = await signedInAgent(app, "importother@example.com");
+
+      const job = await importAndWait(owner, "https://example.com/recipe");
+      expect((await other.get(`/import/${job.id}`)).status).toBe(404);
+      expect((await other.post(`/import/${job.id}/reviewed`)).status).toBe(404);
+      expect((await other.get("/import")).body).toEqual([]);
+    });
+
+    it("cancels a running job, aborting its work and dropping it from pending", async () => {
+      const app = createTestApp({
+        downloadSocialVideo: hangingDownload,
+        geminiVideoExtract: fakeGeminiVideo({}),
+      });
+      const agent = await signedInAgent(app, "importcancel@example.com");
+
+      const started = await agent.post("/import").send({ url: "https://www.instagram.com/p/abc123/" });
+      expect((await agent.post(`/import/${started.body.id}/cancel`)).status).toBe(204);
+
+      const job = await waitForJob(agent, started.body.id);
+      expect(job.status).toBe("cancelled");
+      expect((await agent.get("/import")).body).toEqual([]);
+    });
+
+    it("marks jobs left running by a previous process as failed on recovery", async () => {
+      const app = createTestApp({
+        downloadSocialVideo: hangingDownload,
+        geminiVideoExtract: fakeGeminiVideo({}),
+      });
+      const agent = await signedInAgent(app, "importrecover@example.com");
+      const started = await agent.post("/import").send({ url: "https://www.instagram.com/p/abc123/" });
+
+      // Stands in for a restart: the row is still "running", but as far as
+      // a fresh process is concerned nothing is working on it.
+      await recoverImportJobs(getTestPool());
+
+      const job = (await agent.get(`/import/${started.body.id}`)).body as ImportJobBody;
+      expect(job.status).toBe("error");
+      expect(job.errorMessage).toMatch(/interrupted/);
+      await agent.post(`/import/${started.body.id}/cancel`); // let the hanging fake settle
+    });
+  });
+
+  describe("push notifications", () => {
+    async function subscribe(agent: Agent, endpoint: string): Promise<void> {
+      const res = await agent
+        .post("/push/subscriptions")
+        .send({ endpoint, keys: { p256dh: "p256dh-key", auth: "auth-secret" } });
+      expect(res.status).toBe(204);
+    }
+
+    /** The notification is sent after the job's final write, so a poll can
+     * see "done" a moment before the push goes out. */
+    async function waitForCalls(fn: ReturnType<typeof vi.fn>, count: number): Promise<void> {
+      for (let attempt = 0; attempt < 200 && fn.mock.calls.length < count; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+    }
+
+    it("notifies every subscribed device when an import finishes, linking to the review form", async () => {
+      stubFetchWithHtml(RECIPE_JSON_LD_PAGE);
+      const sendPush = vi.fn<SendPushFn>().mockResolvedValue(undefined);
+      const app = createTestApp({ vapidPublicKey: "test-public-key", sendPush });
+      const agent = await signedInAgent(app, "importpush@example.com");
+      await subscribe(agent, "https://web.push.apple.com/phone");
+      await subscribe(agent, "https://fcm.googleapis.com/fcm/send/laptop");
+
+      const job = await importAndWait(agent, "https://example.com/recipe");
+      await waitForCalls(sendPush, 2);
+
+      expect(sendPush.mock.calls.map(([sub]) => sub.endpoint).sort()).toEqual([
+        "https://fcm.googleapis.com/fcm/send/laptop",
+        "https://web.push.apple.com/phone",
+      ]);
+      expect(sendPush.mock.calls[0]![1]).toEqual({
+        title: "Recipe ready",
+        body: "Tomato Soup — tap to review and save it.",
+        url: `/recipes/new?importId=${job.id}`,
+      });
+    });
+
+    it("notifies about failures too", async () => {
+      stubFetchWithHtml("<html><body>No recipe</body></html>");
+      const sendPush = vi.fn<SendPushFn>().mockResolvedValue(undefined);
+      const app = createTestApp({ vapidPublicKey: "test-public-key", sendPush });
+      const agent = await signedInAgent(app, "importpushfail@example.com");
+      await subscribe(agent, "https://web.push.apple.com/phone");
+
+      await importAndWait(agent, "https://example.com/recipe");
+      await waitForCalls(sendPush, 1);
+
+      expect(sendPush.mock.calls[0]![1]).toMatchObject({ title: "Import failed", url: "/" });
+    });
+
+    it("forgets a subscription the push service reports as gone", async () => {
+      stubFetchWithHtml(RECIPE_JSON_LD_PAGE);
+      const gone = Object.assign(new Error("Gone"), { statusCode: 410 });
+      const sendPush = vi.fn<SendPushFn>().mockRejectedValueOnce(gone).mockResolvedValue(undefined);
+      const app = createTestApp({ vapidPublicKey: "test-public-key", sendPush });
+      const agent = await signedInAgent(app, "importpushgone@example.com");
+      await subscribe(agent, "https://web.push.apple.com/phone");
+
+      await importAndWait(agent, "https://example.com/recipe");
+      await waitForCalls(sendPush, 1);
+      // Give the cleanup DELETE a moment to land after the rejected send.
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      await importAndWait(agent, "https://example.com/recipe");
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      expect(sendPush).toHaveBeenCalledTimes(1);
     });
   });
 });

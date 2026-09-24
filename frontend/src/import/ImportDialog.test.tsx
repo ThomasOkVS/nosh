@@ -1,23 +1,29 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import * as importApi from "../api/import";
+import type { ImportJob } from "../api/import";
 import type { RecipeInput } from "../api/types";
+import { AuthContext, type AuthContextValue } from "../auth/AuthContext";
+import * as pushNotifications from "../push/pushNotifications";
 import { ToastProvider } from "../toast/ToastProvider";
 import { useImport } from "./ImportContext";
 import { ImportDialog } from "./ImportDialog";
 import { ImportProvider } from "./ImportProvider";
 
-/** Stands in for RecipeFormPage so the test can assert on the router state
- * a completed import hands over, without rendering the whole form. */
+/** Stands in for NewRecipePage so the test can assert on what a completed
+ * import hands over, without rendering the whole form. */
 function StateProbe() {
-  const { state } = useLocation() as {
+  const { state, search } = useLocation() as {
     state?: { importedRecipe?: RecipeInput; collectionId?: number | null };
+    search: string;
   };
   return (
     <>
       <div data-testid="imported-title">{state?.importedRecipe?.title ?? "none"}</div>
       <div data-testid="imported-collection">{String(state?.collectionId ?? "none")}</div>
+      <div data-testid="search">{search}</div>
     </>
   );
 }
@@ -33,11 +39,57 @@ function OpenButton({ collectionId = null }: Readonly<{ collectionId?: number | 
   );
 }
 
-function renderApp(collectionId: number | null = null) {
-  return render(
+function makeJob(patch: Partial<ImportJob> = {}): ImportJob {
+  return {
+    id: 7,
+    url: "https://example.com/recipe",
+    collectionId: null,
+    status: "running",
+    seenStages: [],
+    recipe: null,
+    imageUrl: null,
+    errorStatus: null,
+    errorMessage: null,
+    reviewed: false,
+    createdAt: new Date().toISOString(),
+    ...patch,
+  };
+}
+
+/**
+ * A fake of the server's job API: `startImport` creates the job, `getImport`
+ * returns whatever state the test last moved it to via `update`. The
+ * provider polls every 10ms in these tests, so an `update` shows up on
+ * screen almost immediately.
+ */
+function fakeServer(pending: ImportJob[] = []) {
+  let job = makeJob();
+  const startImport = vi.spyOn(importApi, "startImport").mockImplementation((url, collectionId = null) => {
+    job = { ...job, url, collectionId };
+    return Promise.resolve(job);
+  });
+  vi.spyOn(importApi, "getImport").mockImplementation(() => Promise.resolve(job));
+  const cancelImport = vi.spyOn(importApi, "cancelImport").mockResolvedValue(undefined);
+  const markImportReviewed = vi.spyOn(importApi, "markImportReviewed").mockResolvedValue(undefined);
+  vi.spyOn(importApi, "listPendingImports").mockResolvedValue(pending);
+  return {
+    startImport,
+    cancelImport,
+    markImportReviewed,
+    update(patch: Partial<ImportJob>) {
+      job = { ...job, ...patch };
+    },
+  };
+}
+
+function renderApp({
+  signedIn = false,
+  collectionId = null,
+}: { signedIn?: boolean; collectionId?: number | null } = {}) {
+  const tree = (
     <MemoryRouter initialEntries={["/"]}>
       <ToastProvider>
-        <ImportProvider>
+        <ImportProvider pollIntervalMs={10}>
           <Routes>
             <Route path="/" element={<OpenButton collectionId={collectionId} />} />
             <Route path="/recipes/new" element={<StateProbe />} />
@@ -45,8 +97,17 @@ function renderApp(collectionId: number | null = null) {
           <ImportDialog />
         </ImportProvider>
       </ToastProvider>
-    </MemoryRouter>,
+    </MemoryRouter>
   );
+  const withAuth = (children: ReactNode) =>
+    signedIn ? (
+      <AuthContext value={{ user: { id: 1, email: "a@b.c", username: "a" } } as AuthContextValue}>
+        {children}
+      </AuthContext>
+    ) : (
+      children
+    );
+  return render(withAuth(tree));
 }
 
 function openAndSubmit(url = "https://example.com/recipe") {
@@ -56,30 +117,30 @@ function openAndSubmit(url = "https://example.com/recipe") {
 }
 
 describe("ImportDialog", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("shows the URL input when opened with nothing running", () => {
+    fakeServer();
     renderApp();
     fireEvent.click(screen.getByRole("button", { name: "Import from URL" }));
     expect(screen.getByLabelText("Recipe URL")).toBeInTheDocument();
   });
 
   it("closes (backgrounding, not cancelling) when the backdrop is clicked while running", async () => {
-    let onStage!: (stage: importApi.ImportStage) => void;
-    vi.spyOn(importApi, "importRecipeFromUrl").mockImplementation(
-      (_url, stageCallback) =>
-        new Promise(() => {
-          onStage = stageCallback!;
-        }),
-    );
-
+    const server = fakeServer();
     renderApp();
     openAndSubmit();
-    act(() => onStage("fetching"));
+    server.update({ seenStages: ["fetching"] });
+    expect(await screen.findByText("Fetching the page")).toBeInTheDocument();
 
     // A click lands on the <dialog> element itself (rather than one of its
     // content descendants) exactly when it's on the backdrop area.
     fireEvent.click(screen.getByRole("dialog"));
 
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(server.cancelImport).not.toHaveBeenCalled();
     // Reopening still shows the same in-progress import, proving the
     // backdrop click backgrounded it rather than cancelling it outright.
     fireEvent.click(screen.getByRole("button", { name: "Import from URL" }));
@@ -87,6 +148,7 @@ describe("ImportDialog", () => {
   });
 
   it("closes via the native cancel event the same way as the close button", () => {
+    fakeServer();
     renderApp();
     fireEvent.click(screen.getByRole("button", { name: "Import from URL" }));
 
@@ -99,107 +161,79 @@ describe("ImportDialog", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("shows each stage as it streams in, most recent first marked active", async () => {
-    let onStage!: (stage: importApi.ImportStage) => void;
-    vi.spyOn(importApi, "importRecipeFromUrl").mockImplementation(
-      (_url, stageCallback) =>
-        new Promise(() => {
-          onStage = stageCallback!;
-        }),
-    );
-
+  it("shows each stage as polling picks it up, the latest marked active", async () => {
+    const server = fakeServer();
     renderApp();
     openAndSubmit();
 
-    act(() => onStage("fetching"));
+    server.update({ seenStages: ["fetching"] });
     expect(await screen.findByText("Fetching the page")).toBeInTheDocument();
 
-    act(() => onStage("structured-data"));
+    server.update({ seenStages: ["fetching", "structured-data"] });
     expect(await screen.findByText("Reading the page's recipe data")).toBeInTheDocument();
     // The earlier stage is still shown, just no longer the active one.
     expect(screen.getByText("Fetching the page")).toBeInTheDocument();
   });
 
   it("calls out the longer wait once a video stage appears", async () => {
-    let onStage!: (stage: importApi.ImportStage) => void;
-    vi.spyOn(importApi, "importRecipeFromUrl").mockImplementation(
-      (_url, stageCallback) =>
-        new Promise(() => {
-          onStage = stageCallback!;
-        }),
-    );
-
+    const server = fakeServer();
     renderApp();
     openAndSubmit("https://www.instagram.com/p/abc123/");
-    act(() => onStage("downloading-video"));
+    server.update({ seenStages: ["downloading-video"] });
 
     expect(await screen.findByText(/up to a minute/i)).toBeInTheDocument();
   });
 
   it("navigates to the create form with the extracted recipe when left open", async () => {
-    const recipe = { title: "Tomato Soup" } as RecipeInput;
-    vi.spyOn(importApi, "importRecipeFromUrl").mockResolvedValue({ recipe, imageUrl: null });
-
+    const server = fakeServer();
     renderApp();
     openAndSubmit();
+    server.update({ status: "done", recipe: { title: "Tomato Soup" } as RecipeInput });
 
     expect(await screen.findByTestId("imported-title")).toHaveTextContent("Tomato Soup");
+    expect(screen.getByTestId("search")).toHaveTextContent("?importId=7");
     // The dialog closed itself as part of handing off to the form.
     expect(screen.queryByLabelText("Recipe URL")).not.toBeInTheDocument();
   });
 
   it("hands the folder the import was started from on to the create form", async () => {
-    vi.spyOn(importApi, "importRecipeFromUrl").mockResolvedValue({
-      recipe: { title: "Tomato Soup" } as RecipeInput,
-      imageUrl: null,
-    });
-
-    renderApp(7);
+    const server = fakeServer();
+    renderApp({ collectionId: 3 });
     openAndSubmit();
+    await waitFor(() => expect(server.startImport).toHaveBeenCalledWith("https://example.com/recipe", 3));
+    server.update({ status: "done", recipe: { title: "Tomato Soup" } as RecipeInput });
 
-    expect(await screen.findByTestId("imported-collection")).toHaveTextContent("7");
+    expect(await screen.findByTestId("imported-collection")).toHaveTextContent("3");
   });
 
   it("keeps the starting folder for a backgrounded import's Review action too", async () => {
-    let resolveImport!: (result: importApi.ImportResult) => void;
-    vi.spyOn(importApi, "importRecipeFromUrl").mockImplementation(
-      () => new Promise((resolve) => (resolveImport = resolve)),
-    );
-
-    renderApp(7);
+    const server = fakeServer();
+    renderApp({ collectionId: 3 });
     openAndSubmit();
     fireEvent.click(screen.getByRole("button", { name: /Keep this running in the background/ }));
-    resolveImport({ recipe: { title: "Fajitas" } as RecipeInput, imageUrl: null });
+    server.update({ status: "done", recipe: { title: "Fajitas" } as RecipeInput });
 
     fireEvent.click(await screen.findByRole("button", { name: "Review" }));
-    expect(await screen.findByTestId("imported-collection")).toHaveTextContent("7");
+    expect(await screen.findByTestId("imported-collection")).toHaveTextContent("3");
   });
 
-  it("lets the user cancel — the underlying request is aborted, not just hidden", async () => {
-    let capturedSignal: AbortSignal | undefined;
-    vi.spyOn(importApi, "importRecipeFromUrl").mockImplementation(
-      (_url, _onStage, signal) => {
-        capturedSignal = signal;
-        return new Promise(() => undefined);
-      },
-    );
-
+  it("lets the user cancel — the server-side job is cancelled, not just hidden", async () => {
+    const server = fakeServer();
     renderApp();
     openAndSubmit();
+    // Wait for the server to have acknowledged the job, so there's an id.
+    await waitFor(() => expect(server.startImport).toHaveBeenCalled());
+    await act(() => Promise.resolve());
 
     fireEvent.click(await screen.findByRole("button", { name: "Cancel import" }));
 
-    expect(capturedSignal?.aborted).toBe(true);
+    expect(server.cancelImport).toHaveBeenCalledWith(7);
     // Cancelling returns to a clean idle dialog-closed state, not an error.
-    expect(screen.queryByLabelText("Recipe URL")).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("keeps running after being dismissed, then announces completion with a toast", async () => {
-    let resolveImport!: (result: importApi.ImportResult) => void;
-    vi.spyOn(importApi, "importRecipeFromUrl").mockImplementation(
-      () => new Promise((resolve) => (resolveImport = resolve)),
-    );
-
+    const server = fakeServer();
     renderApp();
     openAndSubmit("https://www.instagram.com/p/abc123/");
 
@@ -207,7 +241,7 @@ describe("ImportDialog", () => {
     // Dialog is gone, but nothing was cancelled or navigated yet.
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 
-    resolveImport({ recipe: { title: "Fajitas" } as RecipeInput, imageUrl: null });
+    server.update({ status: "done", recipe: { title: "Fajitas" } as RecipeInput });
 
     const reviewButton = await screen.findByRole("button", { name: "Review" });
     expect(screen.getByText(/ready to review/i)).toBeInTheDocument();
@@ -219,50 +253,120 @@ describe("ImportDialog", () => {
     expect(await screen.findByTestId("imported-title")).toHaveTextContent("Fajitas");
   });
 
-  it("shows an error toast instead of an inline error once dismissed", async () => {
-    let rejectImport!: (err: unknown) => void;
-    vi.spyOn(importApi, "importRecipeFromUrl").mockImplementation(
-      () => new Promise((_resolve, reject) => (rejectImport = reject)),
-    );
-
+  it("shows an error toast instead of an inline error once dismissed, and marks it seen", async () => {
+    const server = fakeServer();
     renderApp();
     openAndSubmit();
     fireEvent.click(screen.getByRole("button", { name: /Keep this running in the background/ }));
 
-    rejectImport(new Error("boom"));
+    server.update({ status: "error", errorMessage: "That page couldn't be fetched" });
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("Failed to import that recipe");
+    expect(await screen.findByRole("alert")).toHaveTextContent("That page couldn't be fetched");
+    expect(server.markImportReviewed).toHaveBeenCalledWith(7);
   });
 
   it("shows the error inline and offers to try again when left open", async () => {
-    vi.spyOn(importApi, "importRecipeFromUrl").mockRejectedValue(new Error("boom"));
-
+    const server = fakeServer();
     renderApp();
     openAndSubmit();
+    server.update({ status: "error", errorMessage: "No recipe could be found on that page" });
 
-    expect(await screen.findByText("Failed to import that recipe")).toBeInTheDocument();
+    expect(await screen.findByText("No recipe could be found on that page")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     expect(screen.getByLabelText("Recipe URL")).toBeInTheDocument();
   });
 
-  it("reopening a backgrounded import shows its current progress, not a blank input", async () => {
-    let onStage!: (stage: importApi.ImportStage) => void;
-    vi.spyOn(importApi, "importRecipeFromUrl").mockImplementation(
-      (_url, stageCallback) =>
-        new Promise(() => {
-          onStage = stageCallback!;
-        }),
-    );
-
+  it("shows a failure to even start the import inline", async () => {
+    fakeServer();
+    vi.spyOn(importApi, "startImport").mockRejectedValue(new Error("offline"));
     renderApp();
     openAndSubmit();
-    act(() => onStage("fetching"));
+
+    expect(await screen.findByText("Failed to import that recipe")).toBeInTheDocument();
+  });
+
+  it("reopening a backgrounded import shows its current progress, not a blank input", async () => {
+    const server = fakeServer();
+    renderApp();
+    openAndSubmit();
+    server.update({ seenStages: ["fetching"] });
+    expect(await screen.findByText("Fetching the page")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Keep this running in the background/ }));
 
     fireEvent.click(screen.getByRole("button", { name: "Import from URL" }));
 
     expect(screen.getByText("Fetching the page")).toBeInTheDocument();
     expect(screen.queryByLabelText("Recipe URL")).not.toBeInTheDocument();
+  });
+
+  describe("restoring on launch", () => {
+    it("offers to review an import that finished while the app was closed", async () => {
+      fakeServer([
+        makeJob({ id: 12, status: "done", collectionId: 4, recipe: { title: "Ramen" } as RecipeInput }),
+      ]);
+      renderApp({ signedIn: true });
+
+      fireEvent.click(await screen.findByRole("button", { name: "Review" }));
+      expect(await screen.findByTestId("imported-title")).toHaveTextContent("Ramen");
+      expect(screen.getByTestId("search")).toHaveTextContent("?importId=12");
+      // The folder comes back from the server, not from this session's memory.
+      expect(screen.getByTestId("imported-collection")).toHaveTextContent("4");
+    });
+
+    it("resumes polling an import that's still running", async () => {
+      const server = fakeServer([makeJob({ seenStages: ["downloading-video"] })]);
+      renderApp({ signedIn: true });
+
+      fireEvent.click(screen.getByRole("button", { name: "Import from URL" }));
+      expect(await screen.findByText("Downloading the video")).toBeInTheDocument();
+
+      server.update({ status: "done", recipe: { title: "Dumplings" } as RecipeInput });
+      // Reopened, so it's being watched again: navigates rather than toasts.
+      expect(await screen.findByTestId("imported-title")).toHaveTextContent("Dumplings");
+    });
+
+    it("doesn't restore anything when signed out", async () => {
+      fakeServer([makeJob({ status: "done", recipe: { title: "Ramen" } as RecipeInput })]);
+      renderApp();
+
+      await act(() => new Promise((resolve) => setTimeout(resolve, 30)));
+      expect(importApi.listPendingImports).not.toHaveBeenCalled();
+      expect(screen.queryByRole("button", { name: "Review" })).not.toBeInTheDocument();
+    });
+  });
+
+  describe("notify me", () => {
+    it("isn't offered where pushes can't work (jsdom has no PushManager)", async () => {
+      fakeServer();
+      renderApp();
+      openAndSubmit();
+
+      expect(await screen.findByText("Starting…")).toBeInTheDocument();
+      await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+      expect(screen.queryByRole("button", { name: /Notify me/ })).not.toBeInTheDocument();
+    });
+
+    it("is offered while running when supported, and asks for permission on tap", async () => {
+      fakeServer();
+      vi.spyOn(pushNotifications, "getPushStatus").mockResolvedValue("off");
+      const enablePush = vi.spyOn(pushNotifications, "enablePush").mockResolvedValue("on");
+      renderApp();
+      openAndSubmit();
+
+      fireEvent.click(await screen.findByRole("button", { name: /Notify me when it/ }));
+
+      expect(enablePush).toHaveBeenCalled();
+      expect(await screen.findByText(/feel free to close the app/)).toBeInTheDocument();
+    });
+
+    it("explains how to recover when notifications are blocked", async () => {
+      fakeServer();
+      vi.spyOn(pushNotifications, "getPushStatus").mockResolvedValue("denied");
+      renderApp();
+      openAndSubmit();
+
+      expect(await screen.findByText(/Notifications are blocked/)).toBeInTheDocument();
+    });
   });
 });

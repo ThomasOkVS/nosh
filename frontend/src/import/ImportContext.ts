@@ -3,6 +3,9 @@ import type { ImportStage } from "../api/import";
 import type { RecipeInput } from "../api/types";
 
 export interface ActiveImport {
+  /** The server-side job's id — null only in the brief window between
+   * submitting the URL and the server acknowledging it. */
+  jobId: number | null;
   url: string;
   seenStages: ImportStage[];
   startedAt: number;

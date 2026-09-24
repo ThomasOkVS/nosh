@@ -2132,3 +2132,143 @@ mode at desktop and phone widths, including the low-quota (red) state and
 the user-menu link. **Not verified with a real API key** — none was
 available in this environment, so the token numbers from a successful
 `usageMetadata` response are covered only by unit tests.
+
+## 2026-09-24: Imports become server-side jobs, with push notifications when they finish {#2026-09-24-imports-become-server-side-jobs-with-push-notifications}
+
+**Decision.** A recipe import is now a row in a new `import_jobs` table,
+worked on in-process by the backend and polled by the frontend. When the job
+finishes, the backend sends a Web Push notification to every device the user
+opted in. This supersedes the transport half of the
+[2026-08-11 NDJSON decision](#2026-08-11-import-streams-ndjson-progress-instead-of-returning-one-json-object);
+the progress *stages* it introduced are unchanged and are now stored on the
+job. It also records the "keep running in the background" behaviour
+`ImportProvider` already had. Its comment pointed at decisions.md, but no
+entry for it existed.
+
+**Why.** The owner uses Nosh as a home-screen web app on an iPhone and wants
+to start an import, close the app or lock the phone, and be told when it's
+done. The old design made that impossible in two places:
+- The server aborted the extraction when the request's socket closed
+  (`req.on("close")`).
+- The result only ever existed in the open response.
+
+iOS suspends a backgrounded web app and drops its connections, so closing
+the app threw the import away. "Background" mode in the dialog only
+survived as long as the tab stayed alive.
+
+**How it works** (details in
+[architecture.md](architecture.md#import-jobs)):
+- **Starting.** `POST /import` → `202` with the job. The extraction runs as
+  an unawaited async function (`services/importJobs.ts`) that writes stages,
+  then the result or error, to the row.
+- **Polling.** The frontend polls `GET /import/:id` about once a second, and
+  pauses while the page is hidden.
+- **Launch restore.** On launch, `GET /import` returns running and
+  unreviewed jobs so a result that finished while the app was closed is
+  offered again.
+- **The notification URL.** A tapped notification opens
+  `/recipes/new?importId=…`. `NewRecipePage` loads the job by id there,
+  because a cold start has no router state.
+
+**Why polling rather than keeping a stream (NDJSON/SSE) open.**
+- A long-lived connection breaks in exactly the scenario this feature is
+  for. A poll loop just resumes when the app does, with no reconnect logic.
+- At one request per second, for one user, only while an import is
+  visibly running, the cost is irrelevant.
+
+**Why in-process jobs rather than a queue (BullMQ/Redis, pg-boss).**
+- One user importing a recipe now and then doesn't justify another service
+  or dependency. Per [CLAUDE.md](../CLAUDE.md), prefer the simple thing.
+- The Java analogy is an `@Async` method writing its result to a table,
+  rather than JMS.
+- The accepted cost: a restart (a deploy, or Watchtower pulling an update)
+  kills in-flight jobs. `recoverImportJobs` runs at boot and marks leftover
+  `running` rows as `error` ("interrupted by a server restart") so they don't
+  spin in the UI forever.
+- Recovery is deliberately **non-fatal**. Watchtower restarts the backend
+  on a new image *before* anyone runs `pnpm migrate up`, so on that first
+  boot `import_jobs` doesn't exist yet. Crashing there would crash-loop the
+  container and make `docker compose exec backend pnpm migrate up`
+  impossible. It logs a warning instead, and the next restart after
+  migrating does the recovery. This was verified by booting against a
+  database migrated only through 013.
+
+**Why `web-push` (a new backend dependency).**
+- Sending a push means signing a VAPID JWT and encrypting the payload per
+  RFC 8291 (ECDH + HKDF + AES-128-GCM). Hand-writing that is exactly the
+  kind of crypto code that's easy to get subtly wrong, and the library is
+  the de facto standard.
+- VAPID keys come from `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`/`VAPID_SUBJECT`.
+  Unset means push is off: routes return 503, the UI hides its controls, and
+  imports still work. That's the same pattern as a missing `GEMINI_API_KEY`.
+- Subscription endpoints are checked against an **allowlist of real push
+  services** (Apple, FCM, Mozilla, WNS), because the server POSTs to
+  whatever endpoint a subscription names. Without it, any signed-in user
+  could point the server at arbitrary or internal hosts: the same SSRF
+  concern `validateUrl` covers for recipe import, and more pressing now that
+  the app isn't Tailscale-only.
+- The public key is served at runtime (`GET /push/vapid-public-key`), not
+  baked in as a `VITE_*` build arg, so rotating keys needs no frontend
+  rebuild.
+
+**Why the service worker moved from `generateSW` to `injectManifest`.**
+- A push handler has to live in the service worker, and `generateSW`
+  writes that file for you.
+- The alternative, keeping `generateSW` and `importScripts`-ing a
+  hand-written file from `public/`, would put untyped JS outside ESLint and
+  strict TS.
+- `src/sw.ts` keeps it typed, at the cost of two small workbox packages. It
+  reproduces the old behaviour: precache, `skipWaiting`/`clientsClaim` for
+  `autoUpdate`.
+
+**Platform rules this design follows.**
+- Pushes are subscribed with `userVisibleOnly: true`, and the worker shows
+  a notification for *every* push, even when the app is open. Safari revokes
+  subscriptions whose pushes don't visibly notify.
+- Permission is only requested from a tap. The dialog's "Notify me when
+  it's done" or the user-menu toggle calls `requestPermission()` directly in
+  the click handler, which iOS requires.
+- Every control is feature-detected. Web Push is secure-context-only, and
+  on iOS only exists in the home-screen app, so wherever it can't work the
+  controls simply don't render.
+- Failures notify too ("Import failed"), per the owner's call, so a failed
+  import is never silent.
+
+**Deliberately scoped out.**
+- HTTPS setup and its documentation. The owner is handling that in a
+  separate piece of work. Push *requires* it on the real deployment, which is
+  why this entry doesn't touch the secure-context decision.
+- Multiple concurrent imports in the UI. The backend supports any number,
+  but the dialog still tracks one, and launch restore surfaces only the
+  newest.
+
+**Verification.**
+- Backend: 269 tests pass, frontend 152, after merging main (new coverage for the job
+  lifecycle, cancel, restart recovery, push fan-out and 410 cleanup, launch
+  restore, and the `?importId=` cold start).
+- Verified live against this worktree's own backend and frontend (ports
+  3002/5174, a separate `nosh_push` database):
+  - Starting a job and reloading the app brought up the "ready to review"
+    toast.
+  - Opening `/recipes/new?importId=2` with no router state pre-filled the
+    form from the job.
+  - The job was then marked reviewed and wasn't offered again.
+  - A Gemini 503 surfaced inline and wasn't resurfaced on reload.
+  - The service worker built from `src/sw.ts` registered and activated.
+  - The user menu showed the "blocked" hint.
+- **Not verified live: an actual notification arriving.** The embedded test
+  browser reports `Notification.permission` as denied, so no real push
+  subscription could be created. Check that on the iPhone once HTTPS is live
+  (see the backlog).
+
+**Merged with main's magic-import settings and unified library.**
+- The job resolves the user's Settings-page model when the import is
+  *started* (`routes/import.ts`), and the runner passes it to the extractor.
+  Changing the setting mid-import doesn't affect a running job.
+- Main's "import files into the folder it was started from" travelled only
+  in router state, which a notification cold start doesn't have. So the
+  folder is stored on the job (`import_jobs.collection_id`,
+  `ON DELETE SET NULL`, ownership-checked on `POST /import`) and flows back
+  through `NewRecipePage`'s state.
+- Migration `1700000000014_create-import-jobs-and-push-subscriptions`
+  follows main's 012/013.
