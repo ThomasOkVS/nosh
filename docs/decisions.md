@@ -2133,6 +2133,267 @@ the user-menu link. **Not verified with a real API key** — none was
 available in this environment, so the token numbers from a successful
 `usageMetadata` response are covered only by unit tests.
 
+## 2026-09-24: Public HTTPS behind Caddy — frontend nginx proxies /api; app-level hardening {#2026-09-24-public-https-behind-caddy}
+
+**Context.** Nosh moves from tailnet-only
+(`http://homelab.tail43ff2b.ts.net:8080` plus the API on `:3101`) to
+`https://nosh.itsthomassito.com`. The homelab's Caddy terminates TLS there.
+It sits at the fixed IP `172.28.255.2` on its `proxy` Docker network and uses
+a wildcard cert with HSTS `includeSubDomains`. That makes Nosh reachable from
+the public internet, so Tailscale no longer does any access control and
+Nosh's own auth has to. The requirements arrived as a checklist from the
+homelab side, which can't see this repo. The audit and the choices below
+were made against the code.
+
+This **supersedes**:
+- the Tailscale-only framing of the 2026-08-06 CORS entry;
+- architecture.md's "no rate limiting for v1";
+- the "accepted gap" notes on DNS-based SSRF in the 2026-08-11 and
+  2026-08-12 entries.
+
+### Topology: the frontend's nginx proxies `/api`
+
+`location ^~ /api/` in `frontend/nginx.conf` strips the prefix and forwards
+to `nosh-backend:3001`. That's a unique network alias rather than the
+service name `backend`: the frontend also sits on the shared `proxy`
+network, where another stack could answer to `backend`, and Docker DNS
+would hand back that container instead. The frontend is built with the
+relative
+`VITE_API_URL=/api`, so page and API share one origin.
+
+**Chosen over Caddy doing `handle_path /api/*`:**
+- **The cutover doesn't depend on timing.** Watchtower deploys `:latest` at
+  about 04:00 without anyone asking. With `/api` served by the frontend
+  container, one build works from the tailnet `:8080` *and* from the new
+  domain. The GitHub variable flip and the Caddy route can then happen on
+  different days. With `handle_path` the two would have to land together
+  before Watchtower's next run.
+- **The backend stays off the `proxy` network.** That network can reach
+  dockge (docker.sock) and other admin UIs. Only the frontend joins it.
+
+**The cost** is one more hop, plus nginx settings that are easy to get
+wrong:
+- nginx's default 1 MB body limit, raised to 6m for 5 MB photos;
+- nginx resolving `backend` only once, at startup.
+
+(Buffering and read timeouts were a concern while import streamed NDJSON
+over one long request. Since imports became background jobs polled by the
+client (the entry below), no request lasts long, so nginx's defaults are
+kept.)
+
+That last one would crash nginx if the backend were missing, and would leave
+nginx pointing at a stale IP after Watchtower recreates the backend. It's
+solved with `resolver 127.0.0.11` plus a variable in `proxy_pass`, which
+makes nginx look the name up per request.
+
+### Proxy trust: two hops, each pinned to one exact IP
+
+- **nginx** takes `X-Forwarded-For` only from `172.28.255.2`
+  (`set_real_ip_from`), and `X-Forwarded-Proto` only from there too, through
+  a `map` on `$realip_remote_addr`. It then **overwrites** both headers
+  towards the backend, so the backend always sees exactly one real client IP.
+- **The backend's** Express `trust proxy` is the `TRUSTED_PROXIES` list. In
+  production that's only the frontend container's fixed IP on a dedicated
+  `edge` network (`10.101.0.10`). It's never a subnet, because any container
+  inside a trusted subnet could then claim to be any client. The Java
+  analogue is Tomcat's `RemoteIpValve` with `internalProxies`.
+
+Get this wrong and every request appears to come from nginx. All users then
+share one rate-limit bucket, which is the exact bug the homelab hit with
+mc-remote.
+
+### Session cookie
+
+The cookie is `secure: "auto"`, `SameSite=Lax`, `Path=/`, has no `Domain`,
+and is still named `connect.sid`.
+
+- "auto" makes the cookie Secure exactly when the request arrived over
+  HTTPS. Express decides that from `req.secure`, which comes from the trusted
+  `X-Forwarded-Proto`. This is the "decide Secure per request" the homelab
+  asked for so that both origins keep working during the move. The tailnet
+  origin is plain HTTP, and a browser never stores an always-Secure cookie
+  there.
+- With no `Domain`, the cookie is host-only, so it's never sent to sibling
+  subdomains such as `mc-map.`.
+- A `__Host-` prefix would enforce all of this. But a `__Host-` cookie can't
+  exist on the HTTP origin at all, so that's a follow-up for once the tailnet
+  origin is retired (backlog), along with switching to `secure: true`.
+
+### Origins: `FRONTEND_ORIGINS`, compared exactly
+
+- CORS and the new origin check both use the list.
+- The singular `FRONTEND_ORIGIN` is still read as a fallback, so the box's
+  existing `.env` works with no edits.
+- Values are checked at startup against `new URL(v).origin`. Browsers never
+  send a default port, so an entry like `https://host:443`, or one with a
+  path, would never match anything. Instead of 403ing every request, the
+  backend refuses to start and prints the correct spelling.
+
+### CSRF: an `Origin` check on unsafe methods, not a token
+
+CORS only decides whether a page may *read* a response. A cross-site form
+POST still reaches the server and runs. The rules:
+- POST, PUT, PATCH and DELETE must carry an `Origin` from the list.
+- With no `Origin`, `Sec-Fetch-Site` must be `same-origin` or `none`.
+- With neither header, the request is allowed. It isn't a browser, and CSRF
+  is a browser attack.
+- Safe methods pass untouched. Once the app is same-origin, browsers leave
+  `Origin` off plain GETs.
+
+Chosen over a synchronizer token because every supported browser sends these
+headers and there's no token plumbing to add. Spring Security's CSRF filter
+is the token-based version of the same idea.
+
+### Signup is off unless `ALLOW_SIGNUP=true`
+
+The server enforces it with a 403, so hiding the link isn't what protects
+it. Existing accounts still log in. Production defaults to off. Dev compose
+and `.env.example` turn it on.
+
+### Rate limits: in memory, hand-written, no `express-rate-limit`
+
+| Endpoint | Limit |
+|---|---|
+| Login, per IP | 20 attempts per 15 min |
+| Login, per account | 10 *failures* per 15 min, reset on success |
+| Signup, per IP | 5 per hour |
+| Import, per user | 30 per hour |
+| Photo from URL, per user | 60 per hour |
+
+- The two login limits cover each other's gap. An IP limit alone lets a
+  botnet spread guesses across many addresses. An account limit alone lets
+  one IP spray many accounts.
+- Every failed login also waits 1 s.
+- An unknown username is checked against a dummy argon2 hash, so response
+  time doesn't reveal which usernames exist.
+- In memory is enough for one process. A restart resets the windows, which
+  is acceptable.
+- No library, because "count only failures, per account" is custom logic
+  either way, and the whole limiter is one small file.
+
+### SSRF: checked at connect time, which closes the DNS gap
+
+`services/safeFetch.ts` is a small fetch-shaped client built on
+`node:http`/`https` that returns a normal `Response`.
+- **It checks exactly what it connects to.** It passes a guarded `lookup`,
+  so the addresses checked are exactly the addresses the socket connects to.
+  There's no second DNS query for a rebinding server to answer differently.
+- If *any* resolved address is blocked, the whole name is refused.
+- Every request opens a fresh connection (`agent: false`), so a pooled
+  socket can't skip the check.
+- **IP literals** never go through DNS. `validateUrl` checks them against
+  the same `net.BlockList` before any request.
+- **What's blocked:** loopback, RFC1918 (all of `172.16/12`, which contains
+  every Docker bridge), link-local, CGNAT `100.64/10` (the tailnet),
+  multicast, and the reserved and documentation ranges. Also IPv6 ULA and
+  link-local, and IPv4 addresses hidden inside mapped, NAT64 or 6to4 IPv6.
+- **Unchanged:** only http/https are allowed, redirects are still followed
+  by hand and re-validated on every hop, and the size and time caps stay
+  as they were.
+- `POST /import` rejects a blocked *literal* with a real 400 before any
+  job is created. A hostname that only turns out to be private at connect
+  time fails its job with `errorStatus: 400` and the same message.
+  Starting an import is rate-limited. Polling a job's progress
+  (`GET /import/:id`) isn't.
+- Fetch failures no longer echo raw socket errors such as "ECONNREFUSED
+  1.2.3.4:81", which would let a user map which hosts and ports answer.
+
+Chosen over adding `undici` just for its `connect.lookup` hook: `node:http`
+already has the same hook.
+
+**yt-dlp does its own networking, so the guard can't reach it.** It now runs
+with `--ies default,-generic`, which removes the generic crawler and leaves
+only the site-specific extractors. Checked against Alpine's yt-dlp
+2026.08.19: a non-platform URL fails with "No suitable extractor". What's
+left is a platform open redirect bouncing yt-dlp inward. That's why
+deployment.md recommends a network-level egress block as well.
+
+### Uploads, errors, auth coverage, PWA
+
+- **Uploads.** Files were already served only through an ownership-checked
+  route, under random UUID names, never statically. New: the bytes are
+  sniffed, and a file whose magic number doesn't match its declared type is
+  refused. This covers both multipart uploads and photos fetched from a URL.
+  Before, "image/png" on an HTML file was stored as-is.
+- **Errors.**
+  - The production image sets `NODE_ENV=production`.
+  - `X-Powered-By` is off.
+  - Unknown routes get a JSON 404.
+  - Malformed or oversized bodies get a 400/413 with a fixed message
+    instead of a 500.
+- **Every endpoint audited.** Recipes, collections, meal-plan, import and
+  settings sit behind `router.use(requireAuth)`. The public routes are
+  `/health` (returns only `{"status":"ok"}`), signup, login and logout.
+- **PWA.** A navigation fallback would answer a same-origin navigation to
+  `/api/...` (opening a photo URL, for example) with the cached
+  `index.html`. The service worker is now hand-written (`src/sw.ts`, from
+  the push-notification work), and it registers no navigation route and no
+  runtime cache, so `/api` always goes to the network. A comment there says
+  to deny `/api/` if a fallback is ever added. It calls `skipWaiting()` and
+  `clientsClaim()`, so a new deploy's worker takes over straight away.
+
+### Release mechanics
+
+- **Tags.** Images are published as `sha-<7 chars>`, alongside `:latest`
+  and the full-SHA tag, so the box can pin and roll back by a readable tag.
+- **PR check.** A new job builds both images on every PR, without
+  publishing, and runs `nginx -t`. A merge to main is effectively a
+  production deploy, so a broken Dockerfile or nginx.conf now fails on the
+  PR instead of at 04:00.
+- **Migrations.** This change adds none. It merged together with the
+  import-jobs work, which adds `1700000000014`, so the deploy that ships
+  both needs `pnpm migrate up`. The safe rollback pin is main just before
+  this merge (`56871518959df885e48263627a67aa5c58e0a79a`), which already contains 014.
+  Pinning back to `cb65e08` would cross 014.
+
+### Verification
+
+**Unit tests.** Backend went from 251 to 345 tests on this branch (364 after merging main's import-jobs work). The new ones:
+- SSRF, against a real local socket server with an injected resolver:
+  - a hostname that resolves privately;
+  - a redirect to a private hostname, and one to a private literal;
+  - DNS rebind: one resolution per connection, and the address checked is
+    the address used;
+  - the literal spellings `2887516161`, `0x7f.1` and `[::ffff:172.28.0.1]`.
+- The origin check: accept and reject cases, and every `Sec-Fetch-Site`
+  value.
+- Cookie attributes: Secure only when a trusted proxy says HTTPS; a spoofed
+  proto is ignored.
+- Signup-off.
+- Rate limits: per account across many IPs; per IP through a trusted proxy;
+  spoofed `X-Forwarded-For` ignored.
+- Upload sniffing.
+
+**End-to-end, with the real production images.** They ran in a Docker
+topology that copies the box:
+- a `172.28.0.0/16` proxy network with a stand-in Caddy at `172.28.255.2`
+  and an "intruder" container at another IP;
+- the `edge` network with the frontend at `10.101.0.10`;
+- the backend published directly, the way `:3101` is today.
+
+All 34 checks passed:
+- the cookie gets `Secure` only through "Caddy";
+- the intruder's spoofed `X-Forwarded-For`/`-Proto` are ignored;
+- a unicode query string arrives intact through the rewrite;
+- a 3 MB upload goes through;
+- the SSRF import returns 400 for the literal;
+- a hostname that resolves privately (`172.28.0.1.nip.io`) fails its
+  import job with `errorStatus: 400`;
+- nginx follows a recreated backend to its new IP;
+- a decoy container on the proxy network answering to `backend` is never
+  reached, even though the frontend container can resolve it (the control
+  check proved the collision exists);
+- nginx starts with no backend and answers `/api` with 502;
+- the old direct tailnet login still works, without Secure.
+
+Inside the image, `safeFetch` also fetched real HTTPS recipe sites and did a
+full JSON-LD import. It refused real public DNS names that resolve to
+loopback (`localtest.me`, `127.0.0.1.nip.io`).
+
+**Not verified:**
+- a real browser on the real domain, which needs the homelab side's Caddy
+  and DNS.
+
 ## 2026-09-24: Imports become server-side jobs, with push notifications when they finish {#2026-09-24-imports-become-server-side-jobs-with-push-notifications}
 
 **Decision.** A recipe import is now a row in a new `import_jobs` table,

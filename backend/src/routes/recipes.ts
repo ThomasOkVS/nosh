@@ -6,6 +6,7 @@ import type { NextFunction, Request, Response } from "express";
 import { Router } from "express";
 import multer from "multer";
 import type { Pool } from "pg";
+import { createRateLimiter, limitPerUser } from "../middleware/rateLimit";
 import { requireAuth } from "../middleware/requireAuth";
 import { findCollectionOwnerId } from "../repositories/collections";
 import {
@@ -29,6 +30,8 @@ import {
   UnsupportedImageTypeError,
 } from "../services/imageFromUrl";
 import { InvalidUrlError } from "../services/recipeExtraction";
+import { SNIFF_BYTES, sniffImageMime } from "../services/imageSniff";
+import { safeFetch } from "../services/safeFetch";
 import { importRequestSchema } from "../validation/import";
 import { moveRecipeSchema, recipeFiltersSchema, recipeSchema } from "../validation/recipes";
 
@@ -74,6 +77,16 @@ function requireRecipeOwnership(pool: Pool) {
   };
 }
 
+async function readFileHead(filePath: string): Promise<Uint8Array> {
+  const handle = await fsPromises.open(filePath, "r");
+  try {
+    const { buffer, bytesRead } = await handle.read(Buffer.alloc(SNIFF_BYTES), 0, SNIFF_BYTES, 0);
+    return buffer.subarray(0, bytesRead);
+  } finally {
+    await handle.close();
+  }
+}
+
 function handleUpload(uploadMiddleware: ReturnType<ReturnType<typeof multer>["single"]>) {
   return (req: Request, res: Response, next: NextFunction): void => {
     uploadMiddleware(req, res, (err: unknown) => {
@@ -81,7 +94,23 @@ function handleUpload(uploadMiddleware: ReturnType<ReturnType<typeof multer>["si
         res.status(400).json({ error: err instanceof Error ? err.message : "Upload failed" });
         return;
       }
-      next();
+      if (!req.file) {
+        next();
+        return;
+      }
+      // multer's fileFilter only saw the client-declared MIME type; check the
+      // bytes that actually landed on disk agree with it before keeping them.
+      const { path: filePath, mimetype } = req.file;
+      readFileHead(filePath)
+        .then(async (head) => {
+          if (sniffImageMime(head) === mimetype) {
+            next();
+            return;
+          }
+          await fsPromises.unlink(filePath).catch(() => undefined);
+          res.status(400).json({ error: "Unsupported image type" });
+        })
+        .catch(next);
     });
   };
 }
@@ -89,7 +118,7 @@ function handleUpload(uploadMiddleware: ReturnType<ReturnType<typeof multer>["si
 export function createRecipesRouter(
   pool: Pool,
   uploadsDir: string,
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl: typeof fetch = safeFetch,
 ): Router {
   fs.mkdirSync(uploadsDir, { recursive: true });
 
@@ -323,9 +352,14 @@ export function createRecipesRouter(
    * Deliberately best-effort from the frontend's point of view — a failure
    * here shouldn't undo an otherwise-successful save.
    */
+  // Makes the server fetch a URL — capped like /import, more loosely since
+  // there's no model call behind it.
+  const imagesFromUrlPerUser = limitPerUser(createRateLimiter({ windowMs: 60 * 60 * 1000, max: 60 }));
+
   router.post(
     "/:id/images/from-url",
     requireRecipeOwnership(pool),
+    imagesFromUrlPerUser,
     async (req, res, next) => {
       const id = parseId(req.params.id);
       if (id === null) {

@@ -1,4 +1,6 @@
-import { validateUrl } from "./recipeExtraction";
+import { InvalidUrlError, validateUrl } from "./recipeExtraction";
+import { sniffImageMime } from "./imageSniff";
+import { BlockedAddressError, safeFetch } from "./safeFetch";
 
 /** The URL itself is malformed, points at a blocked host, or a redirect
  * hop leads somewhere disallowed — mirrors `InvalidUrlError` in
@@ -67,11 +69,15 @@ async function performFetch(
   try {
     return await fetchImpl(url, { redirect: "manual", signal });
   } catch (err) {
+    if (err instanceof BlockedAddressError) {
+      throw new InvalidUrlError("This URL cannot be imported");
+    }
     if (err instanceof Error && (err.name === "AbortError" || err.name === "TimeoutError")) {
       throw new ImageFetchError("Timed out fetching that image");
     }
-    const message = err instanceof Error ? err.message : String(err);
-    throw new ImageFetchError(`Failed to fetch the image: ${message}`);
+    // Logged rather than returned — see fetchOnce in recipeExtraction.ts.
+    console.warn("Image fetch failed:", err instanceof Error ? err.message : err);
+    throw new ImageFetchError("Couldn't fetch that image");
   }
 }
 
@@ -112,7 +118,7 @@ async function extensionForContentType(response: Response): Promise<string> {
  */
 export async function fetchImageFromUrl(
   rawUrl: string,
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl: typeof fetch = safeFetch,
   signal?: AbortSignal,
 ): Promise<FetchedImage> {
   let url = validateUrl(rawUrl);
@@ -135,6 +141,11 @@ export async function fetchImageFromUrl(
 
     const extension = await extensionForContentType(response);
     const buffer = await readCappedBuffer(response);
+    // The remote server's Content-Type is only its claim; the stored file's
+    // extension (and so the type it's later served as) must match the bytes.
+    if (IMAGE_MIME_EXTENSIONS[sniffImageMime(buffer) ?? ""] !== extension) {
+      throw new UnsupportedImageTypeError("That URL is not a supported image type");
+    }
     return { buffer, extension };
   }
 

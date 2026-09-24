@@ -16,7 +16,9 @@
 # tag a rollback would pin TAG to.
 
 FROM node:22-alpine AS build
-ARG VITE_API_URL
+# Relative by default: nginx.conf proxies /api to the backend, so the built
+# app calls its own origin and works unchanged under any host name.
+ARG VITE_API_URL=/api
 ARG VITE_APP_VERSION
 ENV VITE_API_URL=$VITE_API_URL
 ENV VITE_APP_VERSION=$VITE_APP_VERSION

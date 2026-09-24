@@ -1,4 +1,5 @@
 import { isIP } from "node:net";
+import { BlockedAddressError, isBlockedAddress, safeFetch } from "./safeFetch";
 import type { GeminiExtractFn, GeminiVideoExtractFn } from "../llm/geminiClient";
 import { GeminiExtractionError, GeminiUnavailableError } from "../llm/geminiClient";
 import { recipeSchema, type RecipeInput } from "../validation/recipes";
@@ -36,44 +37,21 @@ const MAX_GEMINI_TEXT_LENGTH = 15_000;
 const MAX_REDIRECTS = 5;
 
 /**
- * Rejects URLs that point back into the machine or the local network. This is
- * the app's only code path that fetches a URL supplied at runtime, so without
- * it the backend can be used to reach services that aren't otherwise exposed.
- *
- * Checks the literal host only — it deliberately does NOT resolve DNS, so a
- * hostname that resolves to a private address still gets through. That's an
- * accepted gap for a single-user, Tailscale-only app (see docs/decisions.md);
- * closing it needs a resolve-then-pin-the-IP fetch, which is a bigger change.
+ * Rejects URLs that point back into the machine or the local network, by
+ * their literal host. Hostnames get the same check again at connect time,
+ * against the addresses DNS actually returned — see services/safeFetch.ts,
+ * which is where DNS rebinding is closed off. Node never runs a DNS lookup
+ * for an IP literal, so this is the only check those get.
  */
 function isBlockedHost(rawHostname: string): boolean {
   // WHATWG URL keeps IPv6 hosts bracketed ("[::1]") and permits a trailing
   // root dot ("localhost."), both of which defeat naive string comparison.
+  // It has already normalized IPv4 shorthand ("2130706433", "0x7f.1") to
+  // dotted-quad by this point.
   const hostname = rawHostname.toLowerCase().replace(/^\[|]$/g, "").replace(/\.$/, "");
 
   if (hostname === "localhost" || hostname.endsWith(".localhost")) return true;
-
-  const version = isIP(hostname);
-  if (version === 4) {
-    const [a = 0, b = 0] = hostname.split(".").map(Number);
-    return (
-      a === 0 || // 0.0.0.0/8 "this host"
-      a === 127 || // loopback
-      a === 10 || // private
-      (a === 172 && b >= 16 && b <= 31) || // private
-      (a === 192 && b === 168) || // private
-      (a === 169 && b === 254) // link-local, incl. cloud metadata
-    );
-  }
-  if (version === 6) {
-    const ip = hostname;
-    if (ip === "::1" || ip === "::") return true;
-    // Unique-local (fc00::/7) and link-local (fe80::/10).
-    if (/^f[cd]/.test(ip) || /^fe[89ab]/.test(ip)) return true;
-    // IPv4-mapped (::ffff:127.0.0.1) — re-check the embedded address.
-    const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(ip);
-    if (mapped?.[1]) return isBlockedHost(mapped[1]);
-  }
-  return false;
+  return isIP(hostname) !== 0 && isBlockedAddress(hostname);
 }
 
 /** Exported so `imageFromUrl.ts` can apply the same SSRF guard to an image
@@ -154,12 +132,18 @@ async function fetchOnce(
       signal,
     });
   } catch (err) {
+    if (err instanceof BlockedAddressError) {
+      // A hostname that resolved to a private address — same answer as a
+      // private IP literal gets from validateUrl.
+      throw new InvalidUrlError("This URL cannot be imported");
+    }
     if (err instanceof Error && (err.name === "AbortError" || err.name === "TimeoutError")) {
       throw new FetchError("Timed out fetching the page");
     }
-    throw new FetchError(
-      `Failed to fetch the page: ${err instanceof Error ? err.message : String(err)}`,
-    );
+    // The raw error ("connect ECONNREFUSED 1.2.3.4:81") is logged, not
+    // returned: echoing it would let a user map which hosts and ports answer.
+    console.warn("Import page fetch failed:", err instanceof Error ? err.message : err);
+    throw new FetchError("Couldn't reach that page");
   }
 }
 
@@ -361,7 +345,7 @@ async function extractFromWebPage(
   deps: ExtractDeps,
   report: (stage: ImportStage) => void,
 ): Promise<ExtractionCandidate> {
-  const fetchImpl = deps.fetchImpl ?? fetch;
+  const fetchImpl = deps.fetchImpl ?? safeFetch;
   // One budget for the whole page fetch including the body read, combined
   // with the caller's cancellation so either can end it.
   const timeout = AbortSignal.timeout(FETCH_TIMEOUT_MS);

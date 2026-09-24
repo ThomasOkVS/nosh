@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { apiFetch, ApiError } from "./client";
+import { apiFetch, ApiError, resolveApiBase } from "./client";
 
 function mockFetchResponse(status: number, body: unknown): void {
   vi.stubGlobal(
@@ -50,5 +50,20 @@ describe("apiFetch", () => {
     await expect(apiFetch("/auth/login", { method: "POST", body: {} })).rejects.toMatchObject(
       new ApiError(401, "Invalid email or password"),
     );
+  });
+});
+
+describe("resolveApiBase", () => {
+  it("keeps a relative base as-is, so requests stay same-origin", () => {
+    expect(resolveApiBase("/api")).toBe("/api");
+  });
+
+  it("drops a trailing slash so paths don't double it", () => {
+    expect(resolveApiBase("/api/")).toBe("/api");
+  });
+
+  it("falls back to the local backend when unset or empty", () => {
+    expect(resolveApiBase(undefined)).toBe("http://localhost:3001");
+    expect(resolveApiBase("")).toBe("http://localhost:3001");
   });
 });

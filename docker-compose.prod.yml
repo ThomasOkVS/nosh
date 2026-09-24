@@ -6,6 +6,15 @@
 # `build:` here at all.
 #
 # First deploy: see docs/deployment.md's "First-deploy runbook" section.
+#
+# Reference file: the homelab keeps its own copy (/opt/nosh), which can differ
+# in details such as the backend's host port. Changes here have to be applied
+# there by hand — see docs/deployment.md's "Public HTTPS cutover".
+#
+# Topology: browser → Caddy (TLS, `proxy` network, 172.28.255.2) → frontend
+# nginx :8080 → /api/* → backend :3001. The backend only ever sees the
+# frontend container as its peer, which is why the frontend has a fixed IP
+# on `edge` and that exact IP is the backend's TRUSTED_PROXIES.
 
 services:
   postgres:
@@ -34,7 +43,11 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       SESSION_SECRET: ${SESSION_SECRET}
       UPLOADS_DIR: /repo/backend/uploads
-      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN}
+      # See .env.prod.example for each of these.
+      FRONTEND_ORIGINS: ${FRONTEND_ORIGINS:-}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-}
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
+      ALLOW_SIGNUP: ${ALLOW_SIGNUP:-false}
       # SEED_DEMO_DATA intentionally not set — env.ts defaults it to false,
       # which is what a real deployment wants (see docs/decisions.md's
       # demo-data-seed entry).
@@ -50,6 +63,13 @@ services:
       - "3001:3001"
     volumes:
       - /DATA/nosh/uploads:/repo/backend/uploads
+    networks:
+      default: {} # postgres
+      edge:
+        # What frontend/nginx.conf proxies /api to. Deliberately not the
+        # bare service name `backend`, which another stack on the shared
+        # `proxy` network could also answer to.
+        aliases: [nosh-backend]
     depends_on:
       postgres:
         condition: service_healthy
@@ -70,5 +90,26 @@ services:
       # Container port is 8080 (not 80) because the image runs nginx as a
       # non-root user — see frontend/Dockerfile.
       - "8080:8080"
+    networks:
+      edge:
+        # Must equal the backend's TRUSTED_PROXIES.
+        ipv4_address: 10.101.0.10
+      # Uncomment at cutover so Caddy can reach this container, as
+      # `reverse_proxy nosh-frontend:8080` — a unique name for the same
+      # reason as the backend's alias. Only the frontend joins `proxy`; the
+      # backend never does.
+      # proxy:
+      #   aliases: [nosh-frontend]
     depends_on:
       - backend
+
+networks:
+  # Just frontend ↔ backend. A fixed subnet so the frontend's address is
+  # stable; 10.101.0.0/24 sits outside Docker's automatic pools. Change both
+  # this and the address above if it collides with anything on the host.
+  edge:
+    ipam:
+      config:
+        - subnet: 10.101.0.0/24
+  # proxy:
+  #   external: true

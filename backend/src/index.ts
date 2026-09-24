@@ -44,7 +44,9 @@ async function start(): Promise<void> {
     pool,
     sessionSecret: env.sessionSecret,
     uploadsDir: env.uploadsDir,
-    frontendOrigin: env.frontendOrigin,
+    frontendOrigins: env.frontendOrigins,
+    trustedProxies: env.trustedProxies,
+    allowSignup: env.allowSignup,
     magicImport,
     geminiExtract: env.geminiApiKey
       ? createGeminiExtractor(env.geminiApiKey, env.geminiTextModel, fetch, recordUsage)

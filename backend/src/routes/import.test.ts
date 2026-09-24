@@ -191,13 +191,15 @@ describe("import routes", () => {
     expect(job).toMatchObject({ status: "error", errorStatus: 422 });
   });
 
-  it("fails the job with a 400 for a rejected URL, without fetching it", async () => {
+  it("rejects a blocked URL with a real 400 before creating a job, without fetching it", async () => {
     stubFetchWithHtml("<html><body>No recipe</body></html>");
     const app = createTestApp({ geminiExtract: fakeGemini({}) });
     const agent = await signedInAgent(app, "importbadurl@example.com");
 
-    const job = await importAndWait(agent, "http://localhost/recipe");
-    expect(job).toMatchObject({ status: "error", errorStatus: 400 });
+    // The dockge-on-the-host-gateway case from the homelab's threat model.
+    const res = await agent.post("/import").send({ url: "http://172.28.0.1:5001/" });
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: "This URL cannot be imported" });
     expect(fetch).not.toHaveBeenCalled();
   });
 

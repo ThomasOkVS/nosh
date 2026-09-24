@@ -52,6 +52,27 @@ priority.
 
 ### Follow-ups
 
+- [ ] Public HTTPS cutover, homelab side (2026-09-24): apply the `edge`
+      network + `FRONTEND_ORIGINS`/`TRUSTED_PROXIES` on the box, *then* flip
+      the `VITE_API_URL` repo variable to `/api`, then add the Caddy route —
+      in that order, see [deployment.md](deployment.md#public-https-cutover).
+      Afterwards, verify in a real browser on `https://nosh.itsthomassito.com`
+      (login persists across reloads, photo upload, a Reel import's
+      progress stages appear one by one, PWA installs and updates) — none of
+      that could be checked before the domain existed.
+- [ ] Once the tailnet origin is retired: switch the session cookie to
+      `secure: true` and a `__Host-` name (e.g. `__Host-nosh.sid`, logs
+      everyone out once), drop it from `FRONTEND_ORIGINS`, remove the
+      backend's host port.
+- [ ] Nice-to-have from the cutover handoff: a "Nosh moved to
+      https://nosh.itsthomassito.com" banner on the old tailnet origin, for
+      existing PWA installs.
+- [ ] Nice-to-have: a `Content-Security-Policy` from the frontend's nginx
+      (Caddy already sends `nosniff`, `Referrer-Policy`, `X-Robots-Tag` and
+      HSTS on every host, so don't duplicate those).
+- [ ] Now that the page is a secure context, consider Web Share / Clipboard
+      / camera capture for recipe photos.
+
 - [ ] Live-verify the unified library (2026-09-23) in a browser against the
       dev stack — merged without it at the project owner's request. Check:
       Home shows its own recipes; search inside a nested folder is scoped,
@@ -62,6 +83,46 @@ priority.
       to its own row on phones).
 
 ## Completed
+
+- **2026-09-24** — Readiness for public HTTPS at
+  `https://nosh.itsthomassito.com`. Came from a homelab-side checklist that
+  couldn't see this repo, so every item was audited against the code first.
+  - **Topology.** Chose the frontend's nginx proxying `/api` over Caddy's
+    `handle_path`, so the first merged build leaves the tailnet setup
+    untouched and the cutover doesn't race Watchtower.
+  - **Backend.** Added:
+    - `FRONTEND_ORIGINS`, a list, with the old singular name as fallback;
+    - an exact-IP `TRUSTED_PROXIES`;
+    - an `Origin`/`Sec-Fetch-Site` CSRF check on unsafe methods;
+    - a cookie with `secure: "auto"`, `SameSite=Lax`, `Path=/` and no
+      `Domain`;
+    - `ALLOW_SIGNUP`, off by default;
+    - hand-written rate limits on login (per IP and per account), signup,
+      import and photo-from-URL.
+  - **SSRF.** Closed the documented DNS gap with `services/safeFetch.ts`,
+    which checks the resolved address inside the socket's own lookup. That
+    beats both redirects and rebinding. Also added CGNAT and the other
+    reserved ranges, and restricted yt-dlp with `--ies default,-generic`.
+  - **Smaller fixes:**
+    - magic-byte checks on uploads;
+    - no leaked socket errors;
+    - JSON 404s and 400s;
+    - `NODE_ENV=production`;
+    - a PWA `navigateFallbackDenylist` for `/api/`;
+    - `sha-<7>` image tags;
+    - a PR job that builds both images and runs `nginx -t`.
+  - **Verification.** 94 new backend tests and 3 frontend tests. Also a
+    34-check Docker end-to-end run of the real images in a copy of the box's
+    network layout: a stand-in Caddy at `172.28.255.2`, an intruder
+    container, a decoy named `backend` (the reason nginx targets the
+    `nosh-backend` alias), and the old direct `:3101` path.
+  - **Merged with main's import-jobs work.** The per-user limit now covers
+    only starting an import, not polling one. The early 400 is kept. The
+    `/api` guard lives in the hand-written `sw.ts`. nginx's streaming
+    settings were dropped.
+  - **No migrations of its own.** The homelab-side steps are still pending;
+    see Follow-ups.
+
 
 - **2026-09-24** — Close the app during an import and get a push notification
   when it's done.

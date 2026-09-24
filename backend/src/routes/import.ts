@@ -2,11 +2,13 @@ import { Router } from "express";
 import type { Pool } from "pg";
 import { z } from "zod";
 import { resolveImportModel, type MagicImportConfig } from "../config/llmModels";
+import { createRateLimiter, limitPerUser } from "../middleware/rateLimit";
 import { requireAuth } from "../middleware/requireAuth";
 import { findCollectionOwnerId } from "../repositories/collections";
 import { findImportJob, listPendingImportJobs, markImportJobReviewed } from "../repositories/importJobs";
 import { findImportModel } from "../repositories/users";
 import type { ImportJobRunner } from "../services/importJobs";
+import { InvalidUrlError, validateUrl } from "../services/recipeExtraction";
 import { importRequestSchema } from "../validation/import";
 
 const idParamSchema = z.coerce.number().int().positive();
@@ -29,14 +31,28 @@ export function createImportRouter(deps: ImportRouterDeps): Router {
   const { pool, magicImport, runner } = deps;
   const router = Router();
   router.use(requireAuth);
+  // Every import can spend a paid (or quota-limited) Gemini call and makes
+  // the server fetch a URL, so starting one is capped per user, not just
+  // gated on login. Only POST / counts — the client polls GET /:id while a
+  // job runs, and those polls must not eat into the limit.
+  const startsPerUser = limitPerUser(createRateLimiter({ windowMs: 60 * 60 * 1000, max: 30 }));
 
-  router.post("/", async (req, res, next) => {
+  router.post("/", startsPerUser, async (req, res, next) => {
     const userId = req.session.userId!;
     const parsed = importRequestSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
       return;
     }
+    // Also checked when the job runs, but a URL that's refused outright
+    // gets a real 400 here instead of a job that fails a moment later.
+    try {
+      validateUrl(parsed.data.url);
+    } catch (err) {
+      res.status(400).json({ error: err instanceof InvalidUrlError ? err.message : "Not a valid URL" });
+      return;
+    }
+
     try {
       const { url, collectionId } = parsed.data;
       // Same ownership check as creating a recipe in a folder — checked

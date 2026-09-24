@@ -1,4 +1,17 @@
-const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3001";
+/**
+ * The one base every request goes through. In production it's the relative
+ * `/api`: the frontend's own nginx forwards that to the backend, so the page
+ * and its API share an origin and the same build works on any host name.
+ * The local-dev default calls the backend on its own port instead.
+ *
+ * `||` rather than `??`: a CI build variable that's set but empty arrives
+ * here as "", which must fall back too, not become a base of "".
+ */
+export function resolveApiBase(configured: string | undefined): string {
+  return (configured || "http://localhost:3001").replace(/\/$/, "");
+}
+
+const API_URL = resolveApiBase(import.meta.env.VITE_API_URL);
 
 export function apiUrl(path: string): string {
   return `${API_URL}${path}`;

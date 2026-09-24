@@ -25,6 +25,9 @@ export function createTestApp(
       | "downloadSocialVideo"
       | "fetchImpl"
       | "magicImport"
+      | "allowSignup"
+      | "frontendOrigins"
+      | "trustedProxies"
       | "vapidPublicKey"
       | "sendPush"
     >
@@ -36,6 +39,12 @@ export function createTestApp(
     sessionSecret: "test-secret",
     uploadsDir,
     magicImport: TEST_MAGIC_IMPORT,
+    // Most tests create their users through /auth/signup.
+    allowSignup: true,
+    loginFailureDelayMs: 0,
+    // Late-bound so tests that vi.stubGlobal("fetch") intercept page fetches.
+    // The real default, safeFetch, opens real sockets — it has its own tests.
+    fetchImpl: (input, init) => globalThis.fetch(input, init),
     ...overrides,
   });
 }
