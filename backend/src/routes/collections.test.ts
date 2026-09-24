@@ -40,8 +40,7 @@ describe("collection routes", () => {
 
     const listRes = await agent.get("/collections");
     expect(listRes.status).toBe(200);
-    // Signup already seeded a default "Other" collection, so this user has two.
-    expect(listRes.body).toHaveLength(2);
+    expect(listRes.body).toHaveLength(1);
     expect(listRes.body).toContainEqual(
       expect.objectContaining({ name: "Weeknight dinners", parentId: null, recipeCount: 0 }),
     );
@@ -179,8 +178,8 @@ describe("collection routes", () => {
     const deleteRes = await agent.delete(`/collections/${parentRes.body.id}`);
     expect(deleteRes.status).toBe(204);
 
-    const getChildRes = await agent.get(`/collections/${childRes.body.id}/recipes`);
-    expect(getChildRes.status).toBe(404);
+    const listRes = await agent.get("/collections");
+    expect(listRes.body).toEqual([]);
     const getRecipeRes = await agent.get(`/recipes/${recipeRes.body.id}`);
     expect(getRecipeRes.status).toBe(404);
   });
@@ -195,31 +194,16 @@ describe("collection routes", () => {
     expect(res.status).toBe(404);
   });
 
-  it("returns a collection's sub-collections and direct recipes together", async () => {
+  it("never touches recipes at Home when deleting a collection", async () => {
     const app = createTestApp();
     const agent = await signedInAgent(app, "alice@example.com");
-    const parentRes = await agent.post("/collections").send({ name: "Weeknight dinners" });
-    const childRes = await agent
-      .post("/collections")
-      .send({ name: "Soups", parentId: parentRes.body.id });
-    const recipeRes = await agent
-      .post("/recipes")
-      .send({ ...samplePayload, collectionId: parentRes.body.id });
+    const collectionRes = await agent.post("/collections").send({ name: "Weeknight dinners" });
+    const homeRecipe = await agent.post("/recipes").send(samplePayload);
 
-    const res = await agent.get(`/collections/${parentRes.body.id}/recipes`);
-    expect(res.status).toBe(200);
-    expect(res.body.collection).toMatchObject({ name: "Weeknight dinners", recipeCount: 1 });
-    expect(res.body.subCollections).toEqual([expect.objectContaining({ id: childRes.body.id })]);
-    expect(res.body.recipes).toEqual([expect.objectContaining({ id: recipeRes.body.id })]);
-  });
+    await agent.delete(`/collections/${collectionRes.body.id}`);
 
-  it("404s when fetching another user's collection recipes", async () => {
-    const app = createTestApp();
-    const alice = await signedInAgent(app, "alice@example.com");
-    const bob = await signedInAgent(app, "bob@example.com");
-    const createRes = await alice.post("/collections").send({ name: "Weeknight dinners" });
-
-    const res = await bob.get(`/collections/${createRes.body.id}/recipes`);
-    expect(res.status).toBe(404);
+    const getRes = await agent.get(`/recipes/${homeRecipe.body.id}`);
+    expect(getRes.status).toBe(200);
+    expect(getRes.body.collectionId).toBeNull();
   });
 });

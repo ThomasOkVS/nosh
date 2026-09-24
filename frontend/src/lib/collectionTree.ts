@@ -63,3 +63,21 @@ export function collectionBreadcrumb(collections: Collection[], id: number | nul
   }
   return trail;
 }
+
+/** Is this pathname a library folder view (`/` or `/collections/:id`)? */
+export function isLibraryPath(pathname: string): boolean {
+  return pathname === "/" || pathname.startsWith("/collections/");
+}
+
+/** The library URL for a folder — Home (`null`) is `/`, every collection is
+ * `/collections/:id`. */
+export function libraryPath(collectionId: number | null): string {
+  return collectionId === null ? "/" : `/collections/${collectionId}`;
+}
+
+/** Plain-text trail ("Home / Baking / Cookies") — for places that can't
+ * contain links, e.g. a caption inside a `RecipeCard`, which is itself one
+ * big link. */
+export function collectionPathLabel(collections: Collection[], collectionId: number | null): string {
+  return ["Home", ...collectionBreadcrumb(collections, collectionId).map((c) => c.name)].join(" / ");
+}

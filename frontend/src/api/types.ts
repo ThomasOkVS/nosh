@@ -27,7 +27,8 @@ export interface RecipeImage {
 export interface Recipe {
   id: number;
   userId: number;
-  collectionId: number;
+  /** `null` means the recipe sits directly at Home, the top of the library. */
+  collectionId: number | null;
   title: string;
   description: string | null;
   servings: number | null;
@@ -62,8 +63,8 @@ export interface RecipeInput {
   steps: StepInput[];
   tags: string[];
   sourceUrl: string | null;
-  // Only meaningful on create (a new recipe with no explicit choice falls
-  // back to the owner's "Other" collection server-side) — editing a recipe
+  // Only meaningful on create (`null`/omitted puts the new recipe at Home)
+  // — editing a recipe
   // never moves it; that's a separate action, see RecipeCollectionPicker.
   // Optional (unlike the rest of this interface) so call sites that only
   // ever build an edit-mode payload, or imported/pre-fill data that never
@@ -78,15 +79,6 @@ export interface Collection {
   name: string;
   createdAt: string;
   recipeCount: number;
-}
-
-/** The response shape for a single collection's contents: the collection
- * itself, the sub-collections nested directly inside it, and the recipes
- * filed directly in it — everything one "folder view" needs in one call. */
-export interface CollectionContents {
-  collection: Collection;
-  subCollections: Collection[];
-  recipes: Recipe[];
 }
 
 /** One day's meal-plan assignment. `date` is a plain "YYYY-MM-DD" string,

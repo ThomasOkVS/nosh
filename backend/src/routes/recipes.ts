@@ -30,7 +30,7 @@ import {
 } from "../services/imageFromUrl";
 import { InvalidUrlError } from "../services/recipeExtraction";
 import { importRequestSchema } from "../validation/import";
-import { moveRecipeSchema, recipeSchema } from "../validation/recipes";
+import { moveRecipeSchema, recipeFiltersSchema, recipeSchema } from "../validation/recipes";
 
 function statusForImageFetchError(err: unknown): number {
   if (err instanceof InvalidUrlError) return 400;
@@ -147,10 +147,14 @@ export function createRecipesRouter(
       res.status(401).json({ error: "Not authenticated" });
       return;
     }
-    const tag = typeof req.query.tag === "string" ? req.query.tag.trim() : undefined;
+    const filters = recipeFiltersSchema.safeParse(req.query);
+    if (!filters.success) {
+      res.status(400).json({ error: filters.error.issues[0]?.message ?? "Invalid filters" });
+      return;
+    }
 
     try {
-      const recipes = await listRecipesByUser(pool, userId, { tag });
+      const recipes = await listRecipesByUser(pool, userId, filters.data);
       res.json(recipes);
     } catch (err) {
       next(err);
@@ -168,10 +172,14 @@ export function createRecipesRouter(
       res.status(400).json({ error: "Query parameter 'q' is required" });
       return;
     }
-    const tag = typeof req.query.tag === "string" ? req.query.tag.trim() : undefined;
+    const filters = recipeFiltersSchema.safeParse(req.query);
+    if (!filters.success) {
+      res.status(400).json({ error: filters.error.issues[0]?.message ?? "Invalid filters" });
+      return;
+    }
 
     try {
-      const recipes = await searchRecipes(pool, userId, query, { tag });
+      const recipes = await searchRecipes(pool, userId, query, filters.data);
       res.json(recipes);
     } catch (err) {
       next(err);
@@ -217,10 +225,12 @@ export function createRecipesRouter(
     }
 
     try {
-      const ownerId = await findCollectionOwnerId(pool, parsed.data.collectionId);
-      if (ownerId === null || ownerId !== userId) {
-        res.status(404).json({ error: "Collection not found" });
-        return;
+      if (parsed.data.collectionId !== null) {
+        const ownerId = await findCollectionOwnerId(pool, parsed.data.collectionId);
+        if (ownerId === null || ownerId !== userId) {
+          res.status(404).json({ error: "Collection not found" });
+          return;
+        }
       }
       const recipe = await moveRecipe(pool, id, parsed.data.collectionId);
       if (!recipe) {

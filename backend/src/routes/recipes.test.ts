@@ -229,18 +229,95 @@ describe("recipe routes", () => {
     expect(mismatched.body).toHaveLength(0);
   });
 
-  it("defaults a new recipe to the owner's 'Other' collection when none is given", async () => {
+  describe("folder filters", () => {
+    /** Home: "Loose soup"; Baking: "Bread"; Baking > Cookies: "Chocolate cookies". */
+    async function seedLibrary(agent: Awaited<ReturnType<typeof signedInAgent>>) {
+      const baking = await agent.post("/collections").send({ name: "Baking" });
+      const cookies = await agent
+        .post("/collections")
+        .send({ name: "Cookies", parentId: baking.body.id });
+      await agent.post("/recipes").send({ ...samplePayload, title: "Loose soup" });
+      await agent
+        .post("/recipes")
+        .send({ ...samplePayload, title: "Bread", collectionId: baking.body.id });
+      await agent.post("/recipes").send({
+        ...samplePayload,
+        title: "Chocolate cookies",
+        collectionId: cookies.body.id,
+      });
+      return { bakingId: baking.body.id as number, cookiesId: cookies.body.id as number };
+    }
+    const titles = (body: { title: string }[]) => body.map((r) => r.title).sort();
+
+    it("lists only the recipes directly at Home with collection=root", async () => {
+      const agent = await signedInAgent(createTestApp(), "alice@example.com");
+      await seedLibrary(agent);
+
+      const res = await agent.get("/recipes").query({ collection: "root" });
+      expect(res.status).toBe(200);
+      expect(titles(res.body)).toEqual(["Loose soup"]);
+    });
+
+    it("lists only the recipes directly in one collection", async () => {
+      const agent = await signedInAgent(createTestApp(), "alice@example.com");
+      const { bakingId } = await seedLibrary(agent);
+
+      const res = await agent.get("/recipes").query({ collection: bakingId });
+      expect(titles(res.body)).toEqual(["Bread"]);
+    });
+
+    it("includes every nested sub-collection with within", async () => {
+      const agent = await signedInAgent(createTestApp(), "alice@example.com");
+      const { bakingId, cookiesId } = await seedLibrary(agent);
+
+      const deep = await agent.get("/recipes").query({ within: bakingId });
+      expect(titles(deep.body)).toEqual(["Bread", "Chocolate cookies"]);
+
+      const leaf = await agent.get("/recipes").query({ within: cookiesId });
+      expect(titles(leaf.body)).toEqual(["Chocolate cookies"]);
+    });
+
+    it("scopes a text search to a folder's subtree with within", async () => {
+      const agent = await signedInAgent(createTestApp(), "alice@example.com");
+      const { bakingId } = await seedLibrary(agent);
+
+      const scoped = await agent.get("/recipes/search").query({ q: "tomatoes", within: bakingId });
+      expect(titles(scoped.body)).toEqual(["Bread", "Chocolate cookies"]);
+
+      const everywhere = await agent.get("/recipes/search").query({ q: "tomatoes" });
+      expect(everywhere.body).toHaveLength(3);
+    });
+
+    it("never returns another user's recipes through within", async () => {
+      const app = createTestApp();
+      const alice = await signedInAgent(app, "alice@example.com");
+      const bob = await signedInAgent(app, "bob@example.com");
+      const { bakingId } = await seedLibrary(alice);
+
+      const res = await bob.get("/recipes").query({ within: bakingId });
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual([]);
+    });
+
+    it("rejects a malformed folder filter", async () => {
+      const agent = await signedInAgent(createTestApp(), "alice@example.com");
+
+      expect((await agent.get("/recipes").query({ within: "abc" })).status).toBe(400);
+      expect((await agent.get("/recipes").query({ collection: "-1" })).status).toBe(400);
+    });
+  });
+
+  it("puts a new recipe at Home when no collection is given", async () => {
     const app = createTestApp();
     const agent = await signedInAgent(app, "alice@example.com");
 
     const createRes = await agent.post("/recipes").send(samplePayload);
     expect(createRes.status).toBe(201);
-    expect(createRes.body.collectionId).toEqual(expect.any(Number));
+    expect(createRes.body.collectionId).toBeNull();
 
+    // No placeholder "Other" collection is created behind the scenes.
     const collections = await agent.get("/collections");
-    const other = collections.body.find((c: { name: string }) => c.name === "Other");
-    expect(other).toBeDefined();
-    expect(createRes.body.collectionId).toBe(other.id);
+    expect(collections.body).toEqual([]);
   });
 
   it("creates a recipe directly into a given collection", async () => {
@@ -280,6 +357,31 @@ describe("recipe routes", () => {
 
     expect(moveRes.status).toBe(200);
     expect(moveRes.body.collectionId).toBe(collectionRes.body.id);
+  });
+
+  it("moves a recipe back to Home with a null collectionId", async () => {
+    const app = createTestApp();
+    const agent = await signedInAgent(app, "alice@example.com");
+    const collectionRes = await agent.post("/collections").send({ name: "Weeknight dinners" });
+    const createRes = await agent
+      .post("/recipes")
+      .send({ ...samplePayload, collectionId: collectionRes.body.id });
+
+    const moveRes = await agent
+      .patch(`/recipes/${createRes.body.id}/collection`)
+      .send({ collectionId: null });
+
+    expect(moveRes.status).toBe(200);
+    expect(moveRes.body.collectionId).toBeNull();
+  });
+
+  it("rejects a move with no collectionId at all", async () => {
+    const app = createTestApp();
+    const agent = await signedInAgent(app, "alice@example.com");
+    const createRes = await agent.post("/recipes").send(samplePayload);
+
+    const res = await agent.patch(`/recipes/${createRes.body.id}/collection`).send({});
+    expect(res.status).toBe(400);
   });
 
   it("refuses to move a recipe into another user's collection", async () => {

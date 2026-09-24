@@ -29,12 +29,15 @@ interface RecipeCardProps {
   recipe: Recipe;
   /** Lets this card be dragged onto a collection drop target (see
    * docs/design-system.md#drag-and-drop). Off by default — only
-   * `CollectionsPage`'s grid has folders to drop into; `RecipeListPage`'s
-   * flat grid doesn't opt in. */
+   * `CollectionsPage`'s grid has folders to drop into. */
   draggable?: boolean;
+  /** Small label above the title — search results use it to say which
+   * folder each recipe lives in. Plain text only: the whole card is a link,
+   * so it can't contain another one. */
+  caption?: string;
 }
 
-export function RecipeCard({ recipe, draggable = false }: Readonly<RecipeCardProps>) {
+export function RecipeCard({ recipe, draggable = false, caption }: Readonly<RecipeCardProps>) {
   const thumbnail = recipe.images[0];
   const navigate = useNavigate();
 
@@ -59,6 +62,11 @@ export function RecipeCard({ recipe, draggable = false }: Readonly<RecipeCardPro
         )}
       </div>
       <div className="p-4">
+        {caption && (
+          <p className="mb-1 truncate font-mono text-[11px] uppercase tracking-wider text-ink-faint">
+            {caption}
+          </p>
+        )}
         <h2 className="truncate font-display text-lg font-semibold italic text-ink">{recipe.title}</h2>
         <hr className="mt-1.5 border-border" />
         <p className="mt-1.5 font-mono text-[11px] uppercase tracking-wider text-ink-muted">
@@ -77,7 +85,7 @@ export function RecipeCard({ recipe, draggable = false }: Readonly<RecipeCardPro
                 key={tag}
                 tag={tag}
                 variant="editorial"
-                onClick={(t) => navigate(`/recipes?tag=${encodeURIComponent(t)}`)}
+                onClick={(t) => navigate(`/?tag=${encodeURIComponent(t)}`)}
               />
             ))}
           </div>
