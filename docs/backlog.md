@@ -46,6 +46,17 @@ priority.
       orange and weren't regenerated — that needs an image-export step, not
       just a code edit.
 
+### Follow-ups
+
+- [ ] Live-verify the unified library (2026-09-23) in a browser against the
+      dev stack — merged without it at the project owner's request. Check:
+      Home shows its own recipes; search inside a nested folder is scoped,
+      "Search everywhere" widens it; header search from the meal-plan page;
+      tag chips open `/?tag=`; New recipe / Import from inside a folder file
+      into it; dragging a card onto the Home breadcrumb; `/recipes?q=x`
+      redirect; both themes, desktop + phone widths (the header search wraps
+      to its own row on phones).
+
 ## Completed
 
 - **2026-09-24** — Magic import model selector and tokens-left view shipped
@@ -61,18 +72,43 @@ priority.
   new `llm_usage` table (one row per Pacific-time quota day per model —
   global, not per-user, because Google's limits are per project) via an
   `onUsage` hook on the Gemini client. New migration
-  `1700000000012_magic-import-settings` — **run `pnpm migrate up` on
-  deploy**. See
+  `1700000000013_magic-import-settings` (renumbered from `012` after
+  merging main, whose unified-library work had taken that slot) — **run
+  `pnpm migrate up` on deploy**. See
   [decisions.md](decisions.md#2026-09-24-magic-import-settings).
-  `pnpm lint`/`test`/`build` pass on both packages (backend 244 tests,
-  frontend 126). **Verified live** against this worktree's own servers and a
+  `pnpm lint`/`test`/`build` pass on both packages after merging main
+  (backend 251 tests, frontend 147). **Verified live** against this worktree's own servers and a
   separate dev database (the parallel `unified-library` worktree's Docker
   stack was left untouched): a saved model choice reached the real Gemini
   endpoint and the request was counted against it; the page was checked in
   both themes at desktop and phone widths. **Not verified with a real API
   key** (none available), so real `usageMetadata` token counts are
   unit-tested only.
-
+- **2026-09-23** — Library unified; the separate "All recipes" page is gone.
+  Home (`/`) and every collection (`/collections/:id`) are one folder view:
+  sub-collections, then the recipes *directly* inside. Home can now hold
+  recipes itself (`recipes.collection_id` nullable, `NULL` = Home), replacing
+  the auto-created "Other" collection. A single search box in the header
+  searches the current folder and everything beneath it (recursive-CTE
+  `within` filter on `GET /recipes`/`/recipes/search`), with a "Search
+  everywhere" link and each result captioned with its folder path; from
+  non-library pages it searches the whole library. Every folder has New
+  recipe / Import buttons that file straight into it (import carries the
+  folder through `ImportProvider`). `/recipes` redirects to `/` keeping
+  `?q`/`?tag`; `GET /collections/:id/recipes` was removed as unused. Scope
+  (Home as a place, direct-contents browsing, folder-scoped search) was
+  confirmed with the project owner before building; the migration's "Other"
+  rule was revised mid-way after the real dev data showed an "Other" with a
+  sub-collection (recipes move to Home, folder deleted only if empty). See
+  [decisions.md](decisions.md#2026-09-23-library-unified-recipes-may-live-at-home).
+  `pnpm lint`/`test`/`build` pass (backend: 229 tests, run in the dev
+  container against Postgres, incl. new `collection`/`within`/move-to-Home
+  coverage; frontend: 142 tests, incl. new `LibrarySearch`,
+  `collectionTree`, form pre-fill, import-folder handoff and `/recipes`
+  redirect coverage). Migration applied to the dev DB and round-tripped
+  down/up. **Not verified live in a browser** — tracked above under
+  Follow-ups. Done in a worktree (`.claude/worktrees/unified-library`) per
+  the owner's standing request.
 - **2026-08-28** — Weekly meal planner shipped: a single ongoing per-user
   calendar, not a `meal_plans` entity users create/name/switch between — one
   new table, `meal_plan_entries(user_id, planned_on, recipe_id)` with

@@ -1,5 +1,5 @@
 import { apiFetch } from "./client";
-import type { Collection, CollectionContents } from "./types";
+import type { Collection } from "./types";
 
 export function listCollections(): Promise<Collection[]> {
   return apiFetch<Collection[]>("/collections");
@@ -21,8 +21,4 @@ export function updateCollection(
 
 export function deleteCollection(id: number): Promise<void> {
   return apiFetch<void>(`/collections/${id}`, { method: "DELETE" });
-}
-
-export function getCollectionContents(id: number): Promise<CollectionContents> {
-  return apiFetch<CollectionContents>(`/collections/${id}/recipes`);
 }

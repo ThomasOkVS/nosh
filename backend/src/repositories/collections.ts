@@ -1,7 +1,5 @@
 import type { Pool } from "pg";
 
-const DEFAULT_COLLECTION_NAME = "Other";
-
 export interface Collection {
   id: number;
   userId: number;
@@ -75,19 +73,6 @@ export async function createCollection(
     createdAt: row.created_at,
     recipeCount: 0,
   };
-}
-
-export async function getCollectionById(pool: Pool, id: number): Promise<Collection | null> {
-  const result = await pool.query<CollectionRow>(
-    `SELECT c.id, c.user_id, c.parent_id, c.name, c.created_at, COUNT(r.id) AS recipe_count
-     FROM collections c
-     LEFT JOIN recipes r ON r.collection_id = c.id
-     WHERE c.id = $1
-     GROUP BY c.id`,
-    [id],
-  );
-  const row = result.rows[0];
-  return row ? toCollection(row) : null;
 }
 
 export async function findCollectionOwnerId(pool: Pool, id: number): Promise<number | null> {
@@ -175,26 +160,4 @@ export async function getCollectionSubtreeImagePaths(pool: Pool, id: number): Pr
 export async function deleteCollection(pool: Pool, id: number): Promise<boolean> {
   const result = await pool.query(`DELETE FROM collections WHERE id = $1`, [id]);
   return (result.rowCount ?? 0) > 0;
-}
-
-/** Get-or-create a user's "Other" collection -- the fallback every recipe
- * resolves to when created with no explicit collection. It's an ordinary,
- * unflagged collection: renaming or deleting it works exactly like any
- * other, and if it's later deleted, the next recipe created with no
- * explicit collection just recreates a fresh one via this same function. */
-export async function ensureDefaultCollection(pool: Pool, userId: number): Promise<number> {
-  await pool.query(
-    `INSERT INTO collections (user_id, name) VALUES ($1, $2)
-     ON CONFLICT (user_id, name) WHERE parent_id IS NULL DO NOTHING`,
-    [userId, DEFAULT_COLLECTION_NAME],
-  );
-  const result = await pool.query<{ id: number }>(
-    `SELECT id FROM collections WHERE user_id = $1 AND parent_id IS NULL AND name = $2`,
-    [userId, DEFAULT_COLLECTION_NAME],
-  );
-  const row = result.rows[0];
-  if (!row) {
-    throw new Error("Failed to resolve default collection");
-  }
-  return row.id;
 }

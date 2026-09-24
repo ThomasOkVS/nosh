@@ -1,7 +1,6 @@
 import type { Pool, PoolClient } from "pg";
 import { withTransaction } from "../db/transaction";
 import { groupBy } from "../utils/groupBy";
-import { ensureDefaultCollection } from "./collections";
 import type { RecipeInput } from "../validation/recipes";
 
 export interface Ingredient {
@@ -27,7 +26,8 @@ export interface RecipeImage {
 export interface Recipe {
   id: number;
   userId: number;
-  collectionId: number;
+  /** `null` means the recipe sits directly at Home, the top of the library. */
+  collectionId: number | null;
   title: string;
   description: string | null;
   servings: number | null;
@@ -45,7 +45,7 @@ export interface Recipe {
 export interface RecipeRow {
   id: number;
   user_id: number;
-  collection_id: number;
+  collection_id: number | null;
   title: string;
   description: string | null;
   servings: number | null;
@@ -191,13 +191,6 @@ export async function createRecipe(
   userId: number,
   input: RecipeInput,
 ): Promise<Recipe> {
-  // Resolved before the transaction below: ensureDefaultCollection is its
-  // own idempotent get-or-create, independently safe to call outside a
-  // transaction, and every recipe must resolve to *some* collection -- this
-  // is what makes "every recipe belongs to exactly one collection" hold
-  // regardless of whether the caller supplied one.
-  const collectionId = input.collectionId ?? (await ensureDefaultCollection(pool, userId));
-
   const recipeId = await withTransaction(pool, async (client) => {
     const result = await client.query<{ id: number }>(
       `INSERT INTO recipes (user_id, collection_id, title, description, servings, prep_time_minutes, cook_time_minutes, source_url)
@@ -205,7 +198,7 @@ export async function createRecipe(
        RETURNING id`,
       [
         userId,
-        collectionId,
+        input.collectionId,
         input.title,
         input.description,
         input.servings,
@@ -255,51 +248,83 @@ export async function findRecipeOwnerId(pool: Pool, id: number): Promise<number 
   return row ? row.user_id : null;
 }
 
-/** The tag filter is an `EXISTS` subquery rather than a `JOIN` against
- * `recipe_tags`/`tags` — a join would multiply each matching recipe's row
- * once per matching tag, which would both double-count recipes tagged more
- * than once and disturb `ORDER BY` (search's `ts_rank` in particular). */
-function tagFilterClause(tag: string | undefined, paramIndex: number): { sql: string; params: unknown[] } {
-  if (!tag) {
-    return { sql: "", params: [] };
+export interface RecipeFilters {
+  tag?: string;
+  /** Only recipes *directly* in this collection -- `"root"` means Home. */
+  collection?: number | "root";
+  /** Only recipes in this collection or anywhere beneath it. */
+  within?: number;
+}
+
+/** Turns `RecipeFilters` into extra `AND ...` conditions for a
+ * `SELECT ... FROM recipes WHERE user_id = $1 ...` query. `firstParamIndex`
+ * is the next free `$n` placeholder in the caller's query, so fragments can
+ * be appended without clashing with the caller's own parameters.
+ *
+ * Built by concatenation, not template literals -- these fragments are
+ * themselves interpolated into the callers' query template literals. */
+function filterClauses(
+  filters: RecipeFilters,
+  firstParamIndex: number,
+): { sql: string; params: unknown[] } {
+  const clauses: string[] = [];
+  const params: unknown[] = [];
+  const next = (value: unknown): string => {
+    params.push(value);
+    return "$" + (firstParamIndex + params.length - 1);
+  };
+
+  if (filters.tag) {
+    // An `EXISTS` subquery rather than a `JOIN` against `recipe_tags`/`tags`
+    // -- a join would multiply each matching recipe's row once per matching
+    // tag, which would both double-count recipes tagged more than once and
+    // disturb `ORDER BY` (search's `ts_rank` in particular).
+    clauses.push(
+      "AND EXISTS (" +
+        " SELECT 1 FROM recipe_tags rt JOIN tags t ON t.id = rt.tag_id" +
+        " WHERE rt.recipe_id = recipes.id AND t.name = " +
+        next(filters.tag) +
+        ")",
+    );
   }
-  // Built by concatenation, not a template literal — this fragment's value
-  // is itself interpolated into the callers' own query template literals
-  // below, so writing it as a template literal too would nest one inside
-  // the other.
-  const sql =
-    "AND EXISTS (" +
-    " SELECT 1 FROM recipe_tags rt JOIN tags t ON t.id = rt.tag_id" +
-    " WHERE rt.recipe_id = recipes.id AND t.name = $" +
-    paramIndex +
-    ")";
-  return { sql, params: [tag] };
+  if (filters.collection === "root") {
+    clauses.push("AND recipes.collection_id IS NULL");
+  } else if (filters.collection !== undefined) {
+    clauses.push("AND recipes.collection_id = " + next(filters.collection));
+  }
+  if (filters.within !== undefined) {
+    // The same recursive-CTE tree walk `wouldCreateCycle` in
+    // ./collections.ts documents: seed with the collection itself, then
+    // repeatedly pull in the next level of children until none are left.
+    clauses.push(
+      "AND recipes.collection_id IN (" +
+        " WITH RECURSIVE subtree AS (" +
+        "   SELECT id FROM collections WHERE id = " +
+        next(filters.within) +
+        "   UNION" +
+        "   SELECT c.id FROM collections c JOIN subtree s ON c.parent_id = s.id" +
+        " ) SELECT id FROM subtree)",
+    );
+  }
+  return { sql: clauses.join(" "), params };
 }
 
 export async function listRecipesByUser(
   pool: Pool,
   userId: number,
-  options: { tag?: string } = {},
+  filters: RecipeFilters = {},
 ): Promise<Recipe[]> {
-  const tagFilter = tagFilterClause(options.tag, 2);
+  const filter = filterClauses(filters, 2);
   const result = await pool.query<RecipeRow>(
     `SELECT ${RECIPE_COLUMNS} FROM recipes
-     WHERE user_id = $1 ${tagFilter.sql}
+     WHERE user_id = $1 ${filter.sql}
      ORDER BY created_at DESC`,
-    [userId, ...tagFilter.params],
+    [userId, ...filter.params],
   );
   return assembleRecipes(pool, result.rows);
 }
 
-export async function listRecipesByCollection(pool: Pool, collectionId: number): Promise<Recipe[]> {
-  const result = await pool.query<RecipeRow>(
-    `SELECT ${RECIPE_COLUMNS} FROM recipes WHERE collection_id = $1 ORDER BY created_at DESC`,
-    [collectionId],
-  );
-  return assembleRecipes(pool, result.rows);
-}
-
-/** Moves a recipe to a different collection -- the only way a recipe's
+/** Moves a recipe to a different collection (or to Home, with `null`) -- the only way a recipe's
  * collection ever changes; `updateRecipe` below deliberately never touches
  * `collection_id`. No ownership checks here -- the route layer verifies both
  * the recipe and the target collection belong to the caller before calling
@@ -307,7 +332,7 @@ export async function listRecipesByCollection(pool: Pool, collectionId: number):
 export async function moveRecipe(
   pool: Pool,
   id: number,
-  collectionId: number,
+  collectionId: number | null,
 ): Promise<Recipe | null> {
   const result = await pool.query(`UPDATE recipes SET collection_id = $2 WHERE id = $1`, [
     id,
@@ -381,14 +406,14 @@ export async function searchRecipes(
   pool: Pool,
   userId: number,
   query: string,
-  options: { tag?: string } = {},
+  filters: RecipeFilters = {},
 ): Promise<Recipe[]> {
-  const tagFilter = tagFilterClause(options.tag, 3);
+  const filter = filterClauses(filters, 3);
   const result = await pool.query<RecipeRow>(
     `SELECT ${RECIPE_COLUMNS} FROM recipes
-     WHERE user_id = $1 AND search_vector @@ plainto_tsquery('english', $2) ${tagFilter.sql}
+     WHERE user_id = $1 AND search_vector @@ plainto_tsquery('english', $2) ${filter.sql}
      ORDER BY ts_rank(search_vector, plainto_tsquery('english', $2)) DESC`,
-    [userId, query, ...tagFilter.params],
+    [userId, query, ...filter.params],
   );
   return assembleRecipes(pool, result.rows);
 }

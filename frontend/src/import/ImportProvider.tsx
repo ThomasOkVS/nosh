@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { importRecipeFromUrl } from "../api/import";
 import { useToast } from "../toast/ToastContext";
-import { ImportContext, type ActiveImport } from "./ImportContext";
+import { ImportContext, type ActiveImport, type OpenDialogOptions } from "./ImportContext";
 
 /** Best-effort, display-only label for the completion toast — not a
  * security boundary, just "which site did this come from" copy. */
@@ -26,6 +26,10 @@ export function ImportProvider({ children }: Readonly<{ children: ReactNode }>) 
   const [active, setActive] = useState<ActiveImport | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  // Set by whichever page opened the dialog; captured into the import itself
+  // when it starts, so reopening the dialog later (from anywhere) can't
+  // change where an already-running import will be filed.
+  const targetCollectionRef = useRef<number | null>(null);
   const navigate = useNavigate();
   const { showToast } = useToast();
 
@@ -34,7 +38,14 @@ export function ImportProvider({ children }: Readonly<{ children: ReactNode }>) 
     const controller = new AbortController();
     abortRef.current = controller;
 
-    setActive({ url, seenStages: [], startedAt: Date.now(), dismissed: false, status: "running" });
+    setActive({
+      url,
+      seenStages: [],
+      startedAt: Date.now(),
+      dismissed: false,
+      status: "running",
+      collectionId: targetCollectionRef.current,
+    });
     setDialogOpen(true);
 
     importRecipeFromUrl(
@@ -72,7 +83,8 @@ export function ImportProvider({ children }: Readonly<{ children: ReactNode }>) 
     setDialogOpen(false);
   }, []);
 
-  const openDialog = useCallback(() => {
+  const openDialog = useCallback((options?: OpenDialogOptions) => {
+    targetCollectionRef.current = options?.collectionId ?? null;
     setDialogOpen(true);
     // Re-attach "watching" status to an import that's running in the
     // background, so finishing now navigates instead of toasting.
@@ -103,16 +115,24 @@ export function ImportProvider({ children }: Readonly<{ children: ReactNode }>) 
       if (active.dismissed) {
         const recipe = active.recipe;
         const imageUrl = active.imageUrl;
+        const collectionId = active.collectionId;
         showToast(`Your recipe from ${hostnameOf(active.url)} is ready to review.`, {
           variant: "success",
           action: {
             label: "Review",
-            onClick: () => navigate("/recipes/new", { state: { importedRecipe: recipe, importedImageUrl: imageUrl } }),
+            onClick: () =>
+              navigate("/recipes/new", {
+                state: { importedRecipe: recipe, importedImageUrl: imageUrl, collectionId },
+              }),
           },
         });
       } else {
         navigate("/recipes/new", {
-          state: { importedRecipe: active.recipe, importedImageUrl: active.imageUrl },
+          state: {
+            importedRecipe: active.recipe,
+            importedImageUrl: active.imageUrl,
+            collectionId: active.collectionId,
+          },
         });
         setDialogOpen(false);
       }

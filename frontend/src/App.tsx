@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Route, Routes, useParams } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useParams } from "react-router-dom";
 import { AuthProvider } from "./auth/AuthProvider";
 import { RequireAuth } from "./auth/RequireAuth";
 import { Layout } from "./components/Layout";
@@ -8,7 +8,6 @@ import { LoginPage } from "./pages/LoginPage";
 import { MealPlanPage } from "./pages/MealPlanPage";
 import { RecipeDetailPage } from "./pages/RecipeDetailPage";
 import { RecipeFormPage } from "./pages/RecipeFormPage";
-import { RecipeListPage } from "./pages/RecipeListPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { SignupPage } from "./pages/SignupPage";
 import { ToastProvider } from "./toast/ToastProvider";
@@ -18,6 +17,14 @@ import { ToastProvider } from "./toast/ToastProvider";
 function KeyedRecipeFormPage() {
   const { id } = useParams<{ id: string }>();
   return <RecipeFormPage key={`edit-${id ?? ""}`} />;
+}
+
+/** `/recipes` was the old separate "All recipes" page; the library at `/`
+ * replaced it. Redirects there keeping `?q`/`?tag`, so old links and
+ * bookmarks still land on the same search. */
+function LegacyRecipesRedirect() {
+  const { search } = useLocation();
+  return <Navigate to={`/${search}`} replace />;
 }
 
 function App() {
@@ -37,7 +44,7 @@ function App() {
                   <Route path="/collections/:id" element={<CollectionsPage />} />
                   <Route path="/meal-plan" element={<MealPlanPage />} />
                   <Route path="/settings" element={<SettingsPage />} />
-                  <Route path="/recipes" element={<RecipeListPage />} />
+                  <Route path="/recipes" element={<LegacyRecipesRedirect />} />
                   {/* The `key`s force a remount when moving between create and
                     * edit (and between two different recipes). Both routes
                     * render the same component at the same tree position, so
