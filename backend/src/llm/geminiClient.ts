@@ -1,20 +1,34 @@
+import type { LlmUsage } from "../repositories/llmUsage";
 import { TAG_VOCABULARY } from "../services/recipeTags";
 
 const GEMINI_ENDPOINT_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 const REQUEST_TIMEOUT_MS = 30_000;
 
+/** Per-call options shared by both extractors. `model` overrides the
+ * extractor's configured default — it's the user's Settings-page choice, and
+ * must already have been checked against the allowlist, since it ends up in
+ * the request URL. */
+export interface GeminiCallOptions {
+  model?: string;
+  signal?: AbortSignal;
+}
+
 export type GeminiExtractFn = (
   pageText: string,
   sourceUrl: string,
-  signal?: AbortSignal,
+  options?: GeminiCallOptions,
 ) => Promise<unknown>;
 
 export type GeminiVideoExtractFn = (
   video: { buffer: Buffer; mimeType: string },
   caption: string | null,
   sourceUrl: string,
-  signal?: AbortSignal,
+  options?: GeminiCallOptions,
 ) => Promise<unknown>;
+
+/** Called once per request Google actually answered, so Nosh can estimate
+ * the quota left — Google exposes no endpoint for it. */
+export type GeminiUsageListener = (model: string, usage: LlmUsage) => Promise<void> | void;
 
 export class GeminiExtractionError extends Error {}
 /** Reachable but can't serve this request now — quota exhausted or a Google
@@ -132,6 +146,38 @@ interface GeminiPart {
 
 interface GeminiResponseBody {
   candidates?: { content?: { parts?: GeminiPart[] } }[];
+  usageMetadata?: {
+    promptTokenCount?: number;
+    candidatesTokenCount?: number;
+    /** Reasoning models' internal thinking — counted against token quotas
+     * like any other output, so it's included in the output total. */
+    thoughtsTokenCount?: number;
+  };
+}
+
+const NO_TOKENS: LlmUsage = { promptTokens: 0, outputTokens: 0 };
+
+function usageFrom(body: GeminiResponseBody): LlmUsage {
+  const meta = body.usageMetadata;
+  return {
+    promptTokens: meta?.promptTokenCount ?? 0,
+    outputTokens: (meta?.candidatesTokenCount ?? 0) + (meta?.thoughtsTokenCount ?? 0),
+  };
+}
+
+/** Usage tracking is a display-only estimate — a database hiccup while
+ * recording it must never fail the import it describes. */
+async function reportUsage(
+  onUsage: GeminiUsageListener | undefined,
+  model: string,
+  usage: LlmUsage,
+): Promise<void> {
+  if (!onUsage) return;
+  try {
+    await onUsage(model, usage);
+  } catch (err) {
+    console.error("Failed to record Gemini usage:", err);
+  }
 }
 
 async function callGemini(
@@ -140,6 +186,7 @@ async function callGemini(
   parts: unknown[],
   fetchImpl: typeof fetch,
   signal: AbortSignal | undefined,
+  onUsage: GeminiUsageListener | undefined,
 ): Promise<unknown> {
   // One budget covering the response body too, not just the headers.
   const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
@@ -173,6 +220,9 @@ async function callGemini(
   }
 
   if (!response.ok) {
+    // Counted even though it failed: Google answered, and a request it
+    // rejected may still count towards the daily limit.
+    await reportUsage(onUsage, model, NO_TOKENS);
     // Google puts the actual reason (expired key, exhausted quota, unknown
     // model id) in the body — log it, because the caller only ever sees a
     // generic message and this is otherwise undebuggable.
@@ -190,8 +240,10 @@ async function callGemini(
   try {
     body = (await response.json()) as GeminiResponseBody;
   } catch {
+    await reportUsage(onUsage, model, NO_TOKENS);
     throw new GeminiExtractionError("Gemini returned a non-JSON response");
   }
+  await reportUsage(onUsage, model, usageFrom(body));
 
   const text = (body.candidates?.[0]?.content?.parts ?? [])
     .filter((part) => part.thought !== true && typeof part.text === "string")
@@ -210,27 +262,37 @@ async function callGemini(
 
 export function createGeminiExtractor(
   apiKey: string,
-  model: string,
+  defaultModel: string,
   fetchImpl: typeof fetch = fetch,
+  onUsage?: GeminiUsageListener,
 ): GeminiExtractFn {
-  return (pageText: string, sourceUrl: string, signal?: AbortSignal) =>
-    callGemini(model, apiKey, [{ text: buildTextPrompt(pageText, sourceUrl) }], fetchImpl, signal);
+  return (pageText, sourceUrl, options = {}) =>
+    callGemini(
+      options.model ?? defaultModel,
+      apiKey,
+      [{ text: buildTextPrompt(pageText, sourceUrl) }],
+      fetchImpl,
+      options.signal,
+      onUsage,
+    );
 }
 
 export function createGeminiVideoExtractor(
   apiKey: string,
-  model: string,
+  defaultModel: string,
   fetchImpl: typeof fetch = fetch,
+  onUsage?: GeminiUsageListener,
 ): GeminiVideoExtractFn {
-  return (video, caption, sourceUrl, signal) =>
+  return (video, caption, sourceUrl, options = {}) =>
     callGemini(
-      model,
+      options.model ?? defaultModel,
       apiKey,
       [
         { text: buildVideoPrompt(caption, sourceUrl) },
         { inlineData: { mimeType: video.mimeType, data: video.buffer.toString("base64") } },
       ],
       fetchImpl,
-      signal,
+      options.signal,
+      onUsage,
     );
 }

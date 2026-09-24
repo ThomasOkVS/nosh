@@ -116,6 +116,26 @@ describe("import routes", () => {
     expect(result.recipe!.sourceUrl).toBe("https://example.com/recipe");
   });
 
+  it("uses the model saved on the Settings page, and automatic otherwise", async () => {
+    stubFetchWithHtml("<html><body>No recipe markup here</body></html>");
+    const geminiExtract = fakeGemini({
+      title: "Tomato Soup",
+      ingredients: [{ quantity: null, unit: null, name: "tomatoes" }],
+      steps: [{ instruction: "Simmer" }],
+    });
+    const app = createTestApp({ geminiExtract });
+    const agent = await signedInAgent(app, "importmodel@example.com");
+
+    await agent.post("/import").send({ url: "https://example.com/recipe" });
+    await agent.put("/settings/magic-import").send({ model: "other-model" });
+    // A fresh Response — the first import already consumed the stub's body.
+    stubFetchWithHtml("<html><body>No recipe markup here</body></html>");
+    await agent.post("/import").send({ url: "https://example.com/recipe" });
+
+    const models = vi.mocked(geminiExtract).mock.calls.map((call) => call[2]?.model);
+    expect(models).toEqual([undefined, "other-model"]);
+  });
+
   it("stops at the structured-data stage when the page has JSON-LD", async () => {
     stubFetchWithHtml(RECIPE_JSON_LD_PAGE);
     const geminiExtract = fakeGemini({});

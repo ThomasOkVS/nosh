@@ -22,7 +22,6 @@ go-ahead. Ordered per [index.md](index.md#planned-post-mvp)'s stated
 priority.
 
 - [ ] Allow mobile users to close the app during import, and get a push notification once it's done
-- [ ] View tokens left / model selector for magic import
 - [ ] Auto translate imported recipes to the user's native language and preferred units of measure.
 - [ ] Smart unit conversions and recipe scaling.
 - [ ] Notes & ratings on recipes.
@@ -48,6 +47,31 @@ priority.
       just a code edit.
 
 ## Completed
+
+- **2026-09-24** — Magic import model selector and tokens-left view shipped
+  as a new **Settings** page (`/settings`, from the user menu), not a picker
+  in the import dialog — the owner redirected mid-build to "a magic
+  configuration section in the settings menu, don't ask every time." Each
+  user saves a preferred Gemini model (`users.import_model`, `NULL` =
+  Automatic, i.e. the existing text/video defaults) from an env-configured
+  allowlist (`GEMINI_MODELS=id=dailyLimit,…`, validated on write and on
+  every import since the id lands in Gemini's URL). "Tokens left" became an
+  **estimated requests-left per model** plus tokens used today: Gemini has
+  no quota-remaining API, so Nosh counts every request Google answers in a
+  new `llm_usage` table (one row per Pacific-time quota day per model —
+  global, not per-user, because Google's limits are per project) via an
+  `onUsage` hook on the Gemini client. New migration
+  `1700000000012_magic-import-settings` — **run `pnpm migrate up` on
+  deploy**. See
+  [decisions.md](decisions.md#2026-09-24-magic-import-settings).
+  `pnpm lint`/`test`/`build` pass on both packages (backend 244 tests,
+  frontend 126). **Verified live** against this worktree's own servers and a
+  separate dev database (the parallel `unified-library` worktree's Docker
+  stack was left untouched): a saved model choice reached the real Gemini
+  endpoint and the request was counted against it; the page was checked in
+  both themes at desktop and phone widths. **Not verified with a real API
+  key** (none available), so real `usageMetadata` token counts are
+  unit-tested only.
 
 - **2026-08-28** — Weekly meal planner shipped: a single ongoing per-user
   calendar, not a `meal_plans` entity users create/name/switch between — one

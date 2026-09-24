@@ -1992,3 +1992,84 @@ partway through, at the project owner's request — the dev stack (same
 named Postgres/uploads volumes, same project name) was stopped and
 restarted from the worktree directory rather than the original checkout so
 live verification exercised the worktree's own files.
+
+## 2026-09-24: Magic import settings — per-user model choice, self-counted usage estimate {#2026-09-24-magic-import-settings}
+
+**Decision:** The backlog item "View tokens left / model selector for magic
+import" ships as a Settings page (`/settings`, from the user menu) with a
+"Magic import" section: a saved per-user model preference
+(`users.import_model`, `NULL` = Automatic) and, per allowed model, an
+estimated "~N of M requests left today" plus tokens used today. Scope was
+confirmed with the project owner first: an estimated requests-left figure
+(not just a usage counter), models from an env-configured allowlist (not a
+live list from Google), and — changed mid-way on the owner's direction — a
+saved setting rather than a per-import picker in the import dialog ("don't
+ask every time").
+
+**Why "left" has to be an estimate Nosh computes itself.** Gemini's API has
+no endpoint that reports remaining quota (Google's rate-limit docs only
+point to the AI Studio dashboard). So Nosh counts its own calls in
+`llm_usage` and subtracts from a limit configured in `GEMINI_MODELS`. Two
+consequences, both deliberate and shown in the UI's footnote:
+- Anything else using the same key (AI Studio, another app) is invisible, so
+  the number can be optimistic.
+- Limits are configured, not discovered — Google changes free-tier limits
+  per model over time, and a model can be listed without a limit, in which
+  case only usage is shown.
+
+**Why global, not per-user; why the Pacific day.** Google applies rate limits
+per project, not per key and certainly not per Nosh user — every user of
+this instance draws from one budget, so a per-user "left" would be wrong.
+Requests-per-day quotas reset at midnight Pacific time (per Google's
+rate-limits page, checked while building this), so `usage_day` is
+`(now() AT TIME ZONE 'America/Los_Angeles')::date`, computed in SQL so the
+host's own time zone can't shift the bucket — the same class of day-boundary
+bug the meal planner's `DATE` column ran into.
+
+**What counts as a request.** Every request Google *answered*, including
+error responses (a 4xx/5xx may still count against the daily limit, and
+counting it is the conservative choice for an estimate), with zero tokens
+when the response had no `usageMetadata`. Requests that never reached
+Google (network failure, our own timeout) aren't counted. Thinking tokens
+(`thoughtsTokenCount`) are added to output tokens — they count against
+token quotas like any other output. Recording is best-effort: a database
+error while counting is logged and swallowed, never failing the import it
+describes.
+
+**Why the allowlist is env config and checked twice.** The chosen id is
+interpolated into Gemini's request URL, so it can't be an arbitrary
+client-supplied string: `PUT /settings/magic-import` rejects anything not
+in the list, `GEMINI_MODELS` itself is parsed strictly at boot (ids limited
+to `[a-z0-9.-]`, malformed entries fail startup rather than silently
+vanishing), and each import re-checks the saved preference
+(`resolveImportModel`) — so shrinking `GEMINI_MODELS` later drops affected
+users back to Automatic instead of breaking their imports. The two per-path
+defaults are always added to the list so "Automatic" never points at a
+model the page doesn't show.
+
+**Why one choice for both paths, not separate text/video pickers.** The
+original text/video split exists because video is token-heavy enough that
+quota matters more than model tier; "Automatic" keeps exactly that
+behavior and is the default. Someone overriding it is making a deliberate
+"use this model" call, and a single picker keeps the page simple; separate
+pickers could be added later with one more column.
+
+**Alternatives considered and rejected:**
+- A live model list from Google's `models` endpoint — rejected with the
+  owner: it's long and mostly unsuitable (embeddings, image generation,
+  previews), and still carries no quota information.
+- Tracking usage in memory — rejected: Watchtower redeploys would reset it
+  mid-day.
+- A per-import picker in the import dialog — dropped at the owner's
+  direction in favor of a saved setting.
+
+No new dependency. Verified live against this worktree's own backend and
+frontend (separate ports and a separate dev database, so the parallel
+worktree's running Docker stack was left untouched): after saving a model,
+importing a page with no recipe data sent the request to that model; Google
+rejected the placeholder key, and that one request was counted against the
+chosen model and not the other. The page was checked in dark and light
+mode at desktop and phone widths, including the low-quota (red) state and
+the user-menu link. **Not verified with a real API key** — none was
+available in this environment, so the token numbers from a successful
+`usageMetadata` response are covered only by unit tests.

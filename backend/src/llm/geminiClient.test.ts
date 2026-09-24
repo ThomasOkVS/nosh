@@ -109,6 +109,79 @@ describe("createGeminiExtractor", () => {
 
     await expect(extract("page text", "https://example.com")).rejects.toThrow(GeminiExtractionError);
   });
+
+  it("uses a per-call model override instead of the default", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(geminiPayload({ title: "Soup" })));
+    const extract = createGeminiExtractor("test-key", "default-model", fetchImpl as unknown as typeof fetch);
+
+    await extract("page text", "https://example.com", { model: "picked-model" });
+
+    const [url] = fetchImpl.mock.calls[0] as [string];
+    expect(url).toContain("/picked-model:generateContent");
+    expect(url).not.toContain("default-model");
+  });
+
+  it("reports token usage, counting thinking tokens as output", async () => {
+    const onUsage = vi.fn();
+    const fetchImpl = vi.fn().mockResolvedValue(
+      jsonResponse({
+        ...geminiPayload({ title: "Soup" }),
+        usageMetadata: { promptTokenCount: 1200, candidatesTokenCount: 300, thoughtsTokenCount: 50 },
+      }),
+    );
+    const extract = createGeminiExtractor(
+      "test-key",
+      "test-model",
+      fetchImpl as unknown as typeof fetch,
+      onUsage,
+    );
+
+    await extract("page text", "https://example.com");
+
+    expect(onUsage).toHaveBeenCalledWith("test-model", { promptTokens: 1200, outputTokens: 350 });
+  });
+
+  it("counts a rejected request with zero tokens", async () => {
+    const onUsage = vi.fn();
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ error: "quota" }, 429));
+    const extract = createGeminiExtractor(
+      "test-key",
+      "test-model",
+      fetchImpl as unknown as typeof fetch,
+      onUsage,
+    );
+
+    await expect(extract("page text", "https://example.com")).rejects.toBeInstanceOf(GeminiUnavailableError);
+    expect(onUsage).toHaveBeenCalledWith("test-model", { promptTokens: 0, outputTokens: 0 });
+  });
+
+  it("doesn't count a request that never reached Google", async () => {
+    const onUsage = vi.fn();
+    const fetchImpl = vi.fn().mockRejectedValue(new Error("network down"));
+    const extract = createGeminiExtractor(
+      "test-key",
+      "test-model",
+      fetchImpl as unknown as typeof fetch,
+      onUsage,
+    );
+
+    await expect(extract("page text", "https://example.com")).rejects.toThrow(GeminiExtractionError);
+    expect(onUsage).not.toHaveBeenCalled();
+  });
+
+  it("still returns the recipe when recording usage fails", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const recipe = { title: "Soup", ingredients: [], steps: [] };
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(geminiPayload(recipe)));
+    const extract = createGeminiExtractor(
+      "test-key",
+      "test-model",
+      fetchImpl as unknown as typeof fetch,
+      vi.fn().mockRejectedValue(new Error("db down")),
+    );
+
+    await expect(extract("page text", "https://example.com")).resolves.toEqual(recipe);
+  });
 });
 
 describe("createGeminiVideoExtractor", () => {

@@ -94,6 +94,11 @@ even though there is exactly one user today — see
   `UNIQUE(user_id, planned_on)` — one recipe assigned to one calendar day, at
   most one entry per user per day. See [Weekly meal planner](#weekly-meal-planner)
   below.
+- **users.import_model** — nullable `TEXT`, the user's magic-import model
+  preference (`NULL` = Automatic).
+- **llm_usage** — `usage_day` (`DATE`, Pacific time), `model`, `requests`,
+  `prompt_tokens`, `output_tokens`, primary key `(usage_day, model)`. Global,
+  not per-user. See [Magic import settings](#magic-import-settings) below.
 
 Not modeled yet, deliberately: ratings/notes, nutrition facts, grocery lists.
 These are post-MVP (see [index.md](index.md)) and will get their own
@@ -355,6 +360,39 @@ recipe is already saved by the time this call runs, so a failure (404,
 blocked host, unsupported type, oversized) is swallowed with a toast
 ("Couldn't import the photo — add one manually") rather than surfaced as a
 save error.
+
+## Magic import settings (model choice + usage estimate) {#magic-import-settings}
+
+A **Settings** page (`/settings`, reached from the user menu) has a "Magic
+import" section where each user picks which Gemini model AI-assisted import
+uses, and sees roughly how much of each model's daily free-tier quota is
+left.
+
+- **Model choice** is a per-user preference, `users.import_model` (nullable
+  `TEXT`; `NULL` = "Automatic", i.e. today's behavior — `GEMINI_TEXT_MODEL`
+  for web pages, `GEMINI_VIDEO_MODEL` for videos). A chosen model applies to
+  both paths. `GET`/`PUT /settings/magic-import` read and write it.
+- **Allowed models** are runtime config, not schema: `GEMINI_MODELS`
+  (`id=dailyLimit,…`, parsed by `config/llmModels.ts`), with the two
+  per-path defaults always included. The server checks a chosen id against
+  that list on write *and* again on every import (`resolveImportModel`) — the
+  id ends up in Gemini's request URL, and a preference saved before the list
+  shrank silently falls back to Automatic rather than failing imports.
+- **Usage** is counted by Nosh itself, since Gemini exposes no
+  quota-remaining endpoint: the Gemini client takes an `onUsage` hook
+  (wired to `repositories/llmUsage.ts` in `index.ts`) that upserts one row
+  per `(usage_day, model)` in `llm_usage` for every request Google answered,
+  adding the tokens from the response's `usageMetadata` (thinking tokens
+  count as output). A failure to record never fails the import. The table is
+  **not** per-user — Gemini's limits are per Google project, so every Nosh
+  user draws from the same budget — and `usage_day` is the **Pacific**
+  calendar day, computed in SQL, because that's when Google resets
+  requests-per-day quotas.
+
+The page labels every number as an estimate: calls made with the same key
+outside Nosh (AI Studio, another app) aren't seen. See
+[decisions.md](decisions.md#2026-09-24-magic-import-settings) for the
+reasoning.
 
 ## Deployment target
 

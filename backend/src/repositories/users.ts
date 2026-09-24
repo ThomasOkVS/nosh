@@ -63,6 +63,19 @@ export async function findUserByUsername(pool: Pool, username: string): Promise<
   return row ? toUser(row) : null;
 }
 
+/** The user's saved magic-import model, or null for "automatic". */
+export async function findImportModel(pool: Pool, userId: number): Promise<string | null> {
+  const result = await pool.query<{ import_model: string | null }>(
+    `SELECT import_model FROM users WHERE id = $1`,
+    [userId],
+  );
+  return result.rows[0]?.import_model ?? null;
+}
+
+export async function setImportModel(pool: Pool, userId: number, model: string | null): Promise<void> {
+  await pool.query(`UPDATE users SET import_model = $2 WHERE id = $1`, [userId, model]);
+}
+
 export async function findUserById(pool: Pool, id: number): Promise<User | null> {
   const result = await pool.query<UserRow>(
     `SELECT id, email, username, password_hash, created_at FROM users WHERE id = $1`,
