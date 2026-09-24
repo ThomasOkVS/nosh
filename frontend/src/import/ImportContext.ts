@@ -16,12 +16,20 @@ export interface ActiveImport {
    * the form is saved and a real recipe id exists to attach it to. */
   imageUrl?: string | null;
   errorMessage?: string;
+  /** Where the imported recipe should be filed — the folder the import was
+   * started from (`null` = Home). Pre-selects the form's collection picker. */
+  collectionId: number | null;
+}
+
+export interface OpenDialogOptions {
+  /** The folder a new import should land in; defaults to Home. */
+  collectionId?: number | null;
 }
 
 export interface ImportContextValue {
   active: ActiveImport | null;
   dialogOpen: boolean;
-  openDialog: () => void;
+  openDialog: (options?: OpenDialogOptions) => void;
   closeDialog: () => void;
   startImport: (url: string) => void;
   cancelImport: () => void;

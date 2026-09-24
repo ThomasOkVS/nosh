@@ -1,20 +1,34 @@
 import { apiFetch, apiUrl } from "./client";
 import type { Recipe, RecipeImage, RecipeInput } from "./types";
 
-export function listRecipes(tag?: string): Promise<Recipe[]> {
-  return apiFetch<Recipe[]>(`/recipes${tag ? `?tag=${encodeURIComponent(tag)}` : ""}`);
+export interface RecipeFilters {
+  tag?: string;
+  /** Only recipes directly in this collection — `"root"` means Home. */
+  collection?: number | "root";
+  /** Only recipes in this collection or anywhere beneath it. */
+  within?: number;
 }
 
-export function searchRecipes(query: string, tag?: string): Promise<Recipe[]> {
-  const params = new URLSearchParams({ q: query });
-  if (tag) params.set("tag", tag);
+function filterParams(filters: RecipeFilters, params = new URLSearchParams()): URLSearchParams {
+  if (filters.tag) params.set("tag", filters.tag);
+  if (filters.collection !== undefined) params.set("collection", String(filters.collection));
+  if (filters.within !== undefined) params.set("within", String(filters.within));
+  return params;
+}
+
+export function listRecipes(filters: RecipeFilters = {}): Promise<Recipe[]> {
+  const query = filterParams(filters).toString();
+  return apiFetch<Recipe[]>(`/recipes${query ? `?${query}` : ""}`);
+}
+
+export function searchRecipes(query: string, filters: RecipeFilters = {}): Promise<Recipe[]> {
+  const params = filterParams(filters, new URLSearchParams({ q: query }));
   return apiFetch<Recipe[]>(`/recipes/search?${params.toString()}`);
 }
 
-/** Moves a recipe to a different collection — the only way its collection
- * ever changes; a recipe always belongs to exactly one, so there's no
- * "unset" counterpart. */
-export function moveRecipeCollection(recipeId: number, collectionId: number): Promise<Recipe> {
+/** Moves a recipe to a different collection, or to Home with `null` — the
+ * only way its collection ever changes. */
+export function moveRecipeCollection(recipeId: number, collectionId: number | null): Promise<Recipe> {
   return apiFetch<Recipe>(`/recipes/${recipeId}/collection`, {
     method: "PATCH",
     body: { collectionId },

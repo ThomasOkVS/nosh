@@ -12,8 +12,8 @@ interface CollectionSelectProps {
    * can never be offered as its own new home or parent. */
   excludeIds?: ReadonlySet<number>;
   /** Rendered as the first, unselected option; picking it calls
-   * `onChange(null)`. Omit when every state must map to a real collection
-   * (e.g. moving a recipe, which can never go to "none"). */
+   * `onChange(null)` — in practice always "Home (top level)", since `null`
+   * means Home everywhere a collection is chosen. */
   placeholderLabel?: string;
   className?: string;
 }

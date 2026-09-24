@@ -40,17 +40,17 @@ function makeRecipe(overrides: Partial<Recipe> = {}): Recipe {
   };
 }
 
-function ListPageProbe() {
+function LibraryProbe() {
   const [params] = useSearchParams();
-  return <p>List page (tag={params.get("tag") ?? "none"})</p>;
+  return <p>Library (tag={params.get("tag") ?? "none"})</p>;
 }
 
-function renderCard(recipe: Recipe) {
+function renderCard(recipe: Recipe, caption?: string) {
   return render(
     <MemoryRouter initialEntries={["/card"]}>
       <Routes>
-        <Route path="/recipes" element={<ListPageProbe />} />
-        <Route path="/card" element={<RecipeCard recipe={recipe} />} />
+        <Route path="/" element={<LibraryProbe />} />
+        <Route path="/card" element={<RecipeCard recipe={recipe} caption={caption} />} />
         <Route path="/recipes/:id" element={<p>Recipe detail page</p>} />
       </Routes>
     </MemoryRouter>,
@@ -58,13 +58,19 @@ function renderCard(recipe: Recipe) {
 }
 
 describe("RecipeCard", () => {
-  it("clicking a tag chip navigates to the tag-filtered list, not the recipe detail page", () => {
+  it("clicking a tag chip filters the library by that tag, not the recipe detail page", () => {
     renderCard(makeRecipe({ tags: ["soup"] }));
 
     fireEvent.click(screen.getByRole("button", { name: "soup" }));
 
-    expect(screen.getByText("List page (tag=soup)")).toBeInTheDocument();
+    expect(screen.getByText("Library (tag=soup)")).toBeInTheDocument();
     expect(screen.queryByText("Recipe detail page")).not.toBeInTheDocument();
+  });
+
+  it("shows a caption above the title when given one", () => {
+    renderCard(makeRecipe(), "Home / Baking");
+
+    expect(screen.getByText("Home / Baking")).toBeInTheDocument();
   });
 
   it("clicking the card itself navigates to the recipe detail page", () => {

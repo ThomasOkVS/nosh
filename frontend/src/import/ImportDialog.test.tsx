@@ -11,27 +11,35 @@ import { ImportProvider } from "./ImportProvider";
 /** Stands in for RecipeFormPage so the test can assert on the router state
  * a completed import hands over, without rendering the whole form. */
 function StateProbe() {
-  const { state } = useLocation() as { state?: { importedRecipe?: RecipeInput } };
-  return <div data-testid="imported-title">{state?.importedRecipe?.title ?? "none"}</div>;
+  const { state } = useLocation() as {
+    state?: { importedRecipe?: RecipeInput; collectionId?: number | null };
+  };
+  return (
+    <>
+      <div data-testid="imported-title">{state?.importedRecipe?.title ?? "none"}</div>
+      <div data-testid="imported-collection">{String(state?.collectionId ?? "none")}</div>
+    </>
+  );
 }
 
-/** Stands in for RecipeListPage's trigger button. */
-function OpenButton() {
+/** Stands in for CollectionsPage's Import button — `collectionId` is the
+ * folder being viewed, `null` for Home. */
+function OpenButton({ collectionId = null }: Readonly<{ collectionId?: number | null }>) {
   const { openDialog } = useImport();
   return (
-    <button type="button" onClick={openDialog}>
+    <button type="button" onClick={() => openDialog({ collectionId })}>
       Import from URL
     </button>
   );
 }
 
-function renderApp() {
+function renderApp(collectionId: number | null = null) {
   return render(
     <MemoryRouter initialEntries={["/"]}>
       <ToastProvider>
         <ImportProvider>
           <Routes>
-            <Route path="/" element={<OpenButton />} />
+            <Route path="/" element={<OpenButton collectionId={collectionId} />} />
             <Route path="/recipes/new" element={<StateProbe />} />
           </Routes>
           <ImportDialog />
@@ -138,6 +146,33 @@ describe("ImportDialog", () => {
     expect(await screen.findByTestId("imported-title")).toHaveTextContent("Tomato Soup");
     // The dialog closed itself as part of handing off to the form.
     expect(screen.queryByLabelText("Recipe URL")).not.toBeInTheDocument();
+  });
+
+  it("hands the folder the import was started from on to the create form", async () => {
+    vi.spyOn(importApi, "importRecipeFromUrl").mockResolvedValue({
+      recipe: { title: "Tomato Soup" } as RecipeInput,
+      imageUrl: null,
+    });
+
+    renderApp(7);
+    openAndSubmit();
+
+    expect(await screen.findByTestId("imported-collection")).toHaveTextContent("7");
+  });
+
+  it("keeps the starting folder for a backgrounded import's Review action too", async () => {
+    let resolveImport!: (result: importApi.ImportResult) => void;
+    vi.spyOn(importApi, "importRecipeFromUrl").mockImplementation(
+      () => new Promise((resolve) => (resolveImport = resolve)),
+    );
+
+    renderApp(7);
+    openAndSubmit();
+    fireEvent.click(screen.getByRole("button", { name: /Keep this running in the background/ }));
+    resolveImport({ recipe: { title: "Fajitas" } as RecipeInput, imageUrl: null });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Review" }));
+    expect(await screen.findByTestId("imported-collection")).toHaveTextContent("7");
   });
 
   it("lets the user cancel — the underlying request is aborted, not just hidden", async () => {

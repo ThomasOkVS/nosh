@@ -47,8 +47,44 @@ priority.
       orange and weren't regenerated — that needs an image-export step, not
       just a code edit.
 
+### Follow-ups
+
+- [ ] Live-verify the unified library (2026-09-23) in a browser against the
+      dev stack — merged without it at the project owner's request. Check:
+      Home shows its own recipes; search inside a nested folder is scoped,
+      "Search everywhere" widens it; header search from the meal-plan page;
+      tag chips open `/?tag=`; New recipe / Import from inside a folder file
+      into it; dragging a card onto the Home breadcrumb; `/recipes?q=x`
+      redirect; both themes, desktop + phone widths (the header search wraps
+      to its own row on phones).
+
 ## Completed
 
+- **2026-09-23** — Library unified; the separate "All recipes" page is gone.
+  Home (`/`) and every collection (`/collections/:id`) are one folder view:
+  sub-collections, then the recipes *directly* inside. Home can now hold
+  recipes itself (`recipes.collection_id` nullable, `NULL` = Home), replacing
+  the auto-created "Other" collection. A single search box in the header
+  searches the current folder and everything beneath it (recursive-CTE
+  `within` filter on `GET /recipes`/`/recipes/search`), with a "Search
+  everywhere" link and each result captioned with its folder path; from
+  non-library pages it searches the whole library. Every folder has New
+  recipe / Import buttons that file straight into it (import carries the
+  folder through `ImportProvider`). `/recipes` redirects to `/` keeping
+  `?q`/`?tag`; `GET /collections/:id/recipes` was removed as unused. Scope
+  (Home as a place, direct-contents browsing, folder-scoped search) was
+  confirmed with the project owner before building; the migration's "Other"
+  rule was revised mid-way after the real dev data showed an "Other" with a
+  sub-collection (recipes move to Home, folder deleted only if empty). See
+  [decisions.md](decisions.md#2026-09-23-library-unified-recipes-may-live-at-home).
+  `pnpm lint`/`test`/`build` pass (backend: 229 tests, run in the dev
+  container against Postgres, incl. new `collection`/`within`/move-to-Home
+  coverage; frontend: 142 tests, incl. new `LibrarySearch`,
+  `collectionTree`, form pre-fill, import-folder handoff and `/recipes`
+  redirect coverage). Migration applied to the dev DB and round-tripped
+  down/up. **Not verified live in a browser** — tracked above under
+  Follow-ups. Done in a worktree (`.claude/worktrees/unified-library`) per
+  the owner's standing request.
 - **2026-08-28** — Weekly meal planner shipped: a single ongoing per-user
   calendar, not a `meal_plans` entity users create/name/switch between — one
   new table, `meal_plan_entries(user_id, planned_on, recipe_id)` with

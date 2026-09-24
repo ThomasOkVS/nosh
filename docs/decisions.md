@@ -1992,3 +1992,62 @@ partway through, at the project owner's request — the dev stack (same
 named Postgres/uploads volumes, same project name) was stopped and
 restarted from the worktree directory rather than the original checkout so
 live verification exercised the worktree's own files.
+
+## 2026-09-23: Library unified; recipes may live at Home {#2026-09-23-library-unified-recipes-may-live-at-home}
+
+**Supersedes two parts of the
+[2026-08-28 collections redesign](#2026-08-28-collections-redesigned-as-a-nested-mandatory-hierarchy-becomes-the-home-page):**
+the separate `/recipes` "All recipes" page, and the auto-created "Other"
+collection that every uncategorized recipe was forced into.
+
+**Problem, from using the app:** there were two places to look for a recipe
+(folders couldn't be searched; the flat list couldn't be browsed), a recipe
+couldn't be added from inside the folder you were looking at (the form
+always defaulted to "Other"), and "Other" was a workaround for Home being the
+one place that couldn't hold recipes.
+
+**Decision** (scope confirmed with the project owner via three questions
+before building):
+
+- **A recipe still lives in exactly one place — but Home counts as a
+  place.** `recipes.collection_id` became nullable; `NULL` = at Home.
+  Folder semantics (one location, delete-folder-deletes-contents) are
+  unchanged. Many-to-many "playlist" collections were offered and rejected:
+  a bigger migration, and it would blur collections into tags.
+- **A folder shows only what's directly in it**, like a file explorer.
+  Rejected: showing every nested recipe in each folder (makes Home a
+  duplicate "all recipes" list again).
+- **Search covers the current folder and everything below it**, with a
+  one-click "Search everywhere". At Home, that's the whole library, which is
+  what replaces the old `/recipes` page. Rejected: always searching
+  everything (loses the "I know it's somewhere in Baking" narrowing).
+- **The search box moved into the header** (`LibrarySearch`) so it's on
+  every page; outside the library, Enter jumps to Home's results. One box
+  instead of a header one plus a page one: the URL's `?q` is the single
+  source of truth either way.
+- **"New recipe" and "Import" on every folder**, filing straight into it
+  (`/recipes/new?collection=<id>`; imports carry the folder through
+  `ImportProvider` into the form's router state, captured when the import
+  *starts* so reopening the dialog from elsewhere can't redirect it).
+
+**API shape.** `GET /recipes` and `GET /recipes/search` gained two optional
+filters alongside `tag`: `collection=<id>|root` (direct contents only) and
+`within=<id>` (whole subtree, via the same recursive-CTE walk the
+collections code already used). `PATCH /recipes/:id/collection` accepts
+`null` (move to Home). The now-unused `GET /collections/:id/recipes`
+("folder contents") endpoint was removed rather than kept alongside: the
+page derives a folder, its children and its breadcrumb from the flat
+`GET /collections` list it already loads, and gets its recipes from
+`GET /recipes?collection=…` — one shape for Home and folders alike.
+
+**Migration (`1700000000012_recipes-at-home`).** Drops `NOT NULL`, then:
+every recipe directly in a top-level collection named exactly "Other" moves
+to Home; the "Other" collection is deleted only if that leaves it with no
+sub-collections. The original plan left an "Other" *with* sub-collections
+untouched, but the real dev database turned out to have exactly that case
+(an "Other" holding all 5 recipes plus a hand-made sub-collection), which
+would have left Home empty and defeated the point, so the rule was changed
+with the project owner's sign-off. `down()` recreates a top-level "Other"
+per user who has Home recipes and moves them back into it, then restores
+`NOT NULL`; the down/up round trip was exercised against the dev database.
+Signup no longer seeds an "Other" collection either.

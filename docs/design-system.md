@@ -507,16 +507,19 @@ drag-and-drop has no touch equivalent, and this app's primary target device
 accessible/mobile-reachable path regardless.
 
 - **Drag source:** `RecipeCard` takes a `draggable` prop (default `false`,
-  enabled only where `CollectionsPage` renders it — `RecipeListPage`'s flat
-  grid has no folders to drop into, so its cards aren't draggable). The
+  enabled only in `CollectionsPage`'s browse mode — search results are a
+  flat list with no folder rows to drop into, so their cards aren't
+  draggable). The
   payload rides in a dedicated `dataTransfer` MIME type
   (`application/x-nosh-recipe-id`), not the browser's native link-drag
   default: `RecipeCard` renders as an `<a>`, and anchors are natively
   draggable with the link's own URL as their default drag payload, which
   every drop target must ignore rather than accidentally act on.
 - **Drop targets:** each sub-collection row, and every *ancestor* breadcrumb
-  crumb — not the current collection itself (that's where the card already
-  is), and never "Home", since a recipe can never be parentless. Hover
+  crumb, **including "Home"** since 2026-09-23 (recipes can now live at
+  Home) — but not the current collection itself (that's where the card
+  already is). The wiring is shared via `hooks/useRecipeDropTargets.ts` and
+  `components/CollectionBreadcrumb.tsx`. Hover
   feedback reuses the same `sauce-500` border / `sauce-50` tint the
   file-upload dropzone already established (see File upload), so "you can
   drop this here" reads consistently rather than inventing a second visual
@@ -769,7 +772,10 @@ picked per situation, not one universal spinner:
 - **Refetch with existing data already on screen** (typing a new search
   query while results are already showing): **keep the current results
   visible** and show a small inline spinner (`CircleNotchIcon` +
-  `animate-spin`) next to the search input instead of replacing the list.
+  `animate-spin`) instead of replacing the list — since 2026-09-23 the
+  search box lives in the header (`LibrarySearch`), so the spinner sits in
+  `CollectionsPage`'s "N results for … in …" line rather than inside the
+  input.
   Blanking a populated list on every keystroke is jarring and throws away
   information the user can still act on. This relies on the data-fetching
   hook keeping its previous `data` around while a new request is in flight
