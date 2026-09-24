@@ -1,4 +1,4 @@
-import { BellIcon, BellSlashIcon, CaretDownIcon, MoonIcon, SignOutIcon, SunIcon } from "@phosphor-icons/react";
+import { BellIcon, BellSlashIcon, CaretDownIcon, GearIcon, MoonIcon, SignOutIcon, SunIcon } from "@phosphor-icons/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/useAuth";
@@ -119,6 +119,18 @@ export function UserMenu() {
           aria-label="User menu"
           className="glass-menu animate-dialog-in absolute right-0 z-20 mt-2 w-56 rounded-lg p-1"
         >
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              close();
+              navigate("/settings");
+            }}
+            className={menuItemClass}
+          >
+            <GearIcon size={18} />
+            Settings
+          </button>
           <button type="button" role="menuitem" onClick={toggleTheme} className={menuItemClass}>
             {dark ? <SunIcon size={18} weight="fill" /> : <MoonIcon size={18} weight="fill" />}
             {dark ? "Light mode" : "Dark mode"}

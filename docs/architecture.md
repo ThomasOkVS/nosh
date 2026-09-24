@@ -94,7 +94,13 @@ even though there is exactly one user today — see
   `UNIQUE(user_id, planned_on)` — one recipe assigned to one calendar day, at
   most one entry per user per day. See [Weekly meal planner](#weekly-meal-planner)
   below.
-- **import_jobs** — `id`, `user_id`, `url`, `status` (`running`/`done`/`error`/
+- **users.import_model** — nullable `TEXT`, the user's magic-import model
+  preference (`NULL` = Automatic).
+- **llm_usage** — `usage_day` (`DATE`, Pacific time), `model`, `requests`,
+  `prompt_tokens`, `output_tokens`, primary key `(usage_day, model)`. Global,
+  not per-user. See [Magic import settings](#magic-import-settings) below.
+- **import_jobs** — `id`, `user_id`, `url`, `collection_id` (nullable,
+  `ON DELETE SET NULL`), `status` (`running`/`done`/`error`/
   `cancelled`), `seen_stages` (`TEXT[]`), `recipe` (`JSONB`, the unsaved
   `RecipeInput`), `image_url`, `error_status`, `error_message`, `reviewed_at`,
   `created_at`, `updated_at`. One row per recipe import — see
@@ -116,25 +122,25 @@ the same ownership identity `recipes` has), which is what keeps it a
 genuinely separate concept from `tags` — a tag is attribute-like: free-text,
 global (not per-user), and implicitly created/destroyed as a side effect of
 editing a recipe's tag list, whereas a collection is a first-class,
-user-managed object with its own CRUD and — unlike a tag — every recipe must
-belong to exactly one.
+user-managed object with its own CRUD and — unlike a tag — a recipe lives in
+exactly one place.
 
-**Every recipe belongs to exactly one collection, always** — `recipes.
-collection_id` is a `NOT NULL` foreign key, not a many-to-many join table.
-Moving a recipe changes that single value (`PATCH /recipes/:id/collection`);
-there is no way to remove a recipe from its collection without moving it to
-another one. A recipe created with no explicit `collectionId` falls back to
-the owner's "Other" collection, auto-created on demand
-(`ensureDefaultCollection` in `backend/src/repositories/collections.ts`) —
-an ordinary collection with no special protection, renamable/deletable like
-any other.
+**Every recipe lives in exactly one place: one collection, or Home.** The
+library is a folder tree whose root, **Home**, is itself a place recipes can
+live — `recipes.collection_id` is a *nullable* foreign key (not a
+many-to-many join table), and `NULL` means "directly at Home". Moving a
+recipe changes that single value (`PATCH /recipes/:id/collection`, with
+`collectionId: null` meaning "move to Home"). A recipe created with no
+explicit `collectionId` lands at Home. (Before 2026-09-23 the column was
+`NOT NULL` and such recipes went into an auto-created "Other" collection —
+see [decisions.md](decisions.md#2026-09-23-library-unified-recipes-may-live-at-home).)
 
 **Sibling name uniqueness needs two partial indexes, not one plain
 constraint.** Two collections may share a name as long as they aren't
 siblings (different parents, or one root-level and one not), but Postgres
 treats `NULL <> NULL` in a unique constraint — a single
 `UNIQUE(user_id, parent_id, name)` would let two root-level collections both
-be named "Other". `collections_root_sibling_name_idx` (`WHERE parent_id IS
+be named "Desserts". `collections_root_sibling_name_idx` (`WHERE parent_id IS
 NULL`) and `collections_child_sibling_name_idx` (`WHERE parent_id IS NOT
 NULL`) enforce the two cases separately.
 
@@ -148,14 +154,43 @@ database level, it never touches the filesystem — the route
 (`backend/src/routes/collections.ts`) collects every image file path in the
 subtree via a recursive CTE (`getCollectionSubtreeImagePaths`) *before*
 issuing the delete (the rows won't exist to query afterward), then unlinks
-those files.
+those files. Recipes at Home are never touched by any collection delete.
 
-**A recursive CTE (`WITH RECURSIVE`) is used in exactly two places**, both in
-`backend/src/repositories/collections.ts`: the file-path collection above,
-and `wouldCreateCycle`, which rejects reparenting a collection underneath its
-own descendant before the `UPDATE` runs. Both walk the tree in one round trip
-rather than one query per level — the standard Postgres pattern for
-unknown-depth tree traversal.
+**A recursive CTE (`WITH RECURSIVE`) walks the tree in three places**: the
+file-path collection above and `wouldCreateCycle` (which rejects reparenting
+a collection underneath its own descendant), both in
+`backend/src/repositories/collections.ts`, plus the `within` recipe filter in
+`backend/src/repositories/recipes.ts` (see [Library browsing & search](#library-browsing--search)).
+Each walks the tree in one round trip rather than one query per level — the
+standard Postgres pattern for unknown-depth tree traversal.
+
+### Library browsing & search {#library-browsing--search}
+
+There is one place to find recipes: the library (`CollectionsPage`, serving
+`/` for Home and `/collections/:id` for any folder). There is no separate
+"all recipes" page any more — the old `/recipes` URL redirects to `/`,
+keeping `?q`/`?tag`.
+
+- **Browse mode** (no `?q`/`?tag`): a folder's direct sub-collections (from
+  the flat `GET /collections` list, filtered by `parentId` client-side), then
+  the recipes *directly* in it — `GET /recipes?collection=<id>`, or
+  `?collection=root` for Home.
+- **Search mode** (`?q` from the header's always-visible `LibrarySearch`
+  box, and/or `?tag` from a clicked tag chip): a flat result list covering
+  that folder **and everything beneath it** — `GET /recipes/search?q=…&within=<id>`
+  (or `GET /recipes?tag=…&within=<id>` for a tag-only filter). At Home there
+  is no `within`, so it's the whole library. Each result is captioned with
+  its folder path, and a "Search everywhere" link drops the scope.
+- Searching from a non-library page (a recipe, the meal plan) jumps to
+  Home's results — i.e. the whole library.
+- Every folder, Home included, has **New recipe** (`/recipes/new?collection=<id>`)
+  and **Import** buttons that file the new recipe straight into that folder;
+  an import carries the folder through `ImportProvider` into the create
+  form's router state.
+
+`collection` and `within` are validated as positive integers (or `"root"`)
+by `recipeFiltersSchema`, and every query is already scoped by `user_id`, so
+a `within` pointing at someone else's collection simply matches nothing.
 
 See
 [decisions.md](decisions.md#2026-08-28-collections-redesigned-as-a-nested-mandatory-hierarchy-becomes-the-home-page)
@@ -214,14 +249,12 @@ recipe collection. Tag-based browsing is implemented as an optional `tag` query
 param on `GET /recipes` and `GET /recipes/search`, combinable with the
 full-text query — an `EXISTS` subquery against `recipe_tags`/`tags` rather than
 a `JOIN`, so it can't multiply rows or disturb `ORDER BY`/`ts_rank`. Reached by
-clicking a tag chip on a recipe card or the detail page, which hands off to the
-recipe list page (`/recipes`) pre-filtered via `/recipes?tag=…`; there's no
-separate "browse all tags" listing UI — an early version had one (backed by a
-`GET /recipes/tags` endpoint), but it read as clutter above the recipe grid
-and was removed. This is a separate, flat filter over *all* of a user's
-recipes regardless of collection — collection browsing is a different,
-tree-structured navigation path (see [Collections](#collections)), not
-another filter on this same list.
+clicking a tag chip on a recipe card or the detail page, which opens the
+library filtered via `/?tag=…`; there's no separate "browse all tags" listing
+UI — an early version had one (backed by a `GET /recipes/tags` endpoint), but
+it read as clutter above the recipe grid and was removed. Both filters can
+also be scoped to a folder's subtree with `within` — see
+[Library browsing & search](#library-browsing--search).
 
 Since the search corpus spans four tables, `search_vector` can't be a single
 `GENERATED ALWAYS AS` column (Postgres generated columns only see their own
@@ -361,6 +394,39 @@ recipe is already saved by the time this call runs, so a failure (404,
 blocked host, unsupported type, oversized) is swallowed with a toast
 ("Couldn't import the photo — add one manually") rather than surfaced as a
 save error.
+
+## Magic import settings (model choice + usage estimate) {#magic-import-settings}
+
+A **Settings** page (`/settings`, reached from the user menu) has a "Magic
+import" section where each user picks which Gemini model AI-assisted import
+uses, and sees roughly how much of each model's daily free-tier quota is
+left.
+
+- **Model choice** is a per-user preference, `users.import_model` (nullable
+  `TEXT`; `NULL` = "Automatic", i.e. today's behavior — `GEMINI_TEXT_MODEL`
+  for web pages, `GEMINI_VIDEO_MODEL` for videos). A chosen model applies to
+  both paths. `GET`/`PUT /settings/magic-import` read and write it.
+- **Allowed models** are runtime config, not schema: `GEMINI_MODELS`
+  (`id=dailyLimit,…`, parsed by `config/llmModels.ts`), with the two
+  per-path defaults always included. The server checks a chosen id against
+  that list on write *and* again on every import (`resolveImportModel`) — the
+  id ends up in Gemini's request URL, and a preference saved before the list
+  shrank silently falls back to Automatic rather than failing imports.
+- **Usage** is counted by Nosh itself, since Gemini exposes no
+  quota-remaining endpoint: the Gemini client takes an `onUsage` hook
+  (wired to `repositories/llmUsage.ts` in `index.ts`) that upserts one row
+  per `(usage_day, model)` in `llm_usage` for every request Google answered,
+  adding the tokens from the response's `usageMetadata` (thinking tokens
+  count as output). A failure to record never fails the import. The table is
+  **not** per-user — Gemini's limits are per Google project, so every Nosh
+  user draws from the same budget — and `usage_day` is the **Pacific**
+  calendar day, computed in SQL, because that's when Google resets
+  requests-per-day quotas.
+
+The page labels every number as an estimate: calls made with the same key
+outside Nosh (AI Studio, another app) aren't seen. See
+[decisions.md](decisions.md#2026-09-24-magic-import-settings) for the
+reasoning.
 
 ## Import jobs & push notifications {#import-jobs}
 

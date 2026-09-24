@@ -15,6 +15,7 @@ import { RecipeCollectionPicker } from "../components/RecipeCollectionPicker";
 import { Skeleton } from "../components/Skeleton";
 import { TagChip } from "../components/TagChip";
 import { useAsync } from "../hooks/useAsync";
+import { libraryPath } from "../lib/collectionTree";
 import { errorBannerClass, sectionHeadingClass } from "../styles";
 import { useToast } from "../toast/ToastContext";
 
@@ -40,9 +41,9 @@ function parseSourceLink(sourceUrl: string | null): { href: string; hostname: st
 function RecipeDetailSkeleton() {
   return (
     <div className="space-y-6">
-      <Link to="/recipes" className="inline-flex items-center gap-1 text-sm text-ink-muted hover:text-ink">
+      <Link to="/" className="inline-flex items-center gap-1 text-sm text-ink-muted hover:text-ink">
         <ArrowLeftIcon size={16} />
-        All recipes
+        Library
       </Link>
       <Skeleton className="aspect-[16/9] w-full rounded-lg" />
       <div className="space-y-2 border-b border-border pb-4">
@@ -69,9 +70,9 @@ export function RecipeDetailPage() {
 
   const confirmDelete = useCallback(() => {
     deleteRecipe(recipeId)
-      .then(() => navigate("/recipes"))
+      .then(() => navigate(libraryPath(recipe?.collectionId ?? null)))
       .catch(() => showToast("Failed to delete recipe"));
-  }, [recipeId, navigate, showToast]);
+  }, [recipeId, recipe, navigate, showToast]);
 
   if (loading) {
     return <RecipeDetailSkeleton />;
@@ -95,9 +96,12 @@ export function RecipeDetailPage() {
 
   return (
     <div className="space-y-6">
-      <Link to="/recipes" className="inline-flex items-center gap-1 text-sm text-ink-muted hover:text-ink">
+      <Link
+        to={libraryPath(recipe.collectionId)}
+        className="inline-flex items-center gap-1 text-sm text-ink-muted hover:text-ink"
+      >
         <ArrowLeftIcon size={16} />
-        All recipes
+        Library
       </Link>
 
       {/* Cookbook Editorial (2026-08-26) drops the glass-photo overlay
@@ -152,7 +156,7 @@ export function RecipeDetailPage() {
                 key={tag}
                 tag={tag}
                 variant="editorial"
-                onClick={(t) => navigate(`/recipes?tag=${encodeURIComponent(t)}`)}
+                onClick={(t) => navigate(`/?tag=${encodeURIComponent(t)}`)}
               />
             ))}
           </div>

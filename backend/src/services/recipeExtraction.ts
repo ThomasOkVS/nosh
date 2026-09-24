@@ -304,6 +304,9 @@ export interface ExtractDeps {
   /** Aborts the outbound work when the user cancels the import, so it
    * doesn't keep burning API quota. */
   signal?: AbortSignal;
+  /** The user's Settings-page model choice, applied to whichever AI path
+   * runs. Unset means "automatic" — each extractor's configured default. */
+  model?: string;
 }
 
 interface ExtractionCandidate {
@@ -332,7 +335,7 @@ async function extractFromSocialVideo(
       { buffer: videoBuffer, mimeType },
       caption,
       url.toString(),
-      deps.signal,
+      { model: deps.model, signal: deps.signal },
     );
     return { candidate, imageUrl: thumbnailUrl };
   } catch (err) {
@@ -385,7 +388,10 @@ async function extractFromWebPage(
   report("ai");
   const pageText = stripHtmlToText(html).slice(0, MAX_GEMINI_TEXT_LENGTH);
   try {
-    const candidate = await deps.geminiExtract(pageText, url.toString(), deps.signal);
+    const candidate = await deps.geminiExtract(pageText, url.toString(), {
+      model: deps.model,
+      signal: deps.signal,
+    });
     return { candidate, imageUrl };
   } catch (err) {
     if (err instanceof GeminiUnavailableError) {

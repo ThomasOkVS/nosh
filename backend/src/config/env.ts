@@ -1,4 +1,5 @@
 import path from "node:path";
+import { DEFAULT_GEMINI_MODELS } from "./llmModels";
 
 /** All three VAPID vars or none: a partial set is a misconfiguration worth
  * failing loudly on at boot, not a silently disabled feature. */
@@ -44,6 +45,9 @@ export const env = {
   // empty string when unset, not undefined, which `??` would treat as "set".
   geminiTextModel: process.env.GEMINI_TEXT_MODEL || "gemini-3.6-flash",
   geminiVideoModel: process.env.GEMINI_VIDEO_MODEL || "gemini-3.5-flash-lite",
+  // The models a user may pick on the Settings page, with their free-tier
+  // daily request limits — see config/llmModels.ts for the format.
+  geminiModels: process.env.GEMINI_MODELS || DEFAULT_GEMINI_MODELS,
   // Web Push (import-finished notifications). Unset = push disabled; see
   // docs/dev-commands.md for generating a key pair.
   vapid: vapidConfig(),

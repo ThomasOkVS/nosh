@@ -48,7 +48,7 @@ export type ImportJobRunnerDeps = Pick<
 export interface ImportJobRunner {
   /** Saves a new `running` job and returns it immediately; the extraction
    * carries on in the background, independent of any HTTP request. */
-  start(userId: number, url: string): Promise<ImportJob>;
+  start(userId: number, url: string, options?: { model?: string; collectionId?: number | null }): Promise<ImportJob>;
   cancel(userId: number, id: number): Promise<boolean>;
   /** Resolves once every in-flight job has settled. Only tests need this —
    * the app itself never waits on a job. */
@@ -70,7 +70,7 @@ export function createImportJobRunner(pool: Pool, deps: ImportJobRunnerDeps): Im
   // it only needs to live as long as this process runs the job anyway.
   const inFlight = new Map<number, { controller: AbortController; done: Promise<void> }>();
 
-  async function run(job: ImportJob, controller: AbortController): Promise<void> {
+  async function run(job: ImportJob, controller: AbortController, model: string | undefined): Promise<void> {
     let finished: ImportJob | null;
     // `onProgress` is synchronous, so stage writes are chained rather than
     // awaited — and the chain is drained before the final write, otherwise
@@ -80,6 +80,9 @@ export function createImportJobRunner(pool: Pool, deps: ImportJobRunnerDeps): Im
     try {
       const { recipe, imageUrl } = await extractRecipeFromUrl(job.url, {
         ...extractDeps,
+        // The user's Settings-page model choice, resolved when they started
+        // the import (routes/import.ts); unset = each extractor's default.
+        model,
         signal: controller.signal,
         onProgress: (stage) => {
           stageWrites = stageWrites
@@ -102,10 +105,10 @@ export function createImportJobRunner(pool: Pool, deps: ImportJobRunnerDeps): Im
   }
 
   return {
-    async start(userId, url) {
-      const job = await createImportJob(pool, userId, url);
+    async start(userId, url, options = {}) {
+      const job = await createImportJob(pool, userId, url, options.collectionId ?? null);
       const controller = new AbortController();
-      const done = run(job, controller)
+      const done = run(job, controller, options.model)
         .catch((err: unknown) => console.error("Import job crashed:", err))
         .finally(() => inFlight.delete(job.id));
       inFlight.set(job.id, { controller, done });

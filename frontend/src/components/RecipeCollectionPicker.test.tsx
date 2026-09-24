@@ -18,7 +18,7 @@ function makeCollection(overrides: Partial<Collection> = {}): Collection {
   };
 }
 
-function renderPicker(collectionId: number, onMoved: () => void) {
+function renderPicker(collectionId: number | null, onMoved: () => void) {
   return render(
     <ToastProvider>
       <MemoryRouter>
@@ -59,6 +59,33 @@ describe("RecipeCollectionPicker", () => {
     });
 
     expect(move).toHaveBeenCalledWith(7, 2);
+    await waitFor(() => expect(onMoved).toHaveBeenCalledTimes(1));
+  });
+
+  it("shows a Home recipe as living at Home", async () => {
+    vi.spyOn(collectionsApi, "listCollections").mockResolvedValue([makeCollection()]);
+
+    renderPicker(null, vi.fn());
+
+    expect(await screen.findByRole("link", { name: "Home" })).toHaveAttribute("href", "/");
+    expect(screen.getByLabelText(/move to a different collection/i)).toHaveValue("");
+  });
+
+  it("moves the recipe back to Home", async () => {
+    vi.spyOn(collectionsApi, "listCollections").mockResolvedValue([makeCollection()]);
+    const move = vi
+      .spyOn(recipesApi, "moveRecipeCollection")
+      .mockResolvedValue({ collectionId: null } as Recipe);
+    const onMoved = vi.fn();
+
+    renderPicker(1, onMoved);
+    await screen.findByRole("link", { name: "Weeknight dinners" });
+
+    fireEvent.change(screen.getByLabelText(/move to a different collection/i), {
+      target: { value: "" },
+    });
+
+    expect(move).toHaveBeenCalledWith(7, null);
     await waitFor(() => expect(onMoved).toHaveBeenCalledTimes(1));
   });
 });

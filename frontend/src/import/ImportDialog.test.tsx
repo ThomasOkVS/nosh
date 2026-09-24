@@ -15,20 +15,25 @@ import { ImportProvider } from "./ImportProvider";
 /** Stands in for NewRecipePage so the test can assert on what a completed
  * import hands over, without rendering the whole form. */
 function StateProbe() {
-  const { state, search } = useLocation() as { state?: { importedRecipe?: RecipeInput }; search: string };
+  const { state, search } = useLocation() as {
+    state?: { importedRecipe?: RecipeInput; collectionId?: number | null };
+    search: string;
+  };
   return (
     <>
       <div data-testid="imported-title">{state?.importedRecipe?.title ?? "none"}</div>
+      <div data-testid="imported-collection">{String(state?.collectionId ?? "none")}</div>
       <div data-testid="search">{search}</div>
     </>
   );
 }
 
-/** Stands in for RecipeListPage's trigger button. */
-function OpenButton() {
+/** Stands in for CollectionsPage's Import button — `collectionId` is the
+ * folder being viewed, `null` for Home. */
+function OpenButton({ collectionId = null }: Readonly<{ collectionId?: number | null }>) {
   const { openDialog } = useImport();
   return (
-    <button type="button" onClick={openDialog}>
+    <button type="button" onClick={() => openDialog({ collectionId })}>
       Import from URL
     </button>
   );
@@ -38,6 +43,7 @@ function makeJob(patch: Partial<ImportJob> = {}): ImportJob {
   return {
     id: 7,
     url: "https://example.com/recipe",
+    collectionId: null,
     status: "running",
     seenStages: [],
     recipe: null,
@@ -58,8 +64,8 @@ function makeJob(patch: Partial<ImportJob> = {}): ImportJob {
  */
 function fakeServer(pending: ImportJob[] = []) {
   let job = makeJob();
-  const startImport = vi.spyOn(importApi, "startImport").mockImplementation((url) => {
-    job = { ...job, url };
+  const startImport = vi.spyOn(importApi, "startImport").mockImplementation((url, collectionId = null) => {
+    job = { ...job, url, collectionId };
     return Promise.resolve(job);
   });
   vi.spyOn(importApi, "getImport").mockImplementation(() => Promise.resolve(job));
@@ -76,13 +82,16 @@ function fakeServer(pending: ImportJob[] = []) {
   };
 }
 
-function renderApp({ signedIn = false }: { signedIn?: boolean } = {}) {
+function renderApp({
+  signedIn = false,
+  collectionId = null,
+}: { signedIn?: boolean; collectionId?: number | null } = {}) {
   const tree = (
     <MemoryRouter initialEntries={["/"]}>
       <ToastProvider>
         <ImportProvider pollIntervalMs={10}>
           <Routes>
-            <Route path="/" element={<OpenButton />} />
+            <Route path="/" element={<OpenButton collectionId={collectionId} />} />
             <Route path="/recipes/new" element={<StateProbe />} />
           </Routes>
           <ImportDialog />
@@ -187,6 +196,27 @@ describe("ImportDialog", () => {
     expect(screen.queryByLabelText("Recipe URL")).not.toBeInTheDocument();
   });
 
+  it("hands the folder the import was started from on to the create form", async () => {
+    const server = fakeServer();
+    renderApp({ collectionId: 3 });
+    openAndSubmit();
+    await waitFor(() => expect(server.startImport).toHaveBeenCalledWith("https://example.com/recipe", 3));
+    server.update({ status: "done", recipe: { title: "Tomato Soup" } as RecipeInput });
+
+    expect(await screen.findByTestId("imported-collection")).toHaveTextContent("3");
+  });
+
+  it("keeps the starting folder for a backgrounded import's Review action too", async () => {
+    const server = fakeServer();
+    renderApp({ collectionId: 3 });
+    openAndSubmit();
+    fireEvent.click(screen.getByRole("button", { name: /Keep this running in the background/ }));
+    server.update({ status: "done", recipe: { title: "Fajitas" } as RecipeInput });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Review" }));
+    expect(await screen.findByTestId("imported-collection")).toHaveTextContent("3");
+  });
+
   it("lets the user cancel — the server-side job is cancelled, not just hidden", async () => {
     const server = fakeServer();
     renderApp();
@@ -272,12 +302,16 @@ describe("ImportDialog", () => {
 
   describe("restoring on launch", () => {
     it("offers to review an import that finished while the app was closed", async () => {
-      fakeServer([makeJob({ id: 12, status: "done", recipe: { title: "Ramen" } as RecipeInput })]);
+      fakeServer([
+        makeJob({ id: 12, status: "done", collectionId: 4, recipe: { title: "Ramen" } as RecipeInput }),
+      ]);
       renderApp({ signedIn: true });
 
       fireEvent.click(await screen.findByRole("button", { name: "Review" }));
       expect(await screen.findByTestId("imported-title")).toHaveTextContent("Ramen");
       expect(screen.getByTestId("search")).toHaveTextContent("?importId=12");
+      // The folder comes back from the server, not from this session's memory.
+      expect(screen.getByTestId("imported-collection")).toHaveTextContent("4");
     });
 
     it("resumes polling an import that's still running", async () => {

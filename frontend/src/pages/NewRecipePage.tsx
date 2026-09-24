@@ -4,8 +4,25 @@ import { Link, useLocation, useNavigate, useSearchParams } from "react-router-do
 import { ApiError } from "../api/client";
 import { getImport, markImportReviewed } from "../api/import";
 import { importedRecipeFrom, type ImportedRecipeState } from "../import/importedRecipe";
-import { buttonClass, errorBannerClass } from "../styles";
-import { RecipeFormPage, RecipeFormSkeleton } from "./RecipeFormPage";
+import { Skeleton } from "../components/Skeleton";
+import { buttonClass, errorBannerClass, sectionCardClass } from "../styles";
+import { RecipeFormPage } from "./RecipeFormPage";
+
+/** Placeholder while the import is fetched — shaped like the form's top. */
+function ImportLoadingSkeleton() {
+  return (
+    <div className="space-y-6" aria-busy="true">
+      <Skeleton className="h-8 w-1/2" />
+      <div className={sectionCardClass}>
+        <Skeleton className="h-5 w-24" />
+        <div className="mt-3 space-y-3">
+          <Skeleton className="h-10 w-full rounded-sm" />
+          <Skeleton className="h-16 w-full rounded-sm" />
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function importIdFrom(raw: string | null): number | null {
   const id = Number(raw);
@@ -49,7 +66,11 @@ export function NewRecipePage() {
       .then((job) => {
         if (cancelled) return;
         if (job.status === "done" && job.recipe) {
-          const state: ImportedRecipeState = { importedRecipe: job.recipe, importedImageUrl: job.imageUrl };
+          const state: ImportedRecipeState = {
+            importedRecipe: job.recipe,
+            importedImageUrl: job.imageUrl,
+            collectionId: job.collectionId,
+          };
           navigate({ search: location.search }, { replace: true, state });
         } else if (job.status === "error") {
           setError(job.errorMessage ?? "That import failed.");
@@ -71,7 +92,7 @@ export function NewRecipePage() {
   }, [importId, hasImportedState, navigate, location.search]);
 
   if (importId !== null && !hasImportedState) {
-    if (!error) return <RecipeFormSkeleton />;
+    if (!error) return <ImportLoadingSkeleton />;
     return (
       <div className="space-y-4">
         <p role="alert" className={errorBannerClass}>

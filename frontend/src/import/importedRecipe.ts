@@ -5,6 +5,8 @@ import type { RecipeInput } from "../api/types";
 export interface ImportedRecipeState {
   importedRecipe: RecipeInput;
   importedImageUrl: string | null;
+  /** Read by RecipeFormPage's `initialCollectionIdFrom`. */
+  collectionId: number | null;
 }
 
 /**

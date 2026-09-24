@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { Link, MemoryRouter, Route, Routes, useParams } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
+import * as collectionsApi from "../api/collections";
 import * as recipesApi from "../api/recipes";
 import type { Recipe, RecipeInput } from "../api/types";
 import { ToastProvider } from "../toast/ToastProvider";
@@ -60,6 +61,73 @@ function renderImported(importedRecipe: RecipeInput, importedImageUrl: string | 
     </ToastProvider>,
   );
 }
+
+describe("RecipeFormPage — which collection a new recipe starts in", () => {
+  const collections = [
+    { id: 3, parentId: null, name: "Baking", createdAt: "2026-01-01T00:00:00Z", recipeCount: 0 },
+  ];
+
+  function renderAt(entry: string | { pathname: string; search?: string; state?: unknown }) {
+    return render(
+      <ToastProvider>
+        <MemoryRouter initialEntries={[entry]}>
+          <RecipeFormPage />
+        </MemoryRouter>
+      </ToastProvider>,
+    );
+  }
+
+  it("defaults to Home", async () => {
+    vi.spyOn(collectionsApi, "listCollections").mockResolvedValue(collections);
+
+    renderAt("/recipes/new");
+
+    expect(await screen.findByLabelText("Collection")).toHaveValue("");
+    expect(screen.getByRole("option", { name: "Home (top level)" })).toBeInTheDocument();
+  });
+
+  it("starts in the folder given by ?collection= (a folder's New recipe button)", async () => {
+    vi.spyOn(collectionsApi, "listCollections").mockResolvedValue(collections);
+
+    renderAt("/recipes/new?collection=3");
+
+    expect(await screen.findByLabelText("Collection")).toHaveValue("3");
+    expect(screen.getByRole("link", { name: "Back" })).toHaveAttribute("href", "/collections/3");
+  });
+
+  it("starts in the folder an import was started from (router state)", async () => {
+    vi.spyOn(collectionsApi, "listCollections").mockResolvedValue(collections);
+
+    renderAt({
+      pathname: "/recipes/new",
+      state: { importedRecipe: { title: "Bread", ingredients: [], steps: [], tags: [] }, collectionId: 3 },
+    });
+
+    expect(await screen.findByLabelText("Collection")).toHaveValue("3");
+  });
+
+  it("ignores a malformed ?collection= value", async () => {
+    vi.spyOn(collectionsApi, "listCollections").mockResolvedValue(collections);
+
+    renderAt("/recipes/new?collection=abc");
+
+    expect(await screen.findByLabelText("Collection")).toHaveValue("");
+  });
+
+  it("sends the chosen folder with the new recipe", async () => {
+    vi.spyOn(collectionsApi, "listCollections").mockResolvedValue(collections);
+    const create = vi.spyOn(recipesApi, "createRecipe").mockResolvedValue({ id: 1 } as Recipe);
+
+    renderAt("/recipes/new?collection=3");
+    await screen.findByLabelText("Collection");
+    fireEvent.change(screen.getByLabelText(/title/i), { target: { value: "Bread" } });
+    fireEvent.click(screen.getByRole("button", { name: /save/i }));
+
+    await waitFor(() =>
+      expect(create).toHaveBeenCalledWith(expect.objectContaining({ collectionId: 3 })),
+    );
+  });
+});
 
 describe("RecipeFormPage", () => {
   it("adds and removes ingredient and step rows", () => {

@@ -8,13 +8,11 @@ import {
   createCollection,
   deleteCollection,
   findCollectionOwnerId,
-  getCollectionById,
   getCollectionSubtreeImagePaths,
   listCollectionsByUser,
   updateCollection,
   wouldCreateCycle,
 } from "../repositories/collections";
-import { listRecipesByCollection } from "../repositories/recipes";
 import { collectionSchema } from "../validation/collections";
 
 function parseId(raw: string | undefined): number | null {
@@ -178,31 +176,6 @@ export function createCollectionsRouter(pool: Pool, uploadsDir: string): Router 
         ),
       );
       res.status(204).end();
-    } catch (err) {
-      next(err);
-    }
-  });
-
-  router.get("/:id/recipes", requireCollectionOwnership(pool), async (req, res, next) => {
-    const id = parseId(req.params.id);
-    const userId = req.session.userId;
-    if (id === null || userId === undefined) {
-      res.status(400).json({ error: "Invalid collection id" });
-      return;
-    }
-
-    try {
-      const [collection, allCollections, recipes] = await Promise.all([
-        getCollectionById(pool, id),
-        listCollectionsByUser(pool, userId),
-        listRecipesByCollection(pool, id),
-      ]);
-      if (!collection) {
-        res.status(404).json({ error: "Collection not found" });
-        return;
-      }
-      const subCollections = allCollections.filter((c) => c.parentId === id);
-      res.json({ collection, subCollections, recipes });
     } catch (err) {
       next(err);
     }

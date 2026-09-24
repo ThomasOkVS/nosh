@@ -10,6 +10,11 @@ exports.up = (pgm) => {
       id SERIAL PRIMARY KEY,
       user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       url TEXT NOT NULL,
+      -- The folder the import was started from, so the finished recipe is
+      -- pre-filed there -- stored on the job because a notification tap
+      -- cold-starts the app with no other record of it. SET NULL: if the
+      -- folder is deleted meanwhile, the recipe just defaults to Home.
+      collection_id INTEGER REFERENCES collections(id) ON DELETE SET NULL,
       status TEXT NOT NULL DEFAULT 'running'
         CHECK (status IN ('running', 'done', 'error', 'cancelled')),
       -- Stages seen so far, in order -- the frontend's stepper renders the

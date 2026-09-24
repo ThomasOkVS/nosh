@@ -10,7 +10,7 @@ import {
   XIcon,
 } from "@phosphor-icons/react";
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type DragEvent, type SubmitEvent } from "react";
-import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { listCollections } from "../api/collections";
 import {
@@ -30,6 +30,7 @@ import { Skeleton } from "../components/Skeleton";
 import { TagInput } from "../components/TagInput";
 import { useAsync } from "../hooks/useAsync";
 import { importedImageUrlFrom, importedRecipeFrom } from "../import/importedRecipe";
+import { libraryPath } from "../lib/collectionTree";
 import { generateId } from "../lib/id";
 import { buttonClass, errorBannerClass, inputClass, labelClass, sectionCardClass, sectionHeadingClass } from "../styles";
 import { useToast } from "../toast/ToastContext";
@@ -58,15 +59,32 @@ function numberFieldValue(value: number | null | undefined): string {
   return value !== null && value !== undefined ? String(value) : "";
 }
 
+/** The folder a new recipe should start in: router state from an import
+ * started inside a folder, else `?collection=` from a folder's "New recipe"
+ * button, else Home (`null`). Both sources are user-controllable, so only a
+ * positive integer is trusted — the backend re-checks ownership anyway. */
+function initialCollectionIdFrom(state: unknown, searchParams: URLSearchParams): number | null {
+  const fromState =
+    state && typeof state === "object" && "collectionId" in state
+      ? (state as { collectionId?: unknown }).collectionId
+      : undefined;
+  const candidate = fromState ?? searchParams.get("collection");
+  const id = Number(candidate);
+  return candidate !== null && Number.isInteger(id) && id > 0 ? id : null;
+}
+
 /** Shown while fetching the existing recipe in edit mode — see
  * docs/design-system.md#loading-states. New-recipe mode never hits this,
  * there's nothing to fetch. */
-export function RecipeFormSkeleton() {
+function RecipeFormSkeleton({ recipeId }: Readonly<{ recipeId: number }>) {
   return (
     <div className="space-y-6">
-      <Link to="/recipes" className="inline-flex items-center gap-1 text-sm text-ink-muted hover:text-ink">
+      <Link
+        to={`/recipes/${recipeId}`}
+        className="inline-flex items-center gap-1 text-sm text-ink-muted hover:text-ink"
+      >
         <ArrowLeftIcon size={16} />
-        All recipes
+        Back to recipe
       </Link>
       <Skeleton className="h-8 w-1/2" />
       <div className={sectionCardClass}>
@@ -99,6 +117,7 @@ export function RecipeFormPage() {
   // recipe data that seeds the form so the user can review and correct it
   // before the normal save path runs. Never present in edit mode.
   const { state } = useLocation();
+  const [searchParams] = useSearchParams();
   const imported = isEditMode ? null : importedRecipeFrom(state);
   const importedImageUrl = isEditMode ? null : importedImageUrlFrom(state);
 
@@ -131,8 +150,10 @@ export function RecipeFormPage() {
   const [sourceUrl, setSourceUrl] = useState<string | null>(imported?.sourceUrl ?? null);
   // Only offered on create — moving an existing recipe is a separate action
   // (RecipeCollectionPicker, on the detail page), not something the edit
-  // form does. Left unselected, the backend falls back to "Other".
-  const [collectionId, setCollectionId] = useState<number | null>(null);
+  // form does. Left unselected (`null`), the recipe is filed at Home.
+  const [collectionId, setCollectionId] = useState<number | null>(() =>
+    isEditMode ? null : initialCollectionIdFrom(state, searchParams),
+  );
   const { data: collections } = useAsync(listCollections);
 
   const [loading, setLoading] = useState(isEditMode);
@@ -346,7 +367,7 @@ export function RecipeFormPage() {
   );
 
   if (loading) {
-    return <RecipeFormSkeleton />;
+    return <RecipeFormSkeleton recipeId={recipeId} />;
   }
   if (loadError) {
     return <p className={errorBannerClass}>{loadError}</p>;
@@ -365,9 +386,12 @@ export function RecipeFormPage() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      <Link to="/recipes" className="inline-flex items-center gap-1 text-sm text-ink-muted hover:text-ink">
+      <Link
+        to={isEditMode ? `/recipes/${recipeId}` : libraryPath(collectionId)}
+        className="inline-flex items-center gap-1 text-sm text-ink-muted hover:text-ink"
+      >
         <ArrowLeftIcon size={16} />
-        All recipes
+        {isEditMode ? "Back to recipe" : "Back"}
       </Link>
       <h1 className="font-display text-2xl font-bold italic text-ink sm:text-3xl">
         {isEditMode ? "Edit recipe" : "New recipe"}
@@ -477,7 +501,7 @@ export function RecipeFormPage() {
                 collections={collections}
                 value={collectionId}
                 onChange={setCollectionId}
-                placeholderLabel="Other (default)"
+                placeholderLabel="Home (top level)"
                 className={`mt-1 w-full ${inputClass}`}
               />
             </div>

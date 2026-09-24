@@ -1,9 +1,15 @@
 import { createApp } from "./app";
 import { env } from "./config/env";
+import { parseModelAllowlist } from "./config/llmModels";
 import { createPool } from "./db/pool";
 import { seedDemoData } from "./db/seed";
-import { createGeminiExtractor, createGeminiVideoExtractor } from "./llm/geminiClient";
+import {
+  createGeminiExtractor,
+  createGeminiVideoExtractor,
+  type GeminiUsageListener,
+} from "./llm/geminiClient";
 import { recoverImportJobs } from "./repositories/importJobs";
+import { recordLlmUsage } from "./repositories/llmUsage";
 import { createWebPushSender } from "./services/pushNotifier";
 import { downloadSocialVideo } from "./services/socialVideo";
 
@@ -18,16 +24,24 @@ async function start(): Promise<void> {
     await seedDemoData(pool, env.uploadsDir);
   }
 
+  const magicImport = {
+    models: parseModelAllowlist(env.geminiModels, [env.geminiTextModel, env.geminiVideoModel]),
+    defaultTextModel: env.geminiTextModel,
+    defaultVideoModel: env.geminiVideoModel,
+  };
+  const recordUsage: GeminiUsageListener = (model, usage) => recordLlmUsage(pool, model, usage);
+
   const app = createApp({
     pool,
     sessionSecret: env.sessionSecret,
     uploadsDir: env.uploadsDir,
     frontendOrigin: env.frontendOrigin,
+    magicImport,
     geminiExtract: env.geminiApiKey
-      ? createGeminiExtractor(env.geminiApiKey, env.geminiTextModel)
+      ? createGeminiExtractor(env.geminiApiKey, env.geminiTextModel, fetch, recordUsage)
       : undefined,
     geminiVideoExtract: env.geminiApiKey
-      ? createGeminiVideoExtractor(env.geminiApiKey, env.geminiVideoModel)
+      ? createGeminiVideoExtractor(env.geminiApiKey, env.geminiVideoModel, fetch, recordUsage)
       : undefined,
     downloadSocialVideo,
     vapidPublicKey: env.vapid?.publicKey,

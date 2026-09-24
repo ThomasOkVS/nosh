@@ -1,12 +1,21 @@
 import { Router } from "express";
 import type { Pool } from "pg";
 import { z } from "zod";
+import { resolveImportModel, type MagicImportConfig } from "../config/llmModels";
 import { requireAuth } from "../middleware/requireAuth";
+import { findCollectionOwnerId } from "../repositories/collections";
 import { findImportJob, listPendingImportJobs, markImportJobReviewed } from "../repositories/importJobs";
+import { findImportModel } from "../repositories/users";
 import type { ImportJobRunner } from "../services/importJobs";
 import { importRequestSchema } from "../validation/import";
 
 const idParamSchema = z.coerce.number().int().positive();
+
+export interface ImportRouterDeps {
+  pool: Pool;
+  magicImport: MagicImportConfig;
+  runner: ImportJobRunner;
+}
 
 /**
  * Imports are server-side jobs, not a request/response pair: `POST /` saves
@@ -16,7 +25,8 @@ const idParamSchema = z.coerce.number().int().positive();
  * work no longer depends on the connection staying open. See
  * docs/decisions.md for why this replaced the earlier NDJSON stream.
  */
-export function createImportRouter(pool: Pool, runner: ImportJobRunner): Router {
+export function createImportRouter(deps: ImportRouterDeps): Router {
+  const { pool, magicImport, runner } = deps;
   const router = Router();
   router.use(requireAuth);
 
@@ -28,7 +38,17 @@ export function createImportRouter(pool: Pool, runner: ImportJobRunner): Router 
       return;
     }
     try {
-      const job = await runner.start(userId, parsed.data.url);
+      const { url, collectionId } = parsed.data;
+      // Same ownership check as creating a recipe in a folder — checked
+      // up front so the job never records someone else's folder.
+      if (collectionId !== null && (await findCollectionOwnerId(pool, collectionId)) !== userId) {
+        res.status(404).json({ error: "Collection not found" });
+        return;
+      }
+      // Resolved now, at request time, so the job uses whatever model the
+      // user had picked when they started it.
+      const model = resolveImportModel(magicImport, await findImportModel(pool, userId));
+      const job = await runner.start(userId, url, { model, collectionId });
       res.status(202).json(job);
     } catch (err) {
       next(err);

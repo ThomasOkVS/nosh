@@ -23,6 +23,7 @@ function makeJob(patch: Partial<ImportJob> = {}): ImportJob {
   return {
     id: 5,
     url: "https://example.com/shakshuka",
+    collectionId: null,
     status: "done",
     seenStages: ["fetching", "structured-data"],
     recipe: RECIPE,

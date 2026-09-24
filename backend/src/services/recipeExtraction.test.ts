@@ -51,9 +51,15 @@ describe("extractRecipeFromUrl", () => {
       steps: [{ instruction: "Simmer" }],
     });
 
-    const result = await extractRecipeFromUrl("https://example.com/recipe", { fetchImpl, geminiExtract });
+    const result = await extractRecipeFromUrl("https://example.com/recipe", {
+      fetchImpl,
+      geminiExtract,
+      model: "chosen-model",
+    });
 
     expect(geminiExtract).toHaveBeenCalledTimes(1);
+    // The user's Settings-page choice is forwarded to the text path too.
+    expect(geminiExtract.mock.calls[0]?.[2]).toMatchObject({ model: "chosen-model" });
     expect(result.recipe.title).toBe("Tomato Soup");
     expect(result.recipe.sourceUrl).toBe("https://example.com/recipe");
   });
@@ -316,6 +322,7 @@ describe("extractRecipeFromUrl — Instagram/TikTok video path", () => {
       fetchImpl,
       downloadSocialVideo,
       geminiVideoExtract,
+      model: "chosen-model",
       onProgress: (stage) => stages.push(stage),
     });
 
@@ -325,7 +332,7 @@ describe("extractRecipeFromUrl — Instagram/TikTok video path", () => {
       { buffer: FAKE_VIDEO.videoBuffer, mimeType: FAKE_VIDEO.mimeType },
       FAKE_VIDEO.caption,
       "https://www.instagram.com/p/abc123/",
-      undefined,
+      { model: "chosen-model", signal: undefined },
     );
     expect(stages).toEqual(["downloading-video", "analyzing-video"]);
     expect(result.recipe.title).toBe("Tomato Soup");

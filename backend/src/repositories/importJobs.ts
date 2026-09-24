@@ -8,6 +8,8 @@ export interface ImportJob {
   id: number;
   userId: number;
   url: string;
+  /** The folder to pre-file the recipe in (`null` = Home). */
+  collectionId: number | null;
   status: ImportJobStatus;
   seenStages: ImportStage[];
   recipe: RecipeInput | null;
@@ -22,6 +24,7 @@ interface ImportJobRow {
   id: number;
   user_id: number;
   url: string;
+  collection_id: number | null;
   status: ImportJobStatus;
   seen_stages: ImportStage[];
   recipe: RecipeInput | null;
@@ -32,7 +35,7 @@ interface ImportJobRow {
   created_at: Date;
 }
 
-const COLUMNS = `id, user_id, url, status, seen_stages, recipe, image_url,
+const COLUMNS = `id, user_id, url, collection_id, status, seen_stages, recipe, image_url,
   error_status, error_message, reviewed_at, created_at`;
 
 function toImportJob(row: ImportJobRow): ImportJob {
@@ -40,6 +43,7 @@ function toImportJob(row: ImportJobRow): ImportJob {
     id: row.id,
     userId: row.user_id,
     url: row.url,
+    collectionId: row.collection_id,
     status: row.status,
     seenStages: row.seen_stages,
     recipe: row.recipe,
@@ -51,10 +55,15 @@ function toImportJob(row: ImportJobRow): ImportJob {
   };
 }
 
-export async function createImportJob(pool: Pool, userId: number, url: string): Promise<ImportJob> {
+export async function createImportJob(
+  pool: Pool,
+  userId: number,
+  url: string,
+  collectionId: number | null,
+): Promise<ImportJob> {
   const result = await pool.query<ImportJobRow>(
-    `INSERT INTO import_jobs (user_id, url) VALUES ($1, $2) RETURNING ${COLUMNS}`,
-    [userId, url],
+    `INSERT INTO import_jobs (user_id, url, collection_id) VALUES ($1, $2, $3) RETURNING ${COLUMNS}`,
+    [userId, url, collectionId],
   );
   return toImportJob(result.rows[0]!);
 }

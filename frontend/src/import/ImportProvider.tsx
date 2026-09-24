@@ -12,7 +12,7 @@ import {
 import { AuthContext } from "../auth/AuthContext";
 import { useToast } from "../toast/ToastContext";
 import type { ImportedRecipeState } from "./importedRecipe";
-import { ImportContext, type ActiveImport } from "./ImportContext";
+import { ImportContext, type ActiveImport, type OpenDialogOptions } from "./ImportContext";
 
 const DEFAULT_POLL_INTERVAL_MS = 1000;
 
@@ -47,6 +47,7 @@ function activeFromJob(job: ImportJob, watching: boolean): ActiveImport | null {
     url: job.url,
     seenStages: [],
     startedAt: Date.parse(job.createdAt),
+    collectionId: job.collectionId,
     // A job restored on launch was started in an earlier session, so
     // normally nobody is watching a dialog for it and it announces itself
     // by toast — unless the user already has the dialog open.
@@ -79,6 +80,10 @@ export function ImportProvider({
   // Bumped whenever a new import starts or the current one is cancelled, so
   // a late response for a superseded import can tell it's stale.
   const generationRef = useRef(0);
+  // Set by whichever page opened the dialog; captured into the import itself
+  // when it starts, so reopening the dialog later (from anywhere) can't
+  // change where an already-running import will be filed.
+  const targetCollectionRef = useRef<number | null>(null);
   const navigate = useNavigate();
   const { showToast } = useToast();
   // Read via useContext directly, not useAuth(): tests render this provider
@@ -87,10 +92,19 @@ export function ImportProvider({
 
   const startImport = useCallback((url: string) => {
     const generation = ++generationRef.current;
-    setActive({ jobId: null, url, seenStages: [], startedAt: Date.now(), dismissed: false, status: "running" });
+    const collectionId = targetCollectionRef.current;
+    setActive({
+      jobId: null,
+      url,
+      seenStages: [],
+      startedAt: Date.now(),
+      dismissed: false,
+      status: "running",
+      collectionId,
+    });
     setDialogOpen(true);
 
-    startImportJob(url)
+    startImportJob(url, collectionId)
       .then((job) => {
         if (generation !== generationRef.current) {
           // Cancelled (or replaced) while the POST was still in flight —
@@ -132,7 +146,8 @@ export function ImportProvider({
     setDialogOpen(false);
   }, []);
 
-  const openDialog = useCallback(() => {
+  const openDialog = useCallback((options?: OpenDialogOptions) => {
+    targetCollectionRef.current = options?.collectionId ?? null;
     setDialogOpen(true);
     // Re-attach "watching" status to an import that's running in the
     // background, so finishing now navigates instead of toasting.
@@ -219,7 +234,11 @@ export function ImportProvider({
     if (!active) return;
     if (active.status === "done" && active.recipe && active.jobId !== null) {
       const path = `/recipes/new?importId=${active.jobId}`;
-      const state: ImportedRecipeState = { importedRecipe: active.recipe, importedImageUrl: active.imageUrl ?? null };
+      const state: ImportedRecipeState = {
+        importedRecipe: active.recipe,
+        importedImageUrl: active.imageUrl ?? null,
+        collectionId: active.collectionId,
+      };
       if (active.dismissed) {
         showToast(`Your recipe from ${hostnameOf(active.url)} is ready to review.`, {
           variant: "success",

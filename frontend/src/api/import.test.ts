@@ -11,17 +11,17 @@ describe("import api", () => {
     vi.unstubAllGlobals();
   });
 
-  it("starts an import by POSTing the url and returns the created job", async () => {
+  it("starts an import by POSTing the url and target folder, returning the created job", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ id: 3, status: "running" }, 202));
     vi.stubGlobal("fetch", fetchMock);
 
-    const job = await startImport("https://example.com/recipe");
+    const job = await startImport("https://example.com/recipe", 4);
 
     expect(job).toMatchObject({ id: 3, status: "running" });
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toMatch(/\/import$/);
     expect(init.method).toBe("POST");
-    expect(JSON.parse(init.body as string)).toEqual({ url: "https://example.com/recipe" });
+    expect(JSON.parse(init.body as string)).toEqual({ url: "https://example.com/recipe", collectionId: 4 });
   });
 
   it("surfaces a rejected start as an ApiError with the server's message", async () => {

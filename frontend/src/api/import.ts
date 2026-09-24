@@ -13,6 +13,9 @@ export type ImportStage = "fetching" | "structured-data" | "downloading-video" |
 export interface ImportJob {
   id: number;
   url: string;
+  /** The folder the import was started from (`null` = Home) — pre-selects
+   * the create form's collection picker. */
+  collectionId: number | null;
   status: "running" | "done" | "error" | "cancelled";
   seenStages: ImportStage[];
   /** Extracted-but-unsaved recipe data for the create form to pre-fill;
@@ -27,8 +30,8 @@ export interface ImportJob {
   createdAt: string;
 }
 
-export function startImport(url: string): Promise<ImportJob> {
-  return apiFetch<ImportJob>("/import", { method: "POST", body: { url } });
+export function startImport(url: string, collectionId: number | null = null): Promise<ImportJob> {
+  return apiFetch<ImportJob>("/import", { method: "POST", body: { url, collectionId } });
 }
 
 export function getImport(id: number): Promise<ImportJob> {

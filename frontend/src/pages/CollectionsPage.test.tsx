@@ -3,7 +3,8 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import * as collectionsApi from "../api/collections";
 import * as recipesApi from "../api/recipes";
-import type { Collection, CollectionContents, Recipe } from "../api/types";
+import type { Collection, Recipe } from "../api/types";
+import { ImportProvider } from "../import/ImportProvider";
 import { RECIPE_DRAG_MIME_TYPE } from "../lib/recipeDrag";
 import { ToastProvider } from "../toast/ToastProvider";
 import { CollectionsPage } from "./CollectionsPage";
@@ -60,23 +61,32 @@ function renderAt(path: string) {
   return render(
     <ToastProvider>
       <MemoryRouter initialEntries={[path]}>
-        <Routes>
-          <Route path="/" element={<CollectionsPage />} />
-          <Route path="/collections/:id" element={<CollectionsPage />} />
-        </Routes>
+        <ImportProvider>
+          <Routes>
+            <Route path="/" element={<CollectionsPage />} />
+            <Route path="/collections/:id" element={<CollectionsPage />} />
+          </Routes>
+        </ImportProvider>
       </MemoryRouter>
     </ToastProvider>,
   );
 }
 
-describe("CollectionsPage — home (/)", () => {
-  it("lists top-level collections with their recipe counts", async () => {
+function mockRecipes(recipes: Recipe[] = []) {
+  return vi.spyOn(recipesApi, "listRecipes").mockResolvedValue(recipes);
+}
+
+describe("CollectionsPage — Home (/)", () => {
+  it("shows top-level collections and the recipes filed directly at Home", async () => {
     vi.spyOn(collectionsApi, "listCollections").mockResolvedValue([makeCollection()]);
+    const list = mockRecipes([makeRecipe({ collectionId: null, title: "Loose soup" })]);
 
     renderAt("/");
 
     expect(await screen.findByText("Weeknight dinners")).toBeInTheDocument();
     expect(screen.getByText("(2)")).toBeInTheDocument();
+    expect(await screen.findByText("Loose soup")).toBeInTheDocument();
+    expect(list).toHaveBeenCalledWith({ collection: "root" });
   });
 
   it("only lists root-level collections, not nested ones", async () => {
@@ -84,6 +94,7 @@ describe("CollectionsPage — home (/)", () => {
       makeCollection({ id: 1, name: "Baking", parentId: null }),
       makeCollection({ id: 2, name: "Cookies", parentId: 1, recipeCount: 0 }),
     ]);
+    mockRecipes();
 
     renderAt("/");
 
@@ -91,12 +102,25 @@ describe("CollectionsPage — home (/)", () => {
     expect(screen.queryByText("Cookies")).not.toBeInTheDocument();
   });
 
-  it("shows an empty state with no collections", async () => {
+  it("shows an empty state when the library has nothing in it", async () => {
     vi.spyOn(collectionsApi, "listCollections").mockResolvedValue([]);
+    mockRecipes();
 
     renderAt("/");
 
-    expect(await screen.findByText(/no collections yet/i)).toBeInTheDocument();
+    expect(await screen.findByText(/your library is empty/i)).toBeInTheDocument();
+  });
+
+  it("offers New recipe straight into Home", async () => {
+    vi.spyOn(collectionsApi, "listCollections").mockResolvedValue([]);
+    mockRecipes();
+
+    renderAt("/");
+
+    expect(await screen.findByRole("link", { name: /new recipe/i })).toHaveAttribute(
+      "href",
+      "/recipes/new",
+    );
   });
 
   it("creates a root-level collection and reloads the list", async () => {
@@ -104,10 +128,11 @@ describe("CollectionsPage — home (/)", () => {
       .spyOn(collectionsApi, "listCollections")
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([makeCollection()]);
+    mockRecipes();
     const create = vi.spyOn(collectionsApi, "createCollection").mockResolvedValue(makeCollection());
 
     renderAt("/");
-    await screen.findByText(/no collections yet/i);
+    await screen.findByText(/your library is empty/i);
 
     fireEvent.change(screen.getByPlaceholderText("New collection…"), {
       target: { value: "Weeknight dinners" },
@@ -121,65 +146,66 @@ describe("CollectionsPage — home (/)", () => {
 });
 
 describe("CollectionsPage — a collection (/collections/:id)", () => {
-  function contentsFor(overrides: Partial<CollectionContents> = {}): CollectionContents {
-    return {
-      collection: makeCollection(),
-      subCollections: [],
-      recipes: [],
-      ...overrides,
-    };
-  }
-
-  it("renders a collection's sub-collections and recipes together", async () => {
-    vi.spyOn(collectionsApi, "listCollections").mockResolvedValue([makeCollection()]);
-    vi.spyOn(collectionsApi, "getCollectionContents").mockResolvedValue(
-      contentsFor({
-        subCollections: [makeCollection({ id: 2, name: "Soups", parentId: 1, recipeCount: 0 })],
-        recipes: [makeRecipe()],
-      }),
-    );
+  it("renders a collection's sub-collections and its direct recipes", async () => {
+    vi.spyOn(collectionsApi, "listCollections").mockResolvedValue([
+      makeCollection(),
+      makeCollection({ id: 2, name: "Soups", parentId: 1, recipeCount: 0 }),
+    ]);
+    const list = mockRecipes([makeRecipe()]);
 
     renderAt("/collections/1");
 
     expect(await screen.findByRole("heading", { name: "Weeknight dinners" })).toBeInTheDocument();
     expect(screen.getByText("Soups")).toBeInTheDocument();
-    expect(screen.getByText("Tomato soup")).toBeInTheDocument();
+    expect(await screen.findByText("Tomato soup")).toBeInTheDocument();
+    expect(list).toHaveBeenCalledWith({ collection: 1 });
+  });
+
+  it("offers New recipe pre-filed into this collection", async () => {
+    vi.spyOn(collectionsApi, "listCollections").mockResolvedValue([makeCollection()]);
+    mockRecipes();
+
+    renderAt("/collections/1");
+
+    expect(await screen.findByRole("link", { name: /new recipe/i })).toHaveAttribute(
+      "href",
+      "/recipes/new?collection=1",
+    );
   });
 
   it("moves a recipe to a sub-collection when dropped on its row", async () => {
-    vi.spyOn(collectionsApi, "listCollections").mockResolvedValue([makeCollection()]);
-    const contents = vi.spyOn(collectionsApi, "getCollectionContents").mockResolvedValue(
-      contentsFor({
-        subCollections: [makeCollection({ id: 2, name: "Soups", parentId: 1, recipeCount: 0 })],
-        recipes: [makeRecipe({ id: 5 })],
-      }),
-    );
-    const move = vi.spyOn(recipesApi, "moveRecipeCollection").mockResolvedValue(makeRecipe({ id: 5 }));
+    vi.spyOn(collectionsApi, "listCollections").mockResolvedValue([
+      makeCollection(),
+      makeCollection({ id: 2, name: "Soups", parentId: 1, recipeCount: 0 }),
+    ]);
+    const list = mockRecipes([makeRecipe({ id: 5 })]);
+    const move = vi
+      .spyOn(recipesApi, "moveRecipeCollection")
+      .mockResolvedValue(makeRecipe({ id: 5 }));
 
     renderAt("/collections/1");
     await screen.findByText("Soups");
 
-    const dropTarget = screen.getByText("Soups").closest("li")!;
-    fireEvent.drop(dropTarget, { dataTransfer: fakeRecipeDataTransfer(5) });
+    fireEvent.drop(screen.getByText("Soups").closest("li")!, {
+      dataTransfer: fakeRecipeDataTransfer(5),
+    });
 
     expect(move).toHaveBeenCalledWith(5, 2);
-    // Wait for the post-move reload() to settle, so its state update happens
-    // inside this test, not after it.
-    await waitFor(() => expect(contents).toHaveBeenCalledTimes(2));
+    // Wait for the post-move reload to settle inside this test.
+    await waitFor(() => expect(list).toHaveBeenCalledTimes(2));
   });
 
   it("moves a recipe to an ancestor when dropped on its breadcrumb crumb", async () => {
-    const list = vi.spyOn(collectionsApi, "listCollections").mockResolvedValue([
-      makeCollection({ id: 1, name: "Baking", parentId: null }),
-      makeCollection({ id: 2, name: "Cookies", parentId: 1 }),
-    ]);
-    vi.spyOn(collectionsApi, "getCollectionContents").mockResolvedValue(
-      contentsFor({
-        collection: makeCollection({ id: 2, name: "Cookies", parentId: 1 }),
-        recipes: [makeRecipe({ id: 9, collectionId: 2 })],
-      }),
-    );
-    const move = vi.spyOn(recipesApi, "moveRecipeCollection").mockResolvedValue(makeRecipe({ id: 9 }));
+    const list = vi
+      .spyOn(collectionsApi, "listCollections")
+      .mockResolvedValue([
+        makeCollection({ id: 1, name: "Baking", parentId: null }),
+        makeCollection({ id: 2, name: "Cookies", parentId: 1 }),
+      ]);
+    mockRecipes([makeRecipe({ id: 9, collectionId: 2 })]);
+    const move = vi
+      .spyOn(recipesApi, "moveRecipeCollection")
+      .mockResolvedValue(makeRecipe({ id: 9 }));
 
     renderAt("/collections/2");
     await screen.findByRole("heading", { name: "Cookies" });
@@ -192,17 +218,14 @@ describe("CollectionsPage — a collection (/collections/:id)", () => {
     await waitFor(() => expect(list).toHaveBeenCalledTimes(2));
   });
 
-  it("does not offer 'Home' or the current collection itself as a drop target", async () => {
-    vi.spyOn(collectionsApi, "listCollections").mockResolvedValue([
-      makeCollection({ id: 1, name: "Baking", parentId: null }),
-    ]);
-    vi.spyOn(collectionsApi, "getCollectionContents").mockResolvedValue(
-      contentsFor({
-        collection: makeCollection({ id: 1, name: "Baking", parentId: null }),
-        recipes: [makeRecipe({ id: 5 })],
-      }),
-    );
-    const move = vi.spyOn(recipesApi, "moveRecipeCollection").mockResolvedValue(makeRecipe({ id: 5 }));
+  it("moves a recipe to Home when dropped on the Home crumb", async () => {
+    const list = vi
+      .spyOn(collectionsApi, "listCollections")
+      .mockResolvedValue([makeCollection({ id: 1, name: "Baking", parentId: null })]);
+    mockRecipes([makeRecipe({ id: 5 })]);
+    const move = vi
+      .spyOn(recipesApi, "moveRecipeCollection")
+      .mockResolvedValue(makeRecipe({ id: 5 }));
 
     renderAt("/collections/1");
     await screen.findByRole("heading", { name: "Baking" });
@@ -211,12 +234,32 @@ describe("CollectionsPage — a collection (/collections/:id)", () => {
       dataTransfer: fakeRecipeDataTransfer(5),
     });
 
+    expect(move).toHaveBeenCalledWith(5, null);
+    await waitFor(() => expect(list).toHaveBeenCalledTimes(2));
+  });
+
+  it("does not offer the current collection's own crumb as a drop target", async () => {
+    vi.spyOn(collectionsApi, "listCollections").mockResolvedValue([
+      makeCollection({ id: 1, name: "Baking", parentId: null }),
+    ]);
+    mockRecipes([makeRecipe({ id: 5 })]);
+    const move = vi
+      .spyOn(recipesApi, "moveRecipeCollection")
+      .mockResolvedValue(makeRecipe({ id: 5 }));
+
+    renderAt("/collections/1");
+    await screen.findByRole("heading", { name: "Baking" });
+
+    fireEvent.drop(screen.getByRole("link", { name: "Baking" }), {
+      dataTransfer: fakeRecipeDataTransfer(5),
+    });
+
     expect(move).not.toHaveBeenCalled();
   });
 
   it("shows an empty state when a collection has no sub-collections or recipes", async () => {
     vi.spyOn(collectionsApi, "listCollections").mockResolvedValue([makeCollection()]);
-    vi.spyOn(collectionsApi, "getCollectionContents").mockResolvedValue(contentsFor());
+    mockRecipes();
 
     renderAt("/collections/1");
 
@@ -224,42 +267,40 @@ describe("CollectionsPage — a collection (/collections/:id)", () => {
   });
 
   it("creates a sub-collection inside the currently viewed collection", async () => {
-    vi.spyOn(collectionsApi, "listCollections").mockResolvedValue([makeCollection()]);
-    vi.spyOn(collectionsApi, "getCollectionContents").mockResolvedValue(contentsFor());
+    const list = vi.spyOn(collectionsApi, "listCollections").mockResolvedValue([makeCollection()]);
+    mockRecipes();
     const create = vi
       .spyOn(collectionsApi, "createCollection")
       .mockResolvedValue(makeCollection({ id: 2, name: "Soups", parentId: 1 }));
-    const contents = vi.spyOn(collectionsApi, "getCollectionContents").mockResolvedValue(contentsFor());
 
     renderAt("/collections/1");
     await screen.findByText(/this collection is empty/i);
 
-    fireEvent.change(screen.getByPlaceholderText("New collection…"), {
+    fireEvent.change(screen.getByPlaceholderText("New sub-collection…"), {
       target: { value: "Soups" },
     });
     fireEvent.click(screen.getByRole("button", { name: /create/i }));
 
     expect(create).toHaveBeenCalledWith("Soups", 1);
-    // Wait for the post-create reload (reloadAll + reloadContents) to settle
-    // so its state update happens inside this test, not after it.
-    await waitFor(() => expect(contents).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(list).toHaveBeenCalledTimes(2));
   });
 
   it("renames a collection", async () => {
-    vi.spyOn(collectionsApi, "listCollections").mockResolvedValue([makeCollection()]);
-    vi.spyOn(collectionsApi, "getCollectionContents")
-      .mockResolvedValueOnce(contentsFor())
-      .mockResolvedValueOnce(contentsFor({ collection: makeCollection({ name: "Quick dinners" }) }));
-    const update = vi.spyOn(collectionsApi, "updateCollection").mockResolvedValue(
-      makeCollection({ name: "Quick dinners" }),
-    );
+    vi.spyOn(collectionsApi, "listCollections")
+      .mockResolvedValueOnce([makeCollection()])
+      .mockResolvedValueOnce([makeCollection({ name: "Quick dinners" })]);
+    mockRecipes();
+    const update = vi
+      .spyOn(collectionsApi, "updateCollection")
+      .mockResolvedValue(makeCollection({ name: "Quick dinners" }));
 
     renderAt("/collections/1");
     await screen.findByRole("heading", { name: "Weeknight dinners" });
 
     fireEvent.click(screen.getByRole("button", { name: /rename/i }));
-    const input = screen.getByDisplayValue("Weeknight dinners");
-    fireEvent.change(input, { target: { value: "Quick dinners" } });
+    fireEvent.change(screen.getByDisplayValue("Weeknight dinners"), {
+      target: { value: "Quick dinners" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     expect(update).toHaveBeenCalledWith(1, "Quick dinners", null);
@@ -267,48 +308,39 @@ describe("CollectionsPage — a collection (/collections/:id)", () => {
   });
 
   it("deletes a collection, warning about what's inside it, and navigates to its parent", async () => {
-    vi.spyOn(collectionsApi, "listCollections").mockResolvedValue([
-      makeCollection({ id: 1, name: "Baking", parentId: null }),
-      makeCollection({ id: 2, name: "Cookies", parentId: 1, recipeCount: 3 }),
-    ]);
-    const contents = vi.spyOn(collectionsApi, "getCollectionContents").mockResolvedValue(
-      contentsFor({
-        collection: makeCollection({ id: 2, name: "Cookies", parentId: 1, recipeCount: 3 }),
-      }),
-    );
-    const deleteCollection = vi.spyOn(collectionsApi, "deleteCollection").mockResolvedValue(undefined);
+    vi.spyOn(collectionsApi, "listCollections")
+      .mockResolvedValueOnce([
+        makeCollection({ id: 1, name: "Baking", parentId: null }),
+        makeCollection({ id: 2, name: "Cookies", parentId: 1, recipeCount: 3 }),
+      ])
+      .mockResolvedValue([makeCollection({ id: 1, name: "Baking", parentId: null })]);
+    mockRecipes();
+    const deleteCollection = vi
+      .spyOn(collectionsApi, "deleteCollection")
+      .mockResolvedValue(undefined);
 
     renderAt("/collections/2");
     await screen.findByRole("heading", { name: "Cookies" });
 
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     expect(await screen.findByText(/this deletes 3 recipes inside it/i)).toBeInTheDocument();
-    const dialogDeleteButton = screen.getAllByRole("button", { name: "Delete" }).at(-1)!;
-    fireEvent.click(dialogDeleteButton);
+    fireEvent.click(screen.getAllByRole("button", { name: "Delete" }).at(-1)!);
 
     expect(deleteCollection).toHaveBeenCalledWith(2);
-    // Wait for the post-delete navigate to its parent to settle, so the
-    // resulting re-fetch (new :id param -> new getCollectionContents call)
-    // happens inside this test, not after it.
-    await waitFor(() => expect(contents).toHaveBeenCalledTimes(2));
+    expect(await screen.findByRole("heading", { name: "Baking" })).toBeInTheDocument();
   });
 
-  it("deletes a root-level collection and reflects that on the home page it navigates back to", async () => {
-    // Regression test: a root-level delete navigates to "/", where the home
-    // view renders purely from `allCollections` (there's no `:id` param
-    // change to piggyback a refetch off, unlike deleting a nested
-    // collection above) -- caught live, not by an earlier version of this
-    // test suite, when the home page kept showing an already-deleted
-    // collection because only `getCollectionContents` was being reloaded,
-    // not `listCollections`.
+  it("deletes a root-level collection and reflects that on Home", async () => {
+    // Regression test (2026-08-28): Home kept showing an already-deleted
+    // collection because the collections list wasn't reloaded after delete.
     const list = vi
       .spyOn(collectionsApi, "listCollections")
       .mockResolvedValueOnce([makeCollection({ id: 1, name: "Baking", parentId: null })])
       .mockResolvedValueOnce([]);
-    vi.spyOn(collectionsApi, "getCollectionContents").mockResolvedValue(
-      contentsFor({ collection: makeCollection({ id: 1, name: "Baking", parentId: null }) }),
-    );
-    const deleteCollection = vi.spyOn(collectionsApi, "deleteCollection").mockResolvedValue(undefined);
+    mockRecipes();
+    const deleteCollection = vi
+      .spyOn(collectionsApi, "deleteCollection")
+      .mockResolvedValue(undefined);
 
     renderAt("/collections/1");
     await screen.findByRole("heading", { name: "Baking" });
@@ -317,18 +349,68 @@ describe("CollectionsPage — a collection (/collections/:id)", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "Delete" }).at(-1)!);
 
     expect(deleteCollection).toHaveBeenCalledWith(1);
-    expect(await screen.findByText(/no collections yet/i)).toBeInTheDocument();
+    expect(await screen.findByText(/your library is empty/i)).toBeInTheDocument();
     expect(list).toHaveBeenCalledTimes(2);
   });
 
-  it("404s when fetching another user's collection recipes", async () => {
+  it("says so when the collection doesn't exist (or isn't yours)", async () => {
     vi.spyOn(collectionsApi, "listCollections").mockResolvedValue([]);
-    vi.spyOn(collectionsApi, "getCollectionContents").mockRejectedValue(
-      new Error("Collection not found"),
-    );
+    mockRecipes();
 
     renderAt("/collections/99");
 
     expect(await screen.findByText("Collection not found")).toBeInTheDocument();
+  });
+});
+
+describe("CollectionsPage — search mode (?q / ?tag)", () => {
+  const tree = [
+    makeCollection({ id: 1, name: "Baking", parentId: null }),
+    makeCollection({ id: 2, name: "Cookies", parentId: 1 }),
+  ];
+
+  it("searches this collection and everything below it, labelling where each result lives", async () => {
+    vi.spyOn(collectionsApi, "listCollections").mockResolvedValue(tree);
+    const search = vi
+      .spyOn(recipesApi, "searchRecipes")
+      .mockResolvedValue([makeRecipe({ title: "Chocolate cookies", collectionId: 2 })]);
+
+    renderAt("/collections/1?q=chocolate");
+
+    expect(await screen.findByText("Chocolate cookies")).toBeInTheDocument();
+    expect(search).toHaveBeenCalledWith("chocolate", { tag: undefined, within: 1 });
+    expect(await screen.findByText("Home / Baking / Cookies")).toBeInTheDocument();
+    // The create-collection form is browse-only.
+    expect(screen.queryByPlaceholderText(/new sub-collection/i)).not.toBeInTheDocument();
+  });
+
+  it("offers a Search everywhere link that drops the folder scope", async () => {
+    vi.spyOn(collectionsApi, "listCollections").mockResolvedValue(tree);
+    vi.spyOn(recipesApi, "searchRecipes").mockResolvedValue([]);
+
+    renderAt("/collections/2?q=chocolate&tag=dessert");
+
+    expect(await screen.findByRole("link", { name: "Search everywhere" })).toHaveAttribute(
+      "href",
+      "/?q=chocolate&tag=dessert",
+    );
+    expect(await screen.findByText("No recipes match")).toBeInTheDocument();
+  });
+
+  it("filters the whole library by tag at Home, and the tag can be cleared", async () => {
+    vi.spyOn(collectionsApi, "listCollections").mockResolvedValue(tree);
+    const list = vi
+      .spyOn(recipesApi, "listRecipes")
+      .mockResolvedValue([makeRecipe({ title: "Brownies", collectionId: 1 })]);
+
+    renderAt("/?tag=dessert");
+
+    expect(await screen.findByText("Brownies")).toBeInTheDocument();
+    expect(list).toHaveBeenCalledWith({ tag: "dessert", within: undefined });
+    expect(screen.queryByRole("link", { name: "Search everywhere" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /remove tag filter dessert/i }));
+
+    await waitFor(() => expect(list).toHaveBeenLastCalledWith({ collection: "root" }));
   });
 });

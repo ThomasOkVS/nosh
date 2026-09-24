@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as authApi from "../api/auth";
 import { AuthProvider } from "../auth/AuthProvider";
@@ -73,6 +73,25 @@ describe("UserMenu", () => {
     fireEvent.click(await screen.findByRole("button", { name: /abee/ }));
     fireEvent.keyDown(document, { key: "Escape" });
 
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
+  it("opens the settings page and closes the menu", async () => {
+    render(
+      <MemoryRouter>
+        <AuthProvider>
+          <Routes>
+            <Route path="/" element={<UserMenu />} />
+            <Route path="/settings" element={<p>Settings page</p>} />
+          </Routes>
+        </AuthProvider>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: /abee/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /settings/i }));
+
+    expect(screen.getByText("Settings page")).toBeInTheDocument();
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 

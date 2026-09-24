@@ -3,6 +3,7 @@ import cors from "cors";
 import express, { type Express } from "express";
 import session from "express-session";
 import type { Pool } from "pg";
+import type { MagicImportConfig } from "./config/llmModels";
 import type { GeminiExtractFn, GeminiVideoExtractFn } from "./llm/geminiClient";
 import { errorHandler } from "./middleware/errorHandler";
 import { createAuthRouter } from "./routes/auth";
@@ -11,6 +12,7 @@ import { createImportRouter } from "./routes/import";
 import { createMealPlanRouter } from "./routes/mealPlan";
 import { createPushRouter } from "./routes/push";
 import { createRecipesRouter } from "./routes/recipes";
+import { createSettingsRouter } from "./routes/settings";
 import { createImportJobRunner } from "./services/importJobs";
 import { createImportFinishedNotifier, type SendPushFn } from "./services/pushNotifier";
 import type { SocialVideoDownloadFn } from "./services/socialVideo";
@@ -22,6 +24,8 @@ export interface AppDeps {
   sessionSecret: string;
   uploadsDir: string;
   frontendOrigin?: string;
+  /** Which models the Settings page offers, and each import path's default. */
+  magicImport: MagicImportConfig;
   geminiExtract?: GeminiExtractFn;
   geminiVideoExtract?: GeminiVideoExtractFn;
   /** Overridable only so tests never shell out to the real yt-dlp binary —
@@ -44,6 +48,7 @@ export function createApp(deps: AppDeps): Express {
     sessionSecret,
     uploadsDir,
     frontendOrigin = "http://localhost:5173",
+    magicImport,
     geminiExtract,
     geminiVideoExtract,
     downloadSocialVideo,
@@ -89,8 +94,16 @@ export function createApp(deps: AppDeps): Express {
     downloadSocialVideo,
     notify: sendPush ? createImportFinishedNotifier(pool, sendPush) : undefined,
   });
-  app.use("/import", createImportRouter(pool, importJobRunner));
+  app.use("/import", createImportRouter({ pool, magicImport, runner: importJobRunner }));
   app.use("/push", createPushRouter(pool, vapidPublicKey));
+  app.use(
+    "/settings",
+    createSettingsRouter({
+      pool,
+      magicImport,
+      aiConfigured: geminiExtract !== undefined || geminiVideoExtract !== undefined,
+    }),
+  );
 
   app.use(errorHandler);
 

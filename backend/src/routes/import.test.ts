@@ -50,6 +50,7 @@ function stubFetchWithHtml(html: string): void {
 
 interface ImportJobBody {
   id: number;
+  collectionId: number | null;
   status: "running" | "done" | "error" | "cancelled";
   seenStages: string[];
   recipe: Record<string, unknown> | null;
@@ -130,6 +131,24 @@ describe("import routes", () => {
     expect(job.seenStages).toEqual(["fetching", "structured-data", "ai"]);
     expect(job.recipe!.title).toBe("Tomato Soup");
     expect(job.recipe!.sourceUrl).toBe("https://example.com/recipe");
+  });
+
+  it("uses the model saved on the Settings page, and automatic otherwise", async () => {
+    stubFetchWithHtml("<html><body>No recipe markup here</body></html>");
+    const geminiExtract = fakeGemini({
+      title: "Tomato Soup",
+      ingredients: [{ quantity: null, unit: null, name: "tomatoes" }],
+      steps: [{ instruction: "Simmer" }],
+    });
+    const app = createTestApp({ geminiExtract });
+    const agent = await signedInAgent(app, "importmodel@example.com");
+
+    await importAndWait(agent, "https://example.com/recipe");
+    await agent.put("/settings/magic-import").send({ model: "other-model" });
+    await importAndWait(agent, "https://example.com/recipe");
+
+    const models = vi.mocked(geminiExtract).mock.calls.map((call) => call[2]?.model);
+    expect(models).toEqual([undefined, "other-model"]);
   });
 
   it("stops at the structured-data stage when the page has JSON-LD", async () => {
@@ -266,6 +285,33 @@ describe("import routes", () => {
       expect((await agent.post(`/import/${job.id}/reviewed`)).status).toBe(204);
       expect((await agent.get("/import")).body).toEqual([]);
       expect((await agent.get(`/import/${job.id}`)).body.reviewed).toBe(true);
+    });
+
+    it("keeps the folder the import was started from on the job", async () => {
+      stubFetchWithHtml(RECIPE_JSON_LD_PAGE);
+      const app = createTestApp();
+      const agent = await signedInAgent(app, "importfolder@example.com");
+      const folder = await agent.post("/collections").send({ name: "Soups" });
+
+      const started = await agent
+        .post("/import")
+        .send({ url: "https://example.com/recipe", collectionId: folder.body.id });
+      expect(started.status).toBe(202);
+      const job = await waitForJob(agent, started.body.id);
+      expect(job).toMatchObject({ status: "done", collectionId: folder.body.id });
+    });
+
+    it("refuses to file an import in another user's folder", async () => {
+      const app = createTestApp();
+      const owner = await signedInAgent(app, "importfolderowner@example.com");
+      const other = await signedInAgent(app, "importfolderother@example.com");
+      const folder = await owner.post("/collections").send({ name: "Mine" });
+
+      const res = await other
+        .post("/import")
+        .send({ url: "https://example.com/recipe", collectionId: folder.body.id });
+      expect(res.status).toBe(404);
+      expect((await other.get("/import")).body).toEqual([]);
     });
 
     it("hides another user's jobs", async () => {
