@@ -381,15 +381,15 @@ describe("import routes", () => {
       const sendPush = vi.fn<SendPushFn>().mockResolvedValue(undefined);
       const app = createTestApp({ vapidPublicKey: "test-public-key", sendPush });
       const agent = await signedInAgent(app, "importpush@example.com");
-      await subscribe(agent, "https://push.example.com/phone");
-      await subscribe(agent, "https://push.example.com/laptop");
+      await subscribe(agent, "https://web.push.apple.com/phone");
+      await subscribe(agent, "https://fcm.googleapis.com/fcm/send/laptop");
 
       const job = await importAndWait(agent, "https://example.com/recipe");
       await waitForCalls(sendPush, 2);
 
       expect(sendPush.mock.calls.map(([sub]) => sub.endpoint).sort()).toEqual([
-        "https://push.example.com/laptop",
-        "https://push.example.com/phone",
+        "https://fcm.googleapis.com/fcm/send/laptop",
+        "https://web.push.apple.com/phone",
       ]);
       expect(sendPush.mock.calls[0]![1]).toEqual({
         title: "Recipe ready",
@@ -403,7 +403,7 @@ describe("import routes", () => {
       const sendPush = vi.fn<SendPushFn>().mockResolvedValue(undefined);
       const app = createTestApp({ vapidPublicKey: "test-public-key", sendPush });
       const agent = await signedInAgent(app, "importpushfail@example.com");
-      await subscribe(agent, "https://push.example.com/phone");
+      await subscribe(agent, "https://web.push.apple.com/phone");
 
       await importAndWait(agent, "https://example.com/recipe");
       await waitForCalls(sendPush, 1);
@@ -417,7 +417,7 @@ describe("import routes", () => {
       const sendPush = vi.fn<SendPushFn>().mockRejectedValueOnce(gone).mockResolvedValue(undefined);
       const app = createTestApp({ vapidPublicKey: "test-public-key", sendPush });
       const agent = await signedInAgent(app, "importpushgone@example.com");
-      await subscribe(agent, "https://push.example.com/phone");
+      await subscribe(agent, "https://web.push.apple.com/phone");
 
       await importAndWait(agent, "https://example.com/recipe");
       await waitForCalls(sendPush, 1);

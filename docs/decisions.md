@@ -2185,6 +2185,13 @@ survived as long as the tab stayed alive.
   kills in-flight jobs. `recoverImportJobs` runs at boot and marks leftover
   `running` rows as `error` ("interrupted by a server restart") so they don't
   spin in the UI forever.
+- Recovery is deliberately **non-fatal**. Watchtower restarts the backend
+  on a new image *before* anyone runs `pnpm migrate up`, so on that first
+  boot `import_jobs` doesn't exist yet. Crashing there would crash-loop the
+  container and make `docker compose exec backend pnpm migrate up`
+  impossible. It logs a warning instead, and the next restart after
+  migrating does the recovery. This was verified by booting against a
+  database migrated only through 013.
 
 **Why `web-push` (a new backend dependency).**
 - Sending a push means signing a VAPID JWT and encrypting the payload per
@@ -2194,6 +2201,12 @@ survived as long as the tab stayed alive.
 - VAPID keys come from `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`/`VAPID_SUBJECT`.
   Unset means push is off: routes return 503, the UI hides its controls, and
   imports still work. That's the same pattern as a missing `GEMINI_API_KEY`.
+- Subscription endpoints are checked against an **allowlist of real push
+  services** (Apple, FCM, Mozilla, WNS), because the server POSTs to
+  whatever endpoint a subscription names. Without it, any signed-in user
+  could point the server at arbitrary or internal hosts: the same SSRF
+  concern `validateUrl` covers for recipe import, and more pressing now that
+  the app isn't Tailscale-only.
 - The public key is served at runtime (`GET /push/vapid-public-key`), not
   baked in as a `VITE_*` build arg, so rotating keys needs no frontend
   rebuild.
@@ -2230,7 +2243,7 @@ survived as long as the tab stayed alive.
   newest.
 
 **Verification.**
-- Backend: 266 tests pass, frontend 152, after merging main (new coverage for the job
+- Backend: 269 tests pass, frontend 152, after merging main (new coverage for the job
   lifecycle, cancel, restart recovery, push fan-out and 410 cleanup, launch
   restore, and the `?importId=` cold start).
 - Verified live against this worktree's own backend and frontend (ports

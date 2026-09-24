@@ -18,7 +18,16 @@ const pool = createPool(env.databaseUrl);
 async function start(): Promise<void> {
   // Before accepting requests: any job still "running" belongs to a
   // previous process and would otherwise spin in the UI forever.
-  await recoverImportJobs(pool);
+  // Deliberately non-fatal: in prod, Watchtower restarts the backend on a
+  // new image *before* anyone runs `pnpm migrate up`, so on that first boot
+  // `import_jobs` may not exist yet — crashing here would crash-loop the
+  // container and make `docker compose exec backend pnpm migrate up`
+  // impossible. The next restart after migrating does the recovery.
+  try {
+    await recoverImportJobs(pool);
+  } catch (err) {
+    console.warn("Skipped import-job recovery (have migrations been run?):", err);
+  }
 
   if (env.seedDemoData) {
     await seedDemoData(pool, env.uploadsDir);

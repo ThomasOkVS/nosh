@@ -15,7 +15,7 @@ async function signedInAgent(
 }
 
 const SUBSCRIPTION = {
-  endpoint: "https://push.example.com/device-1",
+  endpoint: "https://web.push.apple.com/device-1",
   keys: { p256dh: "p256dh-key", auth: "auth-secret" },
 };
 
@@ -62,15 +62,31 @@ describe("push routes", () => {
     ]);
   });
 
-  it("rejects a non-https endpoint", async () => {
+  it.each([
+    ["an internal host", "https://internal.example/hook"],
+    ["plain http", "http://fcm.googleapis.com/fcm/send/abc"],
+    ["a lookalike host", "https://fcm.googleapis.com.evil.example/send"],
+  ])("rejects an endpoint that isn't a real push service (%s)", async (_label, endpoint) => {
     const app = createTestApp({ vapidPublicKey: "pk" });
     const agent = await signedInAgent(app, "pushhttp@example.com");
 
-    const res = await agent
-      .post("/push/subscriptions")
-      .send({ ...SUBSCRIPTION, endpoint: "http://internal.example/hook" });
+    const res = await agent.post("/push/subscriptions").send({ ...SUBSCRIPTION, endpoint });
     expect(res.status).toBe(400);
     expect(await storedSubscriptions()).toEqual([]);
+  });
+
+  it("accepts each major browser's push service", async () => {
+    const app = createTestApp({ vapidPublicKey: "pk" });
+    const agent = await signedInAgent(app, "pushhosts@example.com");
+
+    for (const endpoint of [
+      "https://web.push.apple.com/QGx1",
+      "https://fcm.googleapis.com/fcm/send/abc",
+      "https://updates.push.services.mozilla.com/wpush/v2/abc",
+      "https://wns2-par02p.notify.windows.com/w/?token=abc",
+    ]) {
+      expect((await agent.post("/push/subscriptions").send({ ...SUBSCRIPTION, endpoint })).status).toBe(204);
+    }
   });
 
   it("unsubscribes only the caller's own subscription", async () => {

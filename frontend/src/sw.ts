@@ -74,9 +74,16 @@ self.addEventListener("notificationclick", (event) => {
       const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
       const existing = windows[0];
       if (existing) {
-        await existing.focus();
-        await existing.navigate(target);
-        return;
+        try {
+          await existing.focus();
+          // Rejects for a window this worker doesn't control (e.g. one
+          // opened before the worker activated) — fall through to a fresh
+          // window rather than leaving the tap doing nothing.
+          await existing.navigate(target);
+          return;
+        } catch {
+          // fall through
+        }
       }
       await self.clients.openWindow(target);
     })(),
