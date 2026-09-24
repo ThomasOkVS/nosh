@@ -4,6 +4,8 @@ import { migrateDatabase } from "./migrate";
 
 const ALL_TABLES = [
   "llm_usage",
+  "push_subscriptions",
+  "import_jobs",
   "meal_plan_entries",
   "recipe_images",
   "recipe_tags",

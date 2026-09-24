@@ -28,6 +28,8 @@ export function createTestApp(
       | "allowSignup"
       | "frontendOrigins"
       | "trustedProxies"
+      | "vapidPublicKey"
+      | "sendPush"
     >
   > = {},
 ): Express {

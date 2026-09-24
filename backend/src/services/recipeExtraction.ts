@@ -273,7 +273,7 @@ function sanitizeCandidate(candidate: unknown): RawRecord {
  */
 export type ImportStage = "fetching" | "structured-data" | "downloading-video" | "analyzing-video" | "ai";
 
-interface ExtractDeps {
+export interface ExtractDeps {
   /** Optional: the schema.org path works without it, most recipe sites
    * publish that data, and the app must still boot with no API key. */
   geminiExtract?: GeminiExtractFn;
@@ -285,8 +285,8 @@ interface ExtractDeps {
   downloadSocialVideo?: SocialVideoDownloadFn;
   fetchImpl?: typeof fetch;
   onProgress?: (stage: ImportStage) => void;
-  /** Aborts the outbound work when the client goes away, so a navigation
-   * mid-import doesn't keep burning API quota. */
+  /** Aborts the outbound work when the user cancels the import, so it
+   * doesn't keep burning API quota. */
   signal?: AbortSignal;
   /** The user's Settings-page model choice, applied to whichever AI path
    * runs. Unset means "automatic" — each extractor's configured default. */

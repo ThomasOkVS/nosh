@@ -11,8 +11,11 @@ import { createAuthRouter } from "./routes/auth";
 import { createCollectionsRouter } from "./routes/collections";
 import { createImportRouter } from "./routes/import";
 import { createMealPlanRouter } from "./routes/mealPlan";
+import { createPushRouter } from "./routes/push";
 import { createRecipesRouter } from "./routes/recipes";
 import { createSettingsRouter } from "./routes/settings";
+import { createImportJobRunner } from "./services/importJobs";
+import { createImportFinishedNotifier, type SendPushFn } from "./services/pushNotifier";
 import type { SocialVideoDownloadFn } from "./services/socialVideo";
 
 const ONE_WEEK_MS = 1000 * 60 * 60 * 24 * 7;
@@ -40,6 +43,12 @@ export interface AppDeps {
    * services/safeFetch.ts's SSRF-guarded fetch; overridable so tests never
    * make a real network request. */
   fetchImpl?: typeof fetch;
+  /** Both unset when the server has no VAPID keys: push is then disabled
+   * (routes/push.ts answers 503) and imports finish without notifying. */
+  vapidPublicKey?: string;
+  /** Overridable so tests never talk to a real push service — see
+   * services/pushNotifier.ts. */
+  sendPush?: SendPushFn;
 }
 
 export function createApp(deps: AppDeps): Express {
@@ -56,6 +65,8 @@ export function createApp(deps: AppDeps): Express {
     geminiVideoExtract,
     downloadSocialVideo,
     fetchImpl,
+    vapidPublicKey,
+    sendPush,
   } = deps;
   const PgSession = connectPgSimple(session);
 
@@ -109,17 +120,15 @@ export function createApp(deps: AppDeps): Express {
   app.use("/recipes", createRecipesRouter(pool, uploadsDir, fetchImpl));
   app.use("/collections", createCollectionsRouter(pool, uploadsDir));
   app.use("/meal-plan", createMealPlanRouter(pool));
-  app.use(
-    "/import",
-    createImportRouter({
-      pool,
-      magicImport,
-      geminiExtract,
-      geminiVideoExtract,
-      downloadSocialVideo,
-      fetchImpl,
-    }),
-  );
+  const importJobRunner = createImportJobRunner(pool, {
+    geminiExtract,
+    geminiVideoExtract,
+    downloadSocialVideo,
+    fetchImpl,
+    notify: sendPush ? createImportFinishedNotifier(pool, sendPush) : undefined,
+  });
+  app.use("/import", createImportRouter({ pool, magicImport, runner: importJobRunner }));
+  app.use("/push", createPushRouter(pool, vapidPublicKey));
   app.use(
     "/settings",
     createSettingsRouter({

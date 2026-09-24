@@ -46,7 +46,9 @@ markup — Wikibooks' Cookbook is reliable for this:
 curl -s -X POST http://localhost:3001/import -H "Content-Type: application/json" -d '{"url":"https://en.wikibooks.org/wiki/Cookbook:Guacamole"}'
 ```
 
-(Or just paste that URL into the import page while logged in.) To check
+(Or just paste that URL into the import page while logged in.) The endpoint
+answers `202` with a job straight away; the result lands on
+`GET /import/<id>` once the background job finishes. To check
 whether any given page would take the fast path, search its HTML for
 `"@type": "Recipe"` — if it's there, JSON-LD handles it and Gemini is never
 called.
@@ -57,6 +59,22 @@ model ids get retired for *new* keys while still working for old ones:
 ```bash
 docker compose exec backend node -e "fetch('https://generativelanguage.googleapis.com/v1beta/models?key='+process.env.GEMINI_API_KEY).then(r=>r.json()).then(d=>console.log(d.models.map(m=>m.name).join('\n')))"
 ```
+
+### Push notifications ("your import is ready")
+
+Off unless all three `VAPID_*` vars are set in `.env`. Generate a key pair
+once and keep it, because changing it invalidates every device's
+subscription:
+
+```bash
+pnpm --filter backend exec web-push generate-vapid-keys
+```
+
+Put the two keys in `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`, set
+`VAPID_SUBJECT=mailto:you@example.com`, then run `docker compose up -d
+backend`. Locally, desktop Chrome/Firefox on `http://localhost:5173` can
+subscribe, because `localhost` counts as a secure context. On an iPhone, it
+only works from the app added to the home screen, served over HTTPS.
 
 ## Demo data
 

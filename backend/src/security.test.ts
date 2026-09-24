@@ -237,6 +237,17 @@ describe("per-user import limit", () => {
     expect((await agent.post("/import").send({})).status).toBe(429);
   });
 
+  it("doesn't count polling a job's progress against the limit", async () => {
+    const app = createTestApp();
+    const agent = request.agent(app);
+    await agent
+      .post("/auth/signup")
+      .send({ email: "poller@example.com", username: "poller", password: "correct-horse" });
+
+    for (let i = 0; i < 40; i++) expect((await agent.get("/import/999")).status).toBe(404);
+    expect((await agent.post("/import").send({})).status).toBe(400);
+  });
+
   it("requires login", async () => {
     const res = await request(createTestApp()).post("/import").send({ url: "https://example.com" });
     expect(res.status).toBe(401);

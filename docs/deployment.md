@@ -141,8 +141,11 @@ rate-limit bucket.
 1. **Merge. Watchtower deploys it overnight.** Nothing changes for users:
    - the backend still reads `FRONTEND_ORIGIN`;
    - the cookie is unchanged over plain HTTP;
-   - nginx has an unused `/api` route;
-   - there's no migration.
+   - nginx has an unused `/api` route.
+
+   This change adds no migration of its own. The import-jobs work merged
+   just before it adds `1700000000014`, so run `pnpm migrate up` after this
+   deploy as usual.
 
    The one visible change is that **signup closes**, because `ALLOW_SIGNUP`
    defaults to false. Existing accounts keep working.
