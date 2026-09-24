@@ -61,8 +61,12 @@ services:
     volumes:
       - /DATA/nosh/uploads:/repo/backend/uploads
     networks:
-      - default # postgres
-      - edge # reached by the frontend's nginx
+      default: {} # postgres
+      edge:
+        # What frontend/nginx.conf proxies /api to. Deliberately not the
+        # bare service name `backend`, which another stack on the shared
+        # `proxy` network could also answer to.
+        aliases: [nosh-backend]
     depends_on:
       postgres:
         condition: service_healthy
@@ -87,9 +91,12 @@ services:
       edge:
         # Must equal the backend's TRUSTED_PROXIES.
         ipv4_address: 10.101.0.10
-      # Uncomment at cutover so Caddy can reach this container. Only the
-      # frontend joins `proxy`; the backend never does.
-      # proxy: {}
+      # Uncomment at cutover so Caddy can reach this container, as
+      # `reverse_proxy nosh-frontend:8080` — a unique name for the same
+      # reason as the backend's alias. Only the frontend joins `proxy`; the
+      # backend never does.
+      # proxy:
+      #   aliases: [nosh-frontend]
     depends_on:
       - backend
 

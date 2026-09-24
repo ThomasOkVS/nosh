@@ -108,9 +108,10 @@ priority.
     - `sha-<7>` image tags;
     - a PR job that builds both images and runs `nginx -t`.
   - **Verification.** 94 new backend tests and 3 frontend tests. Also a
-    29-check Docker end-to-end run of the real images in a copy of the box's
+    33-check Docker end-to-end run of the real images in a copy of the box's
     network layout: a stand-in Caddy at `172.28.255.2`, an intruder
-    container, and the old direct `:3101` path. No migrations. Merge and the
+    container, a decoy named `backend` (the reason nginx targets the
+    `nosh-backend` alias), and the old direct `:3101` path. No migrations. Merge and the
     homelab-side steps are still pending; see Follow-ups.
 
 - **2026-09-24** — Magic import model selector and tokens-left view shipped

@@ -38,17 +38,22 @@ actually root, not from either `/DATA` or `/opt` by default.)
 
 ```
 browser ──HTTPS──▶ Caddy (proxy network, 172.28.255.2; TLS, HSTS)
-                     │ reverse_proxy frontend:8080
+                     │ reverse_proxy nosh-frontend:8080
                      ▼
                    frontend nginx :8080 (edge network, fixed 10.101.0.10)
                      ├── /       → the built SPA
-                     └── /api/*  → strip /api → backend:3001
+                     └── /api/*  → strip /api → nosh-backend:3001
                                                │
                                    backend (edge + default) ── postgres (default)
 ```
 
 - Only the **frontend** joins Caddy's `proxy` network. The backend never
   does, because that network can reach dockge and other admin UIs.
+- Both hops use **unique network aliases**: `nosh-backend` on `edge` and
+  `nosh-frontend` on `proxy`. Compose also registers the bare service names
+  `backend` and `frontend` on every network a container joins, and another
+  stack on the shared `proxy` network could use those names too. If it did,
+  Docker DNS could route nosh's traffic to the wrong container.
 - nginx trusts `X-Forwarded-For` and `X-Forwarded-Proto` only from Caddy's
   IP. It overwrites both before passing them on.
 - The backend trusts those headers only from the frontend's fixed IP
@@ -143,9 +148,9 @@ rate-limit bucket.
    defaults to false. Existing accounts keep working.
 2. **Network and env** (in `/opt/nosh`):
    - Add the `edge` network, with the frontend at
-     `ipv4_address: 10.101.0.10` and the backend on `default` and `edge`, as
-     in the reference compose file. Pick another subnet if `10.101.0.0/24`
-     is already used on the host or LAN.
+     `ipv4_address: 10.101.0.10` and the backend on `default` and `edge`
+     with the alias `nosh-backend`, as in the reference compose file. Pick
+     another subnet if `10.101.0.0/24` is already used on the host or LAN.
    - Set `FRONTEND_ORIGINS` and `TRUSTED_PROXIES` from the table.
    - Run `docker compose up -d`.
    - Check from the host: `curl -s localhost:8080/api/health` returns
@@ -155,7 +160,8 @@ rate-limit bucket.
    too.
 4. **Caddy:**
    - Put the frontend (and only the frontend) on the `proxy` network.
-   - Add `nosh.itsthomassito.com { reverse_proxy frontend:8080 }`.
+     Give it the alias `nosh-frontend` there.
+   - Add `nosh.itsthomassito.com { reverse_proxy nosh-frontend:8080 }`.
    - Add `nosh.` to DDNS.
    - Run the checks below.
 5. **Later, retire the tailnet origin:**

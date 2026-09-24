@@ -2154,7 +2154,11 @@ This **supersedes**:
 ### Topology: the frontend's nginx proxies `/api`
 
 `location ^~ /api/` in `frontend/nginx.conf` strips the prefix and forwards
-to `backend:3001`. The frontend is built with the relative
+to `nosh-backend:3001`. That's a unique network alias rather than the
+service name `backend`: the frontend also sits on the shared `proxy`
+network, where another stack could answer to `backend`, and Docker DNS
+would hand back that container instead. The frontend is built with the
+relative
 `VITE_API_URL=/api`, so page and API share one origin.
 
 **Chosen over Caddy doing `handle_path /api/*`:**
@@ -2357,13 +2361,18 @@ topology that copies the box:
 - the `edge` network with the frontend at `10.101.0.10`;
 - the backend published directly, the way `:3101` is today.
 
-All 29 checks passed:
+All 33 checks passed:
 - the cookie gets `Secure` only through "Caddy";
 - the intruder's spoofed `X-Forwarded-For`/`-Proto` are ignored;
 - a unicode query string arrives intact through the rewrite;
 - a 3 MB upload goes through;
-- the SSRF import returns 400;
+- the SSRF import returns 400 for the literal;
+- a hostname that resolves privately (`172.28.0.1.nip.io`) is refused
+  in-band;
 - nginx follows a recreated backend to its new IP;
+- a decoy container on the proxy network answering to `backend` is never
+  reached, even though the frontend container can resolve it (the control
+  check proved the collision exists);
 - nginx starts with no backend and answers `/api` with 502;
 - the old direct tailnet login still works, without Secure.
 
