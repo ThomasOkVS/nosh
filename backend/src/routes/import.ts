@@ -1,6 +1,9 @@
 import { Router } from "express";
+import type { Pool } from "pg";
+import { resolveImportModel, type MagicImportConfig } from "../config/llmModels";
 import type { GeminiExtractFn, GeminiVideoExtractFn } from "../llm/geminiClient";
 import { requireAuth } from "../middleware/requireAuth";
+import { findImportModel } from "../repositories/users";
 import {
   DownloaderUnavailableError,
   ExtractionError,
@@ -29,19 +32,22 @@ function statusForError(err: unknown): number {
 }
 
 export interface ImportRouterDeps {
+  pool: Pool;
+  magicImport: MagicImportConfig;
   geminiExtract?: GeminiExtractFn;
   geminiVideoExtract?: GeminiVideoExtractFn;
   downloadSocialVideo?: SocialVideoDownloadFn;
 }
 
 /**
- * Deliberately takes no `pool` — unlike every other router in this app, this
- * one does no DB work (it only extracts and returns a `RecipeInput` for the
- * frontend to pre-fill; persisting it happens through the normal recipe
- * create/update routes).
+ * The only DB work here is reading the user's model preference — the import
+ * itself just extracts and returns a `RecipeInput` for the frontend to
+ * pre-fill; persisting it happens through the normal recipe create/update
+ * routes. (Usage counting happens inside the Gemini client's `onUsage`
+ * hook, wired up in index.ts.)
  */
 export function createImportRouter(deps: ImportRouterDeps): Router {
-  const { geminiExtract, geminiVideoExtract, downloadSocialVideo } = deps;
+  const { pool, magicImport, geminiExtract, geminiVideoExtract, downloadSocialVideo } = deps;
   const router = Router();
   router.use(requireAuth);
 
@@ -89,7 +95,9 @@ export function createImportRouter(deps: ImportRouterDeps): Router {
     req.on("close", () => clientGone.abort());
 
     try {
+      const model = resolveImportModel(magicImport, await findImportModel(pool, req.session.userId ?? 0));
       const { recipe, imageUrl } = await extractRecipeFromUrl(parsed.data.url, {
+        model,
         geminiExtract,
         geminiVideoExtract,
         downloadSocialVideo,
