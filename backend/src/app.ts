@@ -9,7 +9,10 @@ import { createAuthRouter } from "./routes/auth";
 import { createCollectionsRouter } from "./routes/collections";
 import { createImportRouter } from "./routes/import";
 import { createMealPlanRouter } from "./routes/mealPlan";
+import { createPushRouter } from "./routes/push";
 import { createRecipesRouter } from "./routes/recipes";
+import { createImportJobRunner } from "./services/importJobs";
+import { createImportFinishedNotifier, type SendPushFn } from "./services/pushNotifier";
 import type { SocialVideoDownloadFn } from "./services/socialVideo";
 
 const ONE_WEEK_MS = 1000 * 60 * 60 * 24 * 7;
@@ -27,6 +30,12 @@ export interface AppDeps {
   /** Overridable so tests attaching a recipe photo from a URL never make a
    * real network request — see routes/recipes.ts's `/images/from-url`. */
   fetchImpl?: typeof fetch;
+  /** Both unset when the server has no VAPID keys: push is then disabled
+   * (routes/push.ts answers 503) and imports finish without notifying. */
+  vapidPublicKey?: string;
+  /** Overridable so tests never talk to a real push service — see
+   * services/pushNotifier.ts. */
+  sendPush?: SendPushFn;
 }
 
 export function createApp(deps: AppDeps): Express {
@@ -39,6 +48,8 @@ export function createApp(deps: AppDeps): Express {
     geminiVideoExtract,
     downloadSocialVideo,
     fetchImpl,
+    vapidPublicKey,
+    sendPush,
   } = deps;
   const PgSession = connectPgSimple(session);
 
@@ -72,7 +83,14 @@ export function createApp(deps: AppDeps): Express {
   app.use("/recipes", createRecipesRouter(pool, uploadsDir, fetchImpl));
   app.use("/collections", createCollectionsRouter(pool, uploadsDir));
   app.use("/meal-plan", createMealPlanRouter(pool));
-  app.use("/import", createImportRouter({ geminiExtract, geminiVideoExtract, downloadSocialVideo }));
+  const importJobRunner = createImportJobRunner(pool, {
+    geminiExtract,
+    geminiVideoExtract,
+    downloadSocialVideo,
+    notify: sendPush ? createImportFinishedNotifier(pool, sendPush) : undefined,
+  });
+  app.use("/import", createImportRouter(pool, importJobRunner));
+  app.use("/push", createPushRouter(pool, vapidPublicKey));
 
   app.use(errorHandler);
 

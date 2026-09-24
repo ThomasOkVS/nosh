@@ -29,6 +29,7 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Skeleton } from "../components/Skeleton";
 import { TagInput } from "../components/TagInput";
 import { useAsync } from "../hooks/useAsync";
+import { importedImageUrlFrom, importedRecipeFrom } from "../import/importedRecipe";
 import { generateId } from "../lib/id";
 import { buttonClass, errorBannerClass, inputClass, labelClass, sectionCardClass, sectionHeadingClass } from "../styles";
 import { useToast } from "../toast/ToastContext";
@@ -57,32 +58,10 @@ function numberFieldValue(value: number | null | undefined): string {
   return value !== null && value !== undefined ? String(value) : "";
 }
 
-/**
- * Router state lives in `history.state`: it survives reloads, outlives
- * deploys, and any script can push arbitrary values into it. Validate rather
- * than cast, or a stale/hostile entry crashes the form during render.
- */
-function importedRecipeFrom(state: unknown): RecipeInput | null {
-  if (!state || typeof state !== "object" || !("importedRecipe" in state)) return null;
-  const candidate = (state as { importedRecipe?: unknown }).importedRecipe;
-  if (!candidate || typeof candidate !== "object") return null;
-  const recipe = candidate as Partial<RecipeInput>;
-  if (typeof recipe.title !== "string") return null;
-  if (!Array.isArray(recipe.ingredients) || !Array.isArray(recipe.steps)) return null;
-  if (!Array.isArray(recipe.tags)) return null;
-  return recipe as RecipeInput;
-}
-
-function importedImageUrlFrom(state: unknown): string | null {
-  if (!state || typeof state !== "object" || !("importedImageUrl" in state)) return null;
-  const candidate = (state as { importedImageUrl?: unknown }).importedImageUrl;
-  return typeof candidate === "string" ? candidate : null;
-}
-
 /** Shown while fetching the existing recipe in edit mode — see
  * docs/design-system.md#loading-states. New-recipe mode never hits this,
  * there's nothing to fetch. */
-function RecipeFormSkeleton() {
+export function RecipeFormSkeleton() {
   return (
     <div className="space-y-6">
       <Link to="/recipes" className="inline-flex items-center gap-1 text-sm text-ink-muted hover:text-ink">

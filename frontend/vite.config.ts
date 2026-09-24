@@ -19,8 +19,16 @@ export default defineConfig({
     react(),
     tailwindcss(),
     VitePWA({
+      // Our own service worker (src/sw.ts) rather than a generated one — it
+      // needs push-notification handlers. The plugin still builds it and
+      // injects the precache manifest into it.
+      strategies: "injectManifest",
+      srcDir: "src",
+      filename: "sw.ts",
       registerType: "autoUpdate",
-      devOptions: { enabled: true },
+      // `type: "module"` because in dev the worker is served unbundled,
+      // straight from src/sw.ts with its ES imports.
+      devOptions: { enabled: true, type: "module" },
       manifest: {
         name: "Nosh",
         short_name: "Nosh",

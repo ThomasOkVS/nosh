@@ -1,125 +1,50 @@
-import { ApiError, apiUrl } from "./client";
+import { apiFetch } from "./client";
 import type { RecipeInput } from "./types";
 
 /** Mirrors `ImportStage` in the backend's recipeExtraction service. */
 export type ImportStage = "fetching" | "structured-data" | "downloading-video" | "analyzing-video" | "ai";
 
-interface ImportMessage {
-  type?: unknown;
-  stage?: unknown;
-  recipe?: unknown;
-  imageUrl?: unknown;
-  status?: unknown;
-  error?: unknown;
-}
-
-export interface ImportResult {
-  recipe: RecipeInput;
+/**
+ * A server-side import job (backend/src/repositories/importJobs.ts). The
+ * extraction runs on the server independently of this tab, so the app can
+ * be closed mid-import and pick the result back up later — the frontend
+ * only ever starts a job and then polls it.
+ */
+export interface ImportJob {
+  id: number;
+  url: string;
+  status: "running" | "done" | "error" | "cancelled";
+  seenStages: ImportStage[];
+  /** Extracted-but-unsaved recipe data for the create form to pre-fill;
+   * set once `status` is "done". */
+  recipe: RecipeInput | null;
   /** The recipe's photo, found on a best-effort basis — null when the page
    * (or video) had no discoverable image. */
   imageUrl: string | null;
+  errorStatus: number | null;
+  errorMessage: string | null;
+  reviewed: boolean;
+  createdAt: string;
 }
 
-/**
- * Returns extracted-but-unsaved recipe data for the create form to pre-fill;
- * nothing is persisted until the user submits that form.
- *
- * Unlike the other API calls this one doesn't go through `apiFetch`: the
- * endpoint streams newline-delimited JSON so it can report progress while it
- * works (see backend/src/routes/import.ts). `onStage` fires as each phase
- * starts, which is what lets the UI distinguish "reading the page's own
- * recipe data" from "waiting on the AI".
- */
-export async function importRecipeFromUrl(
-  url: string,
-  onStage?: (stage: ImportStage) => void,
-  signal?: AbortSignal,
-): Promise<ImportResult> {
-  const response = await fetch(apiUrl("/import"), {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ url }),
-    signal,
-  });
+export function startImport(url: string): Promise<ImportJob> {
+  return apiFetch<ImportJob>("/import", { method: "POST", body: { url } });
+}
 
-  // Rejected before streaming began (bad body, no session) — still a plain
-  // JSON error response with a real status.
-  if (!response.ok) {
-    const data: unknown = await response.json().catch(() => undefined);
-    const message =
-      data && typeof data === "object" && "error" in data && typeof data.error === "string"
-        ? data.error
-        : `Request failed with status ${response.status}`;
-    throw new ApiError(response.status, message);
-  }
-  if (!response.body) {
-    throw new ApiError(response.status, "The server returned an empty response");
-  }
+export function getImport(id: number): Promise<ImportJob> {
+  return apiFetch<ImportJob>(`/import/${id}`);
+}
 
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let result: ImportResult | null = null;
+/** Running jobs plus finished ones not yet reviewed, newest first. */
+export function listPendingImports(): Promise<ImportJob[]> {
+  return apiFetch<ImportJob[]>("/import");
+}
 
-  const handle = (line: string): void => {
-    if (!line.trim()) return;
-    let message: ImportMessage;
-    try {
-      message = JSON.parse(line) as ImportMessage;
-    } catch {
-      // A malformed line shouldn't abort an otherwise healthy import.
-      return;
-    }
-    switch (message.type) {
-      case "progress":
-        if (typeof message.stage === "string") onStage?.(message.stage as ImportStage);
-        break;
-      case "result":
-        result = {
-          recipe: message.recipe as RecipeInput,
-          imageUrl: typeof message.imageUrl === "string" ? message.imageUrl : null,
-        };
-        break;
-      case "error":
-        throw new ApiError(
-          typeof message.status === "number" ? message.status : 500,
-          typeof message.error === "string" && message.error ? message.error : "Import failed",
-        );
-      default:
-        // Unknown message types are ignored on purpose, so adding something
-        // like a keepalive line server-side can't break older clients.
-        break;
-    }
-  };
+export function cancelImport(id: number): Promise<void> {
+  return apiFetch<void>(`/import/${id}/cancel`, { method: "POST" });
+}
 
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      // `stream: true` keeps a multi-byte character that straddles two
-      // chunks intact across calls.
-      buffer += decoder.decode(value, { stream: true });
-      // A chunk can also split mid-line, so only whole lines are parsed;
-      // whatever follows the last newline stays buffered for the next chunk.
-      const lines = buffer.split("\n");
-      buffer = lines.pop() ?? "";
-      lines.forEach(handle);
-    }
-    buffer += decoder.decode();
-    handle(buffer);
-  } finally {
-    // `cancel()` alone doesn't synchronously release the lock on the body —
-    // `releaseLock()` is what callers (and `response.body.locked`) actually
-    // observe. Runs whether the stream finished normally, an in-band error
-    // threw out of `handle`, or the caller aborted; without it the body stays
-    // locked and the connection held.
-    reader.cancel().catch(() => undefined);
-    reader.releaseLock();
-  }
-
-  if (result === null) {
-    throw new ApiError(500, "Import ended without returning a recipe");
-  }
-  return result;
+/** Stops the app offering this result again on launch. */
+export function markImportReviewed(id: number): Promise<void> {
+  return apiFetch<void>(`/import/${id}/reviewed`, { method: "POST" });
 }

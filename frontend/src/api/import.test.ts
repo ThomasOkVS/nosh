@@ -1,176 +1,58 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "./client";
-import { importRecipeFromUrl, type ImportStage } from "./import";
+import { cancelImport, getImport, listPendingImports, markImportReviewed, startImport } from "./import";
 
-/** Builds a streaming Response whose body yields the given chunks in order,
- * mimicking the backend's newline-delimited JSON. */
-function ndjsonResponse(chunks: string[]): Response {
-  const encoder = new TextEncoder();
-  const body = new ReadableStream<Uint8Array>({
-    start(controller) {
-      chunks.forEach((chunk) => controller.enqueue(encoder.encode(chunk)));
-      controller.close();
-    },
-  });
-  return new Response(body, {
-    status: 200,
-    headers: { "Content-Type": "application/x-ndjson" },
-  });
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 }
 
-function line(message: unknown): string {
-  return `${JSON.stringify(message)}\n`;
-}
-
-describe("importRecipeFromUrl", () => {
+describe("import api", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
-  it("POSTs the url and returns the recipe from the result message", async () => {
-    const recipe = { title: "Tomato Soup", sourceUrl: "https://example.com/recipe" };
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(ndjsonResponse([line({ type: "result", recipe })]));
+  it("starts an import by POSTing the url and returns the created job", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ id: 3, status: "running" }, 202));
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(importRecipeFromUrl("https://example.com/recipe")).resolves.toEqual({
-      recipe,
-      imageUrl: null,
-    });
+    const job = await startImport("https://example.com/recipe");
 
+    expect(job).toMatchObject({ id: 3, status: "running" });
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toContain("/import");
+    expect(url).toMatch(/\/import$/);
     expect(init.method).toBe("POST");
-    expect(init.credentials).toBe("include");
-    expect(init.body).toBe(JSON.stringify({ url: "https://example.com/recipe" }));
+    expect(JSON.parse(init.body as string)).toEqual({ url: "https://example.com/recipe" });
   });
 
-  it("returns the imageUrl alongside the recipe when present", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(
-        ndjsonResponse([
-          line({ type: "result", recipe: { title: "Soup" }, imageUrl: "https://example.com/soup.jpg" }),
-        ]),
-      ),
-    );
+  it("surfaces a rejected start as an ApiError with the server's message", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ error: "Invalid URL" }, 400)));
 
-    await expect(importRecipeFromUrl("https://example.com/recipe")).resolves.toEqual({
-      recipe: { title: "Soup" },
-      imageUrl: "https://example.com/soup.jpg",
-    });
+    await expect(startImport("nope")).rejects.toEqual(new ApiError(400, "Invalid URL"));
   });
 
-  it("reports each progress stage in order", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(
-        ndjsonResponse([
-          line({ type: "progress", stage: "fetching" }),
-          line({ type: "progress", stage: "structured-data" }),
-          line({ type: "progress", stage: "ai" }),
-          line({ type: "result", recipe: { title: "Soup" } }),
-        ]),
-      ),
-    );
+  it("hits the per-job endpoints", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ id: 3 }))
+      .mockResolvedValueOnce(jsonResponse([]))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
 
-    const stages: ImportStage[] = [];
-    await importRecipeFromUrl("https://example.com/recipe", (stage) => stages.push(stage));
+    await getImport(3);
+    await listPendingImports();
+    await cancelImport(3);
+    await markImportReviewed(3);
 
-    expect(stages).toEqual(["fetching", "structured-data", "ai"]);
-  });
-
-  it("reassembles messages split across chunk boundaries", async () => {
-    const recipe = { title: "Tomato Soup" };
-    const full = line({ type: "progress", stage: "fetching" }) + line({ type: "result", recipe });
-    // Split mid-way through the first JSON object.
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(ndjsonResponse([full.slice(0, 15), full.slice(15)])),
-    );
-
-    const stages: ImportStage[] = [];
-    await expect(
-      importRecipeFromUrl("https://example.com/recipe", (stage) => stages.push(stage)),
-    ).resolves.toEqual({ recipe, imageUrl: null });
-    expect(stages).toEqual(["fetching"]);
-  });
-
-  it("throws an ApiError carrying the in-band error status and message", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(
-        ndjsonResponse([
-          line({ type: "progress", stage: "fetching" }),
-          line({ type: "error", status: 422, error: "No recipe could be found on that page" }),
-        ]),
-      ),
-    );
-
-    await expect(importRecipeFromUrl("https://example.com/x")).rejects.toMatchObject(
-      new ApiError(422, "No recipe could be found on that page"),
-    );
-  });
-
-  it("throws an ApiError for a pre-stream failure such as a 400", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ error: "Invalid input" }), {
-          status: 400,
-          headers: { "Content-Type": "application/json" },
-        }),
-      ),
-    );
-
-    await expect(importRecipeFromUrl("nope")).rejects.toMatchObject(
-      new ApiError(400, "Invalid input"),
-    );
-  });
-
-  it("throws when the stream ends without a result", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(ndjsonResponse([line({ type: "progress", stage: "fetching" })])),
-    );
-
-    await expect(importRecipeFromUrl("https://example.com/x")).rejects.toBeInstanceOf(ApiError);
-  });
-
-  it("ignores an unrecognized message type instead of failing silently", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(
-        ndjsonResponse([
-          line({ type: "heartbeat" }),
-          line({ type: "result", recipe: { title: "Soup" } }),
-        ]),
-      ),
-    );
-
-    await expect(importRecipeFromUrl("https://example.com/x")).resolves.toEqual({
-      recipe: { title: "Soup" },
-      imageUrl: null,
-    });
-  });
-
-  it("gives a distinct message for an ok response with no body", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(new Response(null, { status: 200 })),
-    );
-
-    await expect(importRecipeFromUrl("https://example.com/x")).rejects.toMatchObject(
-      new ApiError(200, "The server returned an empty response"),
-    );
-  });
-
-  it("releases the stream reader after an in-band error", async () => {
-    const response = ndjsonResponse([line({ type: "error", status: 422, error: "No recipe" })]);
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response));
-
-    await expect(importRecipeFromUrl("https://example.com/x")).rejects.toBeInstanceOf(ApiError);
-    expect(response.body?.locked).toBe(false);
+    const calls = (fetchMock.mock.calls as [string, RequestInit][]).map(([url, init]) => [
+      init.method,
+      url.replace(/^.*\/import/, "/import"),
+    ]);
+    expect(calls).toEqual([
+      ["GET", "/import/3"],
+      ["GET", "/import"],
+      ["POST", "/import/3/cancel"],
+      ["POST", "/import/3/reviewed"],
+    ]);
   });
 });

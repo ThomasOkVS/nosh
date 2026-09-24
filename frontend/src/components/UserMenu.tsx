@@ -1,7 +1,8 @@
-import { CaretDownIcon, MoonIcon, SignOutIcon, SunIcon } from "@phosphor-icons/react";
+import { BellIcon, BellSlashIcon, CaretDownIcon, MoonIcon, SignOutIcon, SunIcon } from "@phosphor-icons/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/useAuth";
+import { usePushNotifications } from "../push/usePushNotifications";
 
 const THEME_STORAGE_KEY = "nosh-theme";
 
@@ -13,6 +14,36 @@ const SHORT_VERSION = RAW_VERSION ? RAW_VERSION.slice(0, 7) : "dev";
 
 const menuItemClass =
   "flex min-h-11 w-full items-center gap-3 rounded-sm px-3 text-left text-sm text-ink transition-colors duration-standard ease-standard hover:bg-surface-sunken";
+
+/** Turns import-finished notifications on/off for this device. Renders
+ * nothing where pushes can't work (see push/pushNotifications.ts), so
+ * there's never a toggle that silently does nothing. */
+function NotificationsMenuItem() {
+  const { status, busy, enable, disable } = usePushNotifications();
+  if (status === null || status === "unsupported") return null;
+  if (status === "denied") {
+    return (
+      <p className="flex min-h-11 items-center gap-3 px-3 text-xs text-ink-faint">
+        <BellSlashIcon size={18} className="flex-shrink-0" />
+        Notifications are blocked — allow them for Nosh in your device settings.
+      </p>
+    );
+  }
+  const on = status === "on";
+  return (
+    <button
+      type="button"
+      role="menuitemcheckbox"
+      aria-checked={on}
+      disabled={busy}
+      onClick={on ? disable : enable}
+      className={menuItemClass}
+    >
+      {on ? <BellSlashIcon size={18} /> : <BellIcon size={18} />}
+      {on ? "Turn off import notifications" : "Notify me when imports finish"}
+    </button>
+  );
+}
 
 export function UserMenu() {
   const { user, logout } = useAuth();
@@ -92,6 +123,7 @@ export function UserMenu() {
             {dark ? <SunIcon size={18} weight="fill" /> : <MoonIcon size={18} weight="fill" />}
             {dark ? "Light mode" : "Dark mode"}
           </button>
+          <NotificationsMenuItem />
           <button type="button" role="menuitem" onClick={handleLogout} className={menuItemClass}>
             <SignOutIcon size={18} />
             Log out

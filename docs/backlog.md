@@ -21,8 +21,12 @@ Confirm scope with the project owner before starting any of these — per
 go-ahead. Ordered per [index.md](index.md#planned-post-mvp)'s stated
 priority.
 
-- [ ] Allow mobile users to close the app during import, and get a push notification once it's done
 - [ ] View tokens left / model selector for magic import
+- [ ] Verify import push notifications end-to-end on the iPhone once HTTPS
+      is live: set the `VAPID_*` env vars, re-add the app to the home screen
+      from Safari, tap "Notify me when it's done", start an Instagram
+      import, lock the phone, and check that the notification arrives and the
+      tap opens the pre-filled form.
 - [ ] Auto translate imported recipes to the user's native language and preferred units of measure.
 - [ ] Smart unit conversions and recipe scaling.
 - [ ] Notes & ratings on recipes.
@@ -49,6 +53,30 @@ priority.
 
 ## Completed
 
+- **2026-09-24** — Close the app during an import and get a push notification
+  when it's done.
+  - **Server-side jobs.** Imports became jobs in a new `import_jobs` table,
+    run in-process and polled by the frontend, replacing the NDJSON stream
+    that died with the connection. Reopening the app now restores a running
+    or finished-but-unreviewed import, even without push.
+  - **Push.** A finished (or failed) job pushes a Web Push notification
+    (`web-push`, VAPID keys from env, new `push_subscriptions` table). The
+    service worker moved to vite-plugin-pwa `injectManifest` (`src/sw.ts`)
+    for the push/click handlers.
+  - **Tapping the notification** opens `/recipes/new?importId=…`.
+    `NewRecipePage` loads the job there, because a cold start has no router
+    state.
+  - **Opt-in** is a "Notify me when it's done" button in the import dialog
+    plus a user-menu toggle. Both are hidden wherever push can't work.
+  - **Restart recovery.** A restart marks in-flight jobs as interrupted at
+    boot.
+  - **Verification.** Verified live for the job and restore flow. Real
+    notification delivery wasn't verified, because the embedded test browser
+    has notifications blocked.
+  - **Numbering.** The migration is `…014` to stay clear of two in-flight
+    branches that use 012/013.
+  - See
+    [decisions.md](decisions.md#2026-09-24-imports-become-server-side-jobs-with-push-notifications).
 - **2026-08-28** — Weekly meal planner shipped: a single ongoing per-user
   calendar, not a `meal_plans` entity users create/name/switch between — one
   new table, `meal_plan_entries(user_id, planned_on, recipe_id)` with

@@ -1,5 +1,21 @@
 import path from "node:path";
 
+/** All three VAPID vars or none: a partial set is a misconfiguration worth
+ * failing loudly on at boot, not a silently disabled feature. */
+function vapidConfig(): { publicKey: string; privateKey: string; subject: string } | undefined {
+  const publicKey = process.env.VAPID_PUBLIC_KEY || undefined;
+  const privateKey = process.env.VAPID_PRIVATE_KEY || undefined;
+  const subject = process.env.VAPID_SUBJECT || undefined;
+  if (!publicKey && !privateKey && !subject) return undefined;
+  if (!publicKey || !privateKey || !subject) {
+    throw new Error("VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY and VAPID_SUBJECT must be set together");
+  }
+  if (!/^(mailto:|https:\/\/)/.test(subject)) {
+    throw new Error("VAPID_SUBJECT must be a mailto: or https:// URL");
+  }
+  return { publicKey, privateKey, subject };
+}
+
 function required(name: string): string {
   const value = process.env[name];
   if (!value) {
@@ -28,4 +44,7 @@ export const env = {
   // empty string when unset, not undefined, which `??` would treat as "set".
   geminiTextModel: process.env.GEMINI_TEXT_MODEL || "gemini-3.6-flash",
   geminiVideoModel: process.env.GEMINI_VIDEO_MODEL || "gemini-3.5-flash-lite",
+  // Web Push (import-finished notifications). Unset = push disabled; see
+  // docs/dev-commands.md for generating a key pair.
+  vapid: vapidConfig(),
 };

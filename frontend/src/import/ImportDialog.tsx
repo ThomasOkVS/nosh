@@ -1,4 +1,6 @@
 import {
+  BellIcon,
+  BellRingingIcon,
   CheckIcon,
   CircleNotchIcon,
   LinkIcon,
@@ -8,6 +10,7 @@ import {
 } from "@phosphor-icons/react";
 import { useEffect, useRef, useState, type SubmitEvent } from "react";
 import type { ImportStage } from "../api/import";
+import { usePushNotifications } from "../push/usePushNotifications";
 import { buttonClass, errorBannerClass, inputClass } from "../styles";
 import { useImport } from "./ImportContext";
 
@@ -67,6 +70,42 @@ function Stepper({ seenStages }: Readonly<{ seenStages: ImportStage[] }>) {
       )}
     </ol>
   );
+}
+
+/**
+ * Offers push notifications while an import runs — the moment the user is
+ * deciding whether to wait or walk away. Asking here (from a tap) rather
+ * than on page load is both better UX and a hard requirement on iOS, which
+ * only shows the permission prompt in response to a user gesture. Hidden
+ * entirely where pushes can't work.
+ */
+function NotifyPrompt() {
+  const { status, busy, enable } = usePushNotifications();
+  if (status === "off") {
+    return (
+      <button type="button" onClick={enable} disabled={busy} className={`mt-3 ${buttonClass("secondary")}`}>
+        <BellIcon size={18} />
+        Notify me when it&rsquo;s done
+      </button>
+    );
+  }
+  if (status === "on") {
+    return (
+      <p className="mt-3 flex items-center gap-2 text-sm text-ink-muted">
+        <BellRingingIcon size={16} className="flex-shrink-0 text-sauce-500" />
+        You&rsquo;ll get a notification when it&rsquo;s done — feel free to close the app.
+      </p>
+    );
+  }
+  if (status === "denied") {
+    return (
+      <p className="mt-3 text-xs text-ink-faint">
+        Notifications are blocked for Nosh. Allow them in your device settings to be notified when imports
+        finish.
+      </p>
+    );
+  }
+  return null;
 }
 
 export function ImportDialog() {
@@ -201,6 +240,7 @@ export function ImportDialog() {
           <p className="mt-3 text-xs text-ink-faint">
             <ElapsedTimer startedAt={active.startedAt} />
           </p>
+          <NotifyPrompt />
           <div className="mt-4 flex flex-wrap justify-end gap-2">
             <button type="button" onClick={closeDialog} className={buttonClass("ghost")}>
               Keep this running in the background

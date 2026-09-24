@@ -7,7 +7,10 @@ import { getTestPool } from "./db";
 
 export function createTestApp(
   overrides: Partial<
-    Pick<AppDeps, "geminiExtract" | "geminiVideoExtract" | "downloadSocialVideo" | "fetchImpl">
+    Pick<
+      AppDeps,
+      "geminiExtract" | "geminiVideoExtract" | "downloadSocialVideo" | "fetchImpl" | "vapidPublicKey" | "sendPush"
+    >
   > = {},
 ): Express {
   const uploadsDir = fs.mkdtempSync(path.join(os.tmpdir(), "nosh-uploads-"));

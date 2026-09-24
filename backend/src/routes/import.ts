@@ -1,117 +1,98 @@
 import { Router } from "express";
-import type { GeminiExtractFn, GeminiVideoExtractFn } from "../llm/geminiClient";
+import type { Pool } from "pg";
+import { z } from "zod";
 import { requireAuth } from "../middleware/requireAuth";
-import {
-  DownloaderUnavailableError,
-  ExtractionError,
-  ExtractionUnavailableError,
-  extractRecipeFromUrl,
-  FetchError,
-  InvalidUrlError,
-  NotConfiguredError,
-  VideoTooLargeError,
-  VideoUnavailableError,
-} from "../services/recipeExtraction";
-import type { SocialVideoDownloadFn } from "../services/socialVideo";
+import { findImportJob, listPendingImportJobs, markImportJobReviewed } from "../repositories/importJobs";
+import type { ImportJobRunner } from "../services/importJobs";
 import { importRequestSchema } from "../validation/import";
 
-function statusForError(err: unknown): number {
-  if (err instanceof InvalidUrlError) return 400;
-  if (err instanceof FetchError) return 502;
-  if (err instanceof VideoUnavailableError) return 502;
-  if (err instanceof VideoTooLargeError) return 422;
-  // Checked before ExtractionError, which it extends.
-  if (err instanceof ExtractionUnavailableError) return 503;
-  if (err instanceof ExtractionError) return 422;
-  if (err instanceof NotConfiguredError) return 503;
-  if (err instanceof DownloaderUnavailableError) return 503;
-  return 500;
-}
-
-export interface ImportRouterDeps {
-  geminiExtract?: GeminiExtractFn;
-  geminiVideoExtract?: GeminiVideoExtractFn;
-  downloadSocialVideo?: SocialVideoDownloadFn;
-}
+const idParamSchema = z.coerce.number().int().positive();
 
 /**
- * Deliberately takes no `pool` — unlike every other router in this app, this
- * one does no DB work (it only extracts and returns a `RecipeInput` for the
- * frontend to pre-fill; persisting it happens through the normal recipe
- * create/update routes).
+ * Imports are server-side jobs, not a request/response pair: `POST /` saves
+ * a job and answers 202 straight away, the extraction runs in the
+ * background (see services/importJobs.ts), and the client polls `GET /:id`
+ * for progress. That's what lets the user close the app mid-import — the
+ * work no longer depends on the connection staying open. See
+ * docs/decisions.md for why this replaced the earlier NDJSON stream.
  */
-export function createImportRouter(deps: ImportRouterDeps): Router {
-  const { geminiExtract, geminiVideoExtract, downloadSocialVideo } = deps;
+export function createImportRouter(pool: Pool, runner: ImportJobRunner): Router {
   const router = Router();
   router.use(requireAuth);
 
-  /**
-   * Responds with newline-delimited JSON rather than a single object: import
-   * can take anywhere from under a second (the page publishes structured
-   * recipe data) to a minute or so (a Reels/TikTok video has to be
-   * downloaded and read by the model), and the client can only tell the user
-   * which is happening if the server says so as it goes.
-   *
-   * Message shapes, one JSON object per line:
-   *   {"type":"progress","stage":"fetching"|"structured-data"|"downloading-video"|"analyzing-video"|"ai"}
-   *   {"type":"result","recipe":{…},"imageUrl":"…"|null}
-   *   {"type":"error","status":502,"error":"…"}
-   *
-   * Failures after the first byte is sent are reported in-band with the
-   * status they *would* have had, since the HTTP status is already committed
-   * by then. A malformed request body is rejected before streaming starts and
-   * so is still a real 400.
-   */
-  router.post("/", async (req, res) => {
+  router.post("/", async (req, res, next) => {
+    const userId = req.session.userId!;
     const parsed = importRequestSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
       return;
     }
-
-    res.status(200);
-    res.setHeader("Content-Type", "application/x-ndjson");
-    res.setHeader("Cache-Control", "no-store");
-    // Without this, Express buffers the headers until the first flush, so the
-    // client wouldn't see early progress lines until the whole request ends.
-    res.flushHeaders();
-
-    // Backpressure is ignored deliberately: these are a handful of sub-1KB
-    // lines, so the socket buffer will never fill. The writableEnded guard is
-    // what matters — writing to a response the client already dropped throws.
-    const send = (message: unknown): void => {
-      if (!res.writableEnded) res.write(`${JSON.stringify(message)}\n`);
-    };
-
-    // Lets a client that navigates away stop the work rather than leaving it
-    // to finish into a dead socket — the LLM call in particular costs quota.
-    const clientGone = new AbortController();
-    req.on("close", () => clientGone.abort());
-
     try {
-      const { recipe, imageUrl } = await extractRecipeFromUrl(parsed.data.url, {
-        geminiExtract,
-        geminiVideoExtract,
-        downloadSocialVideo,
-        signal: clientGone.signal,
-        onProgress: (stage) => send({ type: "progress", stage }),
-      });
-      send({ type: "result", recipe, imageUrl });
+      const job = await runner.start(userId, parsed.data.url);
+      res.status(202).json(job);
     } catch (err) {
-      if (clientGone.signal.aborted) return;
-      const status = statusForError(err);
-      if (status === 500) {
-        // Past the point where the shared errorHandler can take over.
-        console.error("Unexpected import failure:", err);
+      next(err);
+    }
+  });
+
+  /** Running jobs and finished-but-unreviewed ones — what the app restores
+   * on launch so a result that finished while it was closed isn't lost. */
+  router.get("/", async (req, res, next) => {
+    try {
+      res.json(await listPendingImportJobs(pool, req.session.userId!));
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.get("/:id", async (req, res, next) => {
+    const id = idParamSchema.safeParse(req.params.id);
+    if (!id.success) {
+      res.status(404).json({ error: "Import not found" });
+      return;
+    }
+    try {
+      const job = await findImportJob(pool, req.session.userId!, id.data);
+      if (!job) {
+        res.status(404).json({ error: "Import not found" });
+        return;
       }
-      send({
-        type: "error",
-        status,
-        error:
-          status === 500 || !(err instanceof Error) ? "Something went wrong" : err.message,
-      });
-    } finally {
-      res.end();
+      // Polled while running — never let an intermediary serve a stale one.
+      res.setHeader("Cache-Control", "no-store");
+      res.json(job);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.post("/:id/cancel", async (req, res, next) => {
+    const id = idParamSchema.safeParse(req.params.id);
+    if (!id.success) {
+      res.status(404).json({ error: "Import not found" });
+      return;
+    }
+    try {
+      // Cancelling a job that already finished is a no-op, not an error:
+      // the race between "user taps cancel" and "job completes" is normal.
+      await runner.cancel(req.session.userId!, id.data);
+      res.status(204).end();
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  /** The user saved (or dismissed) the result — stop offering it on launch. */
+  router.post("/:id/reviewed", async (req, res, next) => {
+    const id = idParamSchema.safeParse(req.params.id);
+    if (!id.success) {
+      res.status(404).json({ error: "Import not found" });
+      return;
+    }
+    try {
+      const found = await markImportJobReviewed(pool, req.session.userId!, id.data);
+      res.status(found ? 204 : 404).end();
+    } catch (err) {
+      next(err);
     }
   });
 

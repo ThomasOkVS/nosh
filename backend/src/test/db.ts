@@ -3,6 +3,8 @@ import { createPool } from "../db/pool";
 import { migrateDatabase } from "./migrate";
 
 const ALL_TABLES = [
+  "push_subscriptions",
+  "import_jobs",
   "meal_plan_entries",
   "recipe_images",
   "recipe_tags",
