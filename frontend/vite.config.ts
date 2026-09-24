@@ -19,8 +19,19 @@ export default defineConfig({
     react(),
     tailwindcss(),
     VitePWA({
+      // autoUpdate = the new service worker skips waiting and takes over
+      // open tabs as soon as it's installed, so an overnight redeploy is
+      // picked up on next load rather than parked behind the old version.
       registerType: "autoUpdate",
       devOptions: { enabled: true },
+      workbox: {
+        // The SPA fallback answers any navigation with the cached index.html.
+        // /api is the backend's (same origin once nginx proxies it), so a
+        // navigation there — e.g. opening an image URL — must hit the network.
+        // Nothing under /api is precached or runtime-cached either, so a
+        // stale auth response can never be served from the cache.
+        navigateFallbackDenylist: [/^\/api\//],
+      },
       manifest: {
         name: "Nosh",
         short_name: "Nosh",

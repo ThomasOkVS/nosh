@@ -1,6 +1,7 @@
 import type { Express } from "express";
 import request from "supertest";
 import { describe, expect, it, vi } from "vitest";
+import { FAKE_JPEG } from "../test/images";
 import { createTestApp } from "../test/app";
 
 async function signedInAgent(
@@ -417,7 +418,7 @@ describe("recipe routes", () => {
 
     const uploadRes = await agent
       .post(`/recipes/${createRes.body.id}/images`)
-      .attach("image", Buffer.from("fake-image-bytes"), {
+      .attach("image", FAKE_JPEG, {
         filename: "soup.jpg",
         contentType: "image/jpeg",
       });
@@ -435,7 +436,7 @@ describe("recipe routes", () => {
     const createRes = await agent.post("/recipes").send(samplePayload);
     const uploadRes = await agent
       .post(`/recipes/${createRes.body.id}/images`)
-      .attach("image", Buffer.from("fake-image-bytes"), {
+      .attach("image", FAKE_JPEG, {
         filename: "soup.jpg",
         contentType: "image/jpeg",
       });
@@ -445,7 +446,7 @@ describe("recipe routes", () => {
     );
 
     expect(fileRes.status).toBe(200);
-    expect(fileRes.body).toEqual(Buffer.from("fake-image-bytes"));
+    expect(fileRes.body).toEqual(FAKE_JPEG);
   });
 
   it("refuses to serve an image without a session", async () => {
@@ -454,7 +455,7 @@ describe("recipe routes", () => {
     const createRes = await agent.post("/recipes").send(samplePayload);
     const uploadRes = await agent
       .post(`/recipes/${createRes.body.id}/images`)
-      .attach("image", Buffer.from("fake-image-bytes"), {
+      .attach("image", FAKE_JPEG, {
         filename: "soup.jpg",
         contentType: "image/jpeg",
       });
@@ -473,7 +474,7 @@ describe("recipe routes", () => {
     const createRes = await alice.post("/recipes").send(samplePayload);
     const uploadRes = await alice
       .post(`/recipes/${createRes.body.id}/images`)
-      .attach("image", Buffer.from("fake-image-bytes"), {
+      .attach("image", FAKE_JPEG, {
         filename: "soup.jpg",
         contentType: "image/jpeg",
       });
@@ -504,7 +505,7 @@ describe("recipe routes", () => {
     const createRes = await agent.post("/recipes").send(samplePayload);
     const uploadRes = await agent
       .post(`/recipes/${createRes.body.id}/images`)
-      .attach("image", Buffer.from("fake-image-bytes"), {
+      .attach("image", FAKE_JPEG, {
         filename: "soup.jpg",
         contentType: "image/jpeg",
       });
@@ -520,7 +521,7 @@ describe("recipe routes", () => {
 
   it("attaches an image fetched from a URL", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(
-      new Response(Buffer.from("fake-image-bytes"), {
+      new Response(FAKE_JPEG, {
         status: 200,
         headers: { "content-type": "image/jpeg" },
       }),

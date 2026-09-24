@@ -16,6 +16,9 @@ RUN pnpm install --frozen-lockfile
 RUN pnpm --filter backend build
 
 FROM node:22-alpine
+# Express reads this: in production its fallback error handling never puts a
+# stack trace in a response.
+ENV NODE_ENV=production
 # corepack enable, then yt-dlp (+ ffmpeg, pulled in as its dependency) for
 # Reels/TikTok import — see the matching comment in Dockerfile.dev for why
 # it's installed from Alpine's package repo rather than upstream's

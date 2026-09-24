@@ -49,6 +49,16 @@ const MAX_DURATION_SECONDS = 3 * 60;
 const MAX_VIDEO_BYTES = 18 * 1024 * 1024;
 const YT_DLP_TIMEOUT_MS = 45_000;
 
+/**
+ * yt-dlp does its own networking, so services/safeFetch.ts's address guard
+ * can't cover it. `-generic` removes the one extractor that will fetch and
+ * crawl an arbitrary page: only the site-specific extractors (Instagram,
+ * TikTok) remain, and those only talk to their platform's own hosts. What's
+ * left — a platform open redirect bouncing yt-dlp inward — is why
+ * docs/deployment.md also recommends a network-level egress block.
+ */
+const YT_DLP_SAFETY_ARGS = ["--no-warnings", "--no-playlist", "--ies", "default,-generic"];
+
 export interface DownloadedVideo {
   videoBuffer: Buffer;
   mimeType: string;
@@ -133,7 +143,7 @@ function runYtDlpBuffer(args: string[], signal: AbortSignal | undefined): Promis
 async function fetchVideoInfo(url: URL, signal: AbortSignal | undefined): Promise<YtDlpInfo> {
   try {
     const stdout = await runYtDlpText(
-      ["--dump-json", "--no-warnings", "--no-playlist", url.toString()],
+      ["--dump-json", ...YT_DLP_SAFETY_ARGS, url.toString()],
       signal,
     );
     return JSON.parse(stdout) as YtDlpInfo;
@@ -158,8 +168,7 @@ async function fetchVideoBytes(url: URL, signal: AbortSignal | undefined): Promi
         "mp4",
         "-o",
         "-",
-        "--no-warnings",
-        "--no-playlist",
+        ...YT_DLP_SAFETY_ARGS,
         url.toString(),
       ],
       signal,

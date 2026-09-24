@@ -46,6 +46,36 @@ jobs:
 
       - run: pnpm build
 
+  # Builds both production images on every PR without publishing them, and
+  # checks the frontend's nginx config parses. A merge to main is effectively
+  # a production deploy (Watchtower pulls :latest overnight), so a broken
+  # Dockerfile or nginx.conf has to fail here, not on the homelab at 04:00.
+  images:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: backend/Dockerfile
+          push: false
+          cache-from: type=gha
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: frontend/Dockerfile
+          push: false
+          load: true
+          tags: nosh-frontend:ci
+          cache-from: type=gha
+
+      - run: docker run --rm nosh-frontend:ci nginx -t
+
   # Builds and publishes images to GHCR after a successful merge to main.
   # Nothing on the homelab ever talks to GitHub — Watchtower (already
   # running there) polls these images on its own schedule and pulls new
@@ -65,6 +95,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # `sha-<7 chars>`: a short, human-typeable tag to pin TAG to on the
+      # homelab (and to roll back to), alongside the full-SHA tag.
+      - run: echo "SHORT_SHA=${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -81,6 +115,7 @@ jobs:
           tags: |
             ghcr.io/${{ env.IMAGE_OWNER }}/nosh-backend:latest
             ghcr.io/${{ env.IMAGE_OWNER }}/nosh-backend:${{ github.sha }}
+            ghcr.io/${{ env.IMAGE_OWNER }}/nosh-backend:sha-${{ env.SHORT_SHA }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -90,17 +125,19 @@ jobs:
           file: frontend/Dockerfile
           push: true
           # VITE_API_URL is baked into the static bundle at build time (see
-          # frontend/Dockerfile) — set it as a repo variable
-          # (Settings → Secrets and variables → Actions → Variables) once
-          # the homelab's Tailscale address is known.
+          # frontend/Dockerfile), from a repo variable (Settings → Secrets
+          # and variables → Actions → Variables). Its target value is the
+          # relative `/api` (proxied by the frontend's own nginx); an unset
+          # or empty variable falls back to that too.
           # VITE_APP_VERSION reuses the same commit SHA this build is tagged
           # with, so the version shown in the UI always matches a real image
           # tag.
           build-args: |
-            VITE_API_URL=${{ vars.VITE_API_URL }}
+            VITE_API_URL=${{ vars.VITE_API_URL || '/api' }}
             VITE_APP_VERSION=${{ github.sha }}
           tags: |
             ghcr.io/${{ env.IMAGE_OWNER }}/nosh-frontend:latest
             ghcr.io/${{ env.IMAGE_OWNER }}/nosh-frontend:${{ github.sha }}
+            ghcr.io/${{ env.IMAGE_OWNER }}/nosh-frontend:sha-${{ env.SHORT_SHA }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

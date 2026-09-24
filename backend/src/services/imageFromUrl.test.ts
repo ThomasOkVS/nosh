@@ -6,6 +6,7 @@ import {
   ImageTooLargeError,
   UnsupportedImageTypeError,
 } from "./imageFromUrl";
+import { FAKE_JPEG, FAKE_PNG, FAKE_WEBP } from "../test/images";
 
 function imageResponse(
   body: Buffer | string,
@@ -18,18 +19,18 @@ function imageResponse(
 
 describe("fetchImageFromUrl", () => {
   it("fetches an allowed image URL and reports its extension", async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(imageResponse(Buffer.from("fake-bytes")));
+    const fetchImpl = vi.fn().mockResolvedValue(imageResponse(FAKE_JPEG));
 
     const result = await fetchImageFromUrl("https://example.com/soup.jpg", fetchImpl);
     expect(result.extension).toBe(".jpg");
-    expect(result.buffer.toString()).toBe("fake-bytes");
+    expect(result.buffer).toEqual(FAKE_JPEG);
   });
 
   it.each([
-    ["image/png", ".png"],
-    ["image/webp", ".webp"],
-  ])("maps %s to %s", async (contentType, extension) => {
-    const fetchImpl = vi.fn().mockResolvedValue(imageResponse(Buffer.from("x"), { contentType }));
+    ["image/png", ".png", FAKE_PNG],
+    ["image/webp", ".webp", FAKE_WEBP],
+  ])("maps %s to %s", async (contentType, extension, body) => {
+    const fetchImpl = vi.fn().mockResolvedValue(imageResponse(body, { contentType }));
     const result = await fetchImageFromUrl("https://example.com/soup", fetchImpl);
     expect(result.extension).toBe(extension);
   });
@@ -40,6 +41,14 @@ describe("fetchImageFromUrl", () => {
       .mockResolvedValue(imageResponse("<svg/>", { contentType: "image/svg+xml" }));
 
     await expect(fetchImageFromUrl("https://example.com/soup.svg", fetchImpl)).rejects.toThrow(
+      UnsupportedImageTypeError,
+    );
+  });
+
+  it("rejects a body whose bytes don't match the declared image type", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(imageResponse("<html>not a photo</html>"));
+
+    await expect(fetchImageFromUrl("https://example.com/soup.jpg", fetchImpl)).rejects.toThrow(
       UnsupportedImageTypeError,
     );
   });
@@ -69,7 +78,7 @@ describe("fetchImageFromUrl", () => {
       .mockResolvedValueOnce(
         new Response(null, { status: 301, headers: { location: "https://cdn.example.com/x.jpg" } }),
       )
-      .mockResolvedValueOnce(imageResponse(Buffer.from("fake")));
+      .mockResolvedValueOnce(imageResponse(FAKE_JPEG));
 
     const result = await fetchImageFromUrl("https://example.com/x.jpg", fetchImpl);
     expect(result.extension).toBe(".jpg");

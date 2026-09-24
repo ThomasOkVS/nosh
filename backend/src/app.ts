@@ -5,7 +5,8 @@ import session from "express-session";
 import type { Pool } from "pg";
 import type { MagicImportConfig } from "./config/llmModels";
 import type { GeminiExtractFn, GeminiVideoExtractFn } from "./llm/geminiClient";
-import { errorHandler } from "./middleware/errorHandler";
+import { errorHandler, notFoundHandler } from "./middleware/errorHandler";
+import { requireAllowedOrigin } from "./middleware/originCheck";
 import { createAuthRouter } from "./routes/auth";
 import { createCollectionsRouter } from "./routes/collections";
 import { createImportRouter } from "./routes/import";
@@ -20,7 +21,14 @@ export interface AppDeps {
   pool: Pool;
   sessionSecret: string;
   uploadsDir: string;
-  frontendOrigin?: string;
+  /** Exact origins (scheme://host[:port]) the frontend is served from. */
+  frontendOrigins?: string[];
+  /** IPs of reverse proxies whose X-Forwarded-For/-Proto are believed. */
+  trustedProxies?: string[];
+  /** Required rather than defaulted, so no caller gets open signup by accident. */
+  allowSignup: boolean;
+  /** Added to every failed login; overridable so tests don't wait on it. */
+  loginFailureDelayMs?: number;
   /** Which models the Settings page offers, and each import path's default. */
   magicImport: MagicImportConfig;
   geminiExtract?: GeminiExtractFn;
@@ -28,8 +36,9 @@ export interface AppDeps {
   /** Overridable only so tests never shell out to the real yt-dlp binary —
    * see services/socialVideo.ts. */
   downloadSocialVideo?: SocialVideoDownloadFn;
-  /** Overridable so tests attaching a recipe photo from a URL never make a
-   * real network request — see routes/recipes.ts's `/images/from-url`. */
+  /** Every fetch of a user-supplied URL (import, photo-from-URL). Defaults to
+   * services/safeFetch.ts's SSRF-guarded fetch; overridable so tests never
+   * make a real network request. */
   fetchImpl?: typeof fetch;
 }
 
@@ -38,7 +47,10 @@ export function createApp(deps: AppDeps): Express {
     pool,
     sessionSecret,
     uploadsDir,
-    frontendOrigin = "http://localhost:5173",
+    frontendOrigins = ["http://localhost:5173"],
+    trustedProxies = [],
+    allowSignup,
+    loginFailureDelayMs,
     magicImport,
     geminiExtract,
     geminiVideoExtract,
@@ -48,13 +60,22 @@ export function createApp(deps: AppDeps): Express {
   const PgSession = connectPgSimple(session);
 
   const app = express();
+  app.disable("x-powered-by");
 
-  // The frontend is served from a different port than the API (different
-  // origin, but same host/site), so the browser blocks fetch() calls to it
-  // unless the API explicitly allows that origin. `credentials: true` is
-  // required alongside `credentials: "include"` on the frontend's fetch
-  // calls so the session cookie is actually sent/accepted cross-origin.
-  app.use(cors({ origin: frontendOrigin, credentials: true }));
+  // Which peers may tell us the real client IP (X-Forwarded-For) and scheme
+  // (X-Forwarded-Proto). Behind nginx → Caddy, the backend's direct peer is
+  // the frontend container; only its exact IP is listed (TRUSTED_PROXIES),
+  // never a whole subnet — any container on a trusted subnet could otherwise
+  // claim to be any client. Everything downstream depends on this: `req.ip`
+  // (rate-limit buckets) and `req.secure` (the cookie's Secure flag). Java
+  // equivalent: Tomcat's RemoteIpValve with `internalProxies`.
+  app.set("trust proxy", trustedProxies.length > 0 ? trustedProxies : false);
+
+  // CORS covers the transitional setup where the frontend calls the API on
+  // its own port (a different origin). Once the frontend proxies /api itself
+  // the browser sees one origin and CORS never comes into play.
+  app.use(cors({ origin: frontendOrigins, credentials: true }));
+  app.use(requireAllowedOrigin(frontendOrigins));
   app.use(express.json());
   app.use(
     session({
@@ -64,6 +85,17 @@ export function createApp(deps: AppDeps): Express {
       saveUninitialized: false,
       cookie: {
         httpOnly: true,
+        // "auto" = Secure exactly when this request arrived over HTTPS
+        // (req.secure, which believes X-Forwarded-Proto only from a trusted
+        // proxy). Lets the plain-HTTP tailnet origin keep working during the
+        // move, while the HTTPS origin gets a Secure cookie.
+        secure: "auto",
+        sameSite: "lax",
+        // Set explicitly: a proxy that strips /api must not change the path
+        // the cookie is scoped to.
+        path: "/",
+        // No `domain` on purpose: without one the cookie is host-only, so it
+        // is never sent to sibling subdomains of the same parent domain.
         maxAge: ONE_WEEK_MS,
       },
     }),
@@ -73,13 +105,20 @@ export function createApp(deps: AppDeps): Express {
     res.json({ status: "ok" });
   });
 
-  app.use("/auth", createAuthRouter(pool));
+  app.use("/auth", createAuthRouter({ pool, allowSignup, failureDelayMs: loginFailureDelayMs }));
   app.use("/recipes", createRecipesRouter(pool, uploadsDir, fetchImpl));
   app.use("/collections", createCollectionsRouter(pool, uploadsDir));
   app.use("/meal-plan", createMealPlanRouter(pool));
   app.use(
     "/import",
-    createImportRouter({ pool, magicImport, geminiExtract, geminiVideoExtract, downloadSocialVideo }),
+    createImportRouter({
+      pool,
+      magicImport,
+      geminiExtract,
+      geminiVideoExtract,
+      downloadSocialVideo,
+      fetchImpl,
+    }),
   );
   app.use(
     "/settings",
@@ -90,6 +129,7 @@ export function createApp(deps: AppDeps): Express {
     }),
   );
 
+  app.use(notFoundHandler);
   app.use(errorHandler);
 
   return app;

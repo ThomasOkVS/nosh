@@ -15,7 +15,7 @@ pieces, as currently intended), not just as it was first imagined.
 | File storage | Local disk volume (recipe photos, uploads) |
 | Recipe import | schema.org JSON-LD parsing (`cheerio`), falling back to the Google Gemini API |
 | Deployment | Docker containers, managed via Dockge, on a home server |
-| Network | Tailscale only — no public ingress, no in-app TLS termination |
+| Network | Public HTTPS at `nosh.itsthomassito.com`; TLS terminated by the homelab's Caddy, frontend nginx proxies `/api` (was Tailscale-only until 2026-09-24) |
 | Repo | Monorepo on GitHub (`/frontend`, `/backend`), pnpm workspaces |
 | Tooling | ESLint + Prettier, Vitest, React Testing Library, Supertest (backend HTTP tests) |
 
@@ -24,7 +24,7 @@ Rationale for each of these is in [decisions.md](decisions.md).
 ## High-level design
 
 ```
-┌─────────────┐        HTTPS (Tailscale-only)        ┌──────────────┐
+┌─────────────┐  HTTPS via Caddy → frontend nginx /api  ┌──────────────┐
 │  React PWA   │ ───────────────────────────────────▶ │  Node.js API │
 │ (frontend)  │ ◀─────────────────────────────────── │  (backend)   │
 └─────────────┘                                        └──────┬───────┘
@@ -38,10 +38,15 @@ Rationale for each of these is in [decisions.md](decisions.md).
 ```
 
 The frontend is a single-page app that talks to the backend over a JSON REST API.
-There is no separate API gateway or reverse proxy inside Nosh's own containers —
-Tailscale is the network boundary. Frontend and backend run on different
-ports (different origins, but the same site/hostname), so the backend allows
-the frontend's origin via CORS with credentials enabled — see
+In production the frontend container's nginx serves the built app and
+proxies `/api/*` to the backend (stripping the prefix), so page and API share
+one origin; the homelab's Caddy terminates TLS in front of that at
+`https://nosh.itsthomassito.com`, and the app is reachable from the public
+internet — its own auth is the only access control. See
+[decisions.md#2026-09-24-public-https-behind-caddy](decisions.md#2026-09-24-public-https-behind-caddy)
+and [deployment.md](deployment.md#networking) for the topology and which hop
+trusts which. Local dev still runs the two on different ports, so the backend
+also allows its configured origins via CORS with credentials — see
 [decisions.md#2026-08-06-cors-added-to-the-backend-for-the-frontends-cross-origin-session-cookie](decisions.md).
 
 ## Repo / folder structure
@@ -270,8 +275,15 @@ Passwords are hashed with argon2. Auth uses server-side sessions (`express-sessi
 backed by Postgres via `connect-pg-simple`, httpOnly cookie) rather than JWTs, so
 logout actually revokes access — see
 [decisions.md#2026-08-06-backend-mvp-db-access-auth-mechanism-and-supporting-libraries](decisions.md).
-No rate limiting/lockout for v1 — Tailscale-only network exposure is the accepted
-primary defense; revisit if Nosh is ever exposed beyond the tailnet.
+Since Nosh became publicly reachable (2026-09-24), app-level defenses carry
+the weight Tailscale used to: signup is off unless `ALLOW_SIGNUP=true`; login
+is rate-limited per client IP and per account (failures only) with a delay
+on each failure; every POST/PUT/PATCH/DELETE must come from a configured
+origin (`Origin`, else `Sec-Fetch-Site`); the session cookie is `HttpOnly`,
+`SameSite=Lax`, `Path=/`, host-only (no `Domain`) and `Secure` whenever the
+request came over HTTPS. The client IP and scheme come from
+`X-Forwarded-*` only when sent by the exact proxy IPs in `TRUSTED_PROXIES`.
+See [decisions.md#2026-09-24-public-https-behind-caddy](decisions.md#2026-09-24-public-https-behind-caddy).
 
 Database access throughout the backend is raw SQL via `pg` (node-postgres) —
 deliberately no ORM or query builder, to keep the Postgres learning goal front
@@ -376,7 +388,9 @@ normally through `POST /recipes`, calls a new
 `POST /recipes/:id/images/from-url` with it — the earliest point a recipe id
 exists to attach an image to. That route
 (`services/imageFromUrl.ts`) reuses `recipeExtraction.ts`'s SSRF guard
-(`validateUrl`, exported for this) and manual redirect re-validation, since
+(`validateUrl`, exported for this; plus `services/safeFetch.ts`, which
+re-checks every address a hostname resolves to at connect time) and manual
+redirect re-validation, since
 this URL travels back from the browser in a request body and isn't provably
 the same one the server discovered. Content-type is checked against the same
 `IMAGE_MIME_EXTENSIONS` allowlist the manual multipart upload uses, and size
@@ -424,5 +438,6 @@ reasoning.
 ## Deployment target
 
 Docker containers on an HP ProDesk 400 G5 (ZimaOS), managed via Dockge, reachable
-only over Tailscale. Concrete build/release/CD mechanics live in
+at `https://nosh.itsthomassito.com` through the homelab's Caddy (Tailscale-only
+before 2026-09-24). Concrete build/release/CD mechanics live in
 [deployment.md](deployment.md) (maintained separately by the project owner).

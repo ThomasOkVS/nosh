@@ -181,13 +181,15 @@ describe("import routes", () => {
     expect(parseNdjson(res.text).at(-1)).toMatchObject({ type: "error", status: 422 });
   });
 
-  it("reports a 400 in-band for a rejected URL, without fetching it", async () => {
+  it("rejects a blocked URL with a real 400 before streaming, without fetching it", async () => {
     stubFetchWithHtml("<html><body>No recipe</body></html>");
     const app = createTestApp({ geminiExtract: fakeGemini({}) });
     const agent = await signedInAgent(app, "importbadurl@example.com");
 
-    const res = await agent.post("/import").send({ url: "http://localhost/recipe" });
-    expect(parseNdjson(res.text).at(-1)).toMatchObject({ type: "error", status: 400 });
+    // The dockge-on-the-host-gateway case from the homelab's threat model.
+    const res = await agent.post("/import").send({ url: "http://172.28.0.1:5001/" });
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: "This URL cannot be imported" });
     expect(fetch).not.toHaveBeenCalled();
   });
 

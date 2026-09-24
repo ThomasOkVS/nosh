@@ -47,7 +47,8 @@ Rationale and alternatives considered for each stack/scope choice are logged in
 ## Stack at a glance
 
 React + Tailwind (PWA) · Node.js/TypeScript · PostgreSQL · Docker, deployed to a
-home server via Dockge, reachable only over Tailscale.
+home server via Dockge, reachable at `https://nosh.itsthomassito.com` behind
+the homelab's Caddy reverse proxy.
 
 Full details: [architecture.md](architecture.md).
 

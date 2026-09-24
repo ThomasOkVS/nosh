@@ -2,6 +2,7 @@ import { Router } from "express";
 import type { Pool } from "pg";
 import { resolveImportModel, type MagicImportConfig } from "../config/llmModels";
 import type { GeminiExtractFn, GeminiVideoExtractFn } from "../llm/geminiClient";
+import { createRateLimiter, limitPerUser } from "../middleware/rateLimit";
 import { requireAuth } from "../middleware/requireAuth";
 import { findImportModel } from "../repositories/users";
 import {
@@ -14,6 +15,7 @@ import {
   NotConfiguredError,
   VideoTooLargeError,
   VideoUnavailableError,
+  validateUrl,
 } from "../services/recipeExtraction";
 import type { SocialVideoDownloadFn } from "../services/socialVideo";
 import { importRequestSchema } from "../validation/import";
@@ -37,6 +39,7 @@ export interface ImportRouterDeps {
   geminiExtract?: GeminiExtractFn;
   geminiVideoExtract?: GeminiVideoExtractFn;
   downloadSocialVideo?: SocialVideoDownloadFn;
+  fetchImpl?: typeof fetch;
 }
 
 /**
@@ -47,9 +50,12 @@ export interface ImportRouterDeps {
  * hook, wired up in index.ts.)
  */
 export function createImportRouter(deps: ImportRouterDeps): Router {
-  const { pool, magicImport, geminiExtract, geminiVideoExtract, downloadSocialVideo } = deps;
+  const { pool, magicImport, geminiExtract, geminiVideoExtract, downloadSocialVideo, fetchImpl } = deps;
   const router = Router();
   router.use(requireAuth);
+  // Every import can spend a paid (or quota-limited) Gemini call and makes
+  // the server fetch a URL, so it's capped per user, not just gated on login.
+  router.use(limitPerUser(createRateLimiter({ windowMs: 60 * 60 * 1000, max: 30 })));
 
   /**
    * Responds with newline-delimited JSON rather than a single object: import
@@ -72,6 +78,14 @@ export function createImportRouter(deps: ImportRouterDeps): Router {
     const parsed = importRequestSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+      return;
+    }
+    // Also checked inside extractRecipeFromUrl, but by then the 200 is
+    // already sent — a URL that's refused outright gets a real 400 instead.
+    try {
+      validateUrl(parsed.data.url);
+    } catch (err) {
+      res.status(400).json({ error: err instanceof InvalidUrlError ? err.message : "Not a valid URL" });
       return;
     }
 
@@ -101,6 +115,7 @@ export function createImportRouter(deps: ImportRouterDeps): Router {
         geminiExtract,
         geminiVideoExtract,
         downloadSocialVideo,
+        fetchImpl,
         signal: clientGone.signal,
         onProgress: (stage) => send({ type: "progress", stage }),
       });
