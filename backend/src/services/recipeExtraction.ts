@@ -16,7 +16,7 @@ import { filterToVocabulary } from "./recipeTags";
 import { convertRecipeUnits } from "./recipeUnits";
 import {
   detectSocialPlatform,
-  downloadSocialVideo as downloadSocialVideoDefault,
+  DownloaderUnavailableError,
   type SocialVideoDownloadFn,
 } from "./socialVideo";
 
@@ -293,8 +293,9 @@ export interface ExtractDeps {
   /** Optional for the same reason: a Reels/TikTok import has no fast path at
    * all, so this being unset just means that platform can't be imported. */
   geminiVideoExtract?: GeminiVideoExtractFn;
-  /** Real implementation is always available (yt-dlp ships in the image) —
-   * overridable only so tests never shell out. */
+  /** Built once at startup around the egress proxy (index.ts). There is
+   * deliberately no default: without the proxy there is no downloader, and
+   * a Reels/TikTok import fails rather than running yt-dlp unguarded. */
   downloadSocialVideo?: SocialVideoDownloadFn;
   fetchImpl?: typeof fetch;
   onProgress?: (stage: ImportStage) => void;
@@ -333,7 +334,10 @@ async function extractFromSocialVideo(
       "Importing from Instagram/TikTok needs AI-assisted import, which is not configured",
     );
   }
-  const downloadVideo = deps.downloadSocialVideo ?? downloadSocialVideoDefault;
+  const downloadVideo = deps.downloadSocialVideo;
+  if (!downloadVideo) {
+    throw new DownloaderUnavailableError("The video downloader is not available on this server");
+  }
 
   report("downloading-video");
   const { videoBuffer, mimeType, caption, thumbnailUrl } = await downloadVideo(url, deps.signal);

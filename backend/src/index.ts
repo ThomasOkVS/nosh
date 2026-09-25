@@ -11,8 +11,9 @@ import {
 } from "./llm/geminiClient";
 import { recoverImportJobs } from "./repositories/importJobs";
 import { recordLlmUsage } from "./repositories/llmUsage";
+import { startEgressProxy } from "./services/egressProxy";
 import { createWebPushSender } from "./services/pushNotifier";
-import { downloadSocialVideo } from "./services/socialVideo";
+import { createSocialVideoDownloader } from "./services/socialVideo";
 
 const pool = createPool(env.databaseUrl);
 
@@ -39,6 +40,11 @@ async function start(): Promise<void> {
     defaultTextModel: env.geminiTextModel,
     defaultVideoModel: env.geminiVideoModel,
   };
+  // Every connection yt-dlp opens goes through this (see
+  // services/egressProxy.ts). Started before the app so no import can ever
+  // run yt-dlp without it; if it can't bind, startup fails.
+  const egressProxy = await startEgressProxy();
+
   const recordUsage: GeminiUsageListener = (model, usage) => recordLlmUsage(pool, model, usage);
 
   const app = createApp({
@@ -59,7 +65,7 @@ async function start(): Promise<void> {
     geminiTranslate: env.geminiApiKey
       ? createGeminiTranslator(env.geminiApiKey, env.geminiTextModel, fetch, recordUsage)
       : undefined,
-    downloadSocialVideo,
+    downloadSocialVideo: createSocialVideoDownloader({ proxyUrl: egressProxy.url }),
     vapidPublicKey: env.vapid?.publicKey,
     sendPush: env.vapid ? createWebPushSender(env.vapid) : undefined,
   });

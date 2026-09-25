@@ -360,7 +360,11 @@ extraction route:
    fetches the post's metadata first (cheap, no video bytes — used to reject
    an over-long video before spending bandwidth on it), then the video
    itself, capped to `height<=480` and streamed straight to a `Buffer` over
-   stdout rather than a temp file.
+   stdout rather than a temp file. **Every connection yt-dlp opens goes
+   through the backend's in-process egress proxy** (`services/egressProxy.ts`,
+   `--proxy http://127.0.0.1:<ephemeral port>`), which applies the same
+   address guard as the backend's own fetches — see
+   [Outbound network calls](#outbound-network-calls).
 2. The video (as inline base64) plus the caption go to Gemini in one
    multimodal call — the caption alone is often missing the actual steps
    (many recipe creators only caption the ingredients), so the model has to
@@ -499,6 +503,11 @@ immediately on becoming visible again.
   shows it as a notification. Tapping it focuses or opens the app at the
   payload's URL.
 - Push services answering 404/410 get the subscription deleted.
+- Endpoints come from the client, so they're allowlisted to the real push
+  services (`services/pushEndpoint.ts`: https, port 443, Apple/FCM/Mozilla/
+  WNS hosts) on subscribe *and* before every send, and the send connects
+  through the guarded DNS lookup. A stored endpoint that fails either check
+  is deleted without being posted to.
 - Opt-in happens from a tap: the import dialog's "Notify me when it's done"
   button, or a toggle in the user menu. `POST /push/subscriptions` stores
   the browser's subscription.
@@ -510,6 +519,29 @@ immediately on becoming visible again.
   in the app added to the home screen.
 - The sender is injected via `createApp` (`AppDeps.sendPush`), so tests
   never reach a real push service.
+
+## Outbound network calls {#outbound-network-calls}
+
+The backend's Docker networks can reach the host and everything it
+publishes, so every request whose destination comes from a user or a remote
+page goes through one address guard: `resolveCheckedAddresses` in
+`services/safeFetch.ts`. It resolves the host, refuses the lot if *any*
+address is private/loopback/link-local/CGNAT/reserved, and the caller then
+connects to that checked address — no second lookup for DNS rebinding.
+
+| Call | Destination comes from | Guard |
+| --- | --- | --- |
+| Recipe page fetch (`recipeExtraction.ts`) | user | `safeFetch` (guarded lookup) + `validateUrl` for literals, every redirect hop re-validated |
+| Photo from URL (`imageFromUrl.ts`: schema.org image, og:image, yt-dlp thumbnail) | remote page, via the browser | same as above |
+| yt-dlp (metadata, video, redirects, CDN) | user + platform API responses | egress proxy: `CONNECT`/plain HTTP, ports 80/443 only, checked IP connected to; proxy env vars stripped, `--ignore-config`, `--downloader native` so ffmpeg never fetches |
+| ffmpeg | — | never given a URL (`--downloader native`, `--fixup never`, no merged formats) |
+| Web Push (`pushNotifier.ts`) | client (subscription endpoint) | host allowlist on subscribe and send + guarded lookup on the send's socket |
+| Gemini (`llm/geminiClient.ts`) | fixed constant `generativelanguage.googleapis.com` | trusted fixed host; plain `fetch` |
+
+The egress proxy binds `127.0.0.1` only, and there is no way to build the
+video downloader without it (`createSocialVideoDownloader` requires the
+proxy URL; with no downloader injected, a Reels/TikTok import fails with
+503).
 
 ## Language, units & scaling {#language-units--scaling}
 

@@ -63,9 +63,14 @@ describe("push routes", () => {
   });
 
   it.each([
-    ["an internal host", "https://internal.example/hook"],
+    ["an unknown host", "https://internal.example/hook"],
+    ["the Docker host's dockge port", "https://172.28.0.1:5001/push"],
+    ["an internal URL over plain http", "http://172.28.0.1:5001/"],
     ["plain http", "http://fcm.googleapis.com/fcm/send/abc"],
     ["a lookalike host", "https://fcm.googleapis.com.evil.example/send"],
+    ["a non-443 port on a real push host", "https://fcm.googleapis.com:5001/fcm/send/abc"],
+    ["explicit credentials", "https://user:pw@fcm.googleapis.com/fcm/send/abc"],
+    ["another googleapis.com host", "https://storage.googleapis.com/bucket/object"],
   ])("rejects an endpoint that isn't a real push service (%s)", async (_label, endpoint) => {
     const app = createTestApp({ vapidPublicKey: "pk" });
     const agent = await signedInAgent(app, "pushhttp@example.com");
@@ -81,6 +86,10 @@ describe("push routes", () => {
 
     for (const endpoint of [
       "https://web.push.apple.com/QGx1",
+      // Realistic shapes, as the browsers hand them out.
+      "https://web.push.apple.com/QOcMHuNmZcR1X2h4BLyLuRbJp1wX0x_jRmVUkHH3sfS3xXxKzV3v8G6uPVnQ8fB7jqD",
+      "https://fcm.googleapis.com/fcm/send/dXkpbY8xR0U:APA91bHqA7G9Q2yT0dcZ8OTbPX3p2mXK4L2Kc1Z",
+      "https://fcm.googleapis.com/wp/cT7x1rbX3zI:APA91bE4v0m",
       "https://fcm.googleapis.com/fcm/send/abc",
       "https://updates.push.services.mozilla.com/wpush/v2/abc",
       "https://wns2-par02p.notify.windows.com/w/?token=abc",
