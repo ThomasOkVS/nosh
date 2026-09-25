@@ -158,8 +158,14 @@ describe("session cookie attributes", () => {
         .set("X-Forwarded-Proto", "https")
         .set("Cookie", cookie.split(";")[0]!);
       expect(res.status).toBe(204);
-      const cleared = (res.headers["set-cookie"] as unknown as string[] | undefined) ?? [];
-      expect(cleared.some((value) => value.startsWith("__Host-nosh.sid=;"))).toBe(true);
+      // A browser drops a __Host- Set-Cookie that lacks Secure or Path=/,
+      // so the clearing header must carry both, or the cookie survives.
+      const cleared = (res.headers["set-cookie"] as unknown as string[] | undefined)?.find(
+        (value) => value.startsWith("__Host-nosh.sid=;"),
+      );
+      expect(cleared).toBeDefined();
+      expect(cookieAttributes(cleared!)).toContain("secure");
+      expect(cleared).toMatch(/; Path=\/(;|$)/);
     });
   });
 });

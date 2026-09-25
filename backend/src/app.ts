@@ -1,5 +1,5 @@
 import connectPgSimple from "connect-pg-simple";
-import express, { type Express } from "express";
+import express, { type CookieOptions, type Express } from "express";
 import session from "express-session";
 import type { Pool } from "pg";
 import type { MagicImportConfig } from "./config/llmModels";
@@ -88,6 +88,22 @@ export function createApp(deps: AppDeps): Express {
   } = deps;
   const PgSession = connectPgSimple(session);
   const cookieName = sessionCookieName(secureCookie);
+  // Shared by the session and by logout's clearCookie: a browser ignores a
+  // Set-Cookie for a `__Host-` name unless it carries these same attributes,
+  // so clearing with fewer would silently leave the old cookie in place.
+  const cookieOptions: CookieOptions = {
+    httpOnly: true,
+    // With `secure: true`, express-session only sends the cookie when
+    // req.secure is true — behind nginx and Caddy that relies on
+    // X-Forwarded-Proto from a trusted proxy (see `trust proxy` below).
+    secure: secureCookie,
+    sameSite: "lax",
+    // Set explicitly: `__Host-` requires it, and a proxy that strips /api
+    // must not change the path the cookie is scoped to.
+    path: "/",
+    // No `domain` on purpose: `__Host-` forbids one, and without it the
+    // cookie is host-only, never sent to sibling subdomains.
+  };
 
   const app = express();
   app.disable("x-powered-by");
@@ -113,20 +129,7 @@ export function createApp(deps: AppDeps): Express {
       resave: false,
       saveUninitialized: false,
       name: cookieName,
-      cookie: {
-        httpOnly: true,
-        // With `secure: true`, express-session only sends the cookie when
-        // req.secure is true — behind nginx and Caddy that relies on
-        // X-Forwarded-Proto from a trusted proxy (see `trust proxy` above).
-        secure: secureCookie,
-        sameSite: "lax",
-        // Set explicitly: `__Host-` requires it, and a proxy that strips
-        // /api must not change the path the cookie is scoped to.
-        path: "/",
-        // No `domain` on purpose: `__Host-` forbids one, and without it the
-        // cookie is host-only, never sent to sibling subdomains.
-        maxAge: ONE_WEEK_MS,
-      },
+      cookie: { ...cookieOptions, maxAge: ONE_WEEK_MS },
     }),
   );
 
@@ -136,7 +139,12 @@ export function createApp(deps: AppDeps): Express {
 
   app.use(
     "/auth",
-    createAuthRouter({ pool, allowSignup, cookieName, failureDelayMs: loginFailureDelayMs }),
+    createAuthRouter({
+      pool,
+      allowSignup,
+      cookie: { name: cookieName, options: cookieOptions },
+      failureDelayMs: loginFailureDelayMs,
+    }),
   );
   app.use("/recipes", createRecipesRouter(pool, uploadsDir, fetchImpl));
   app.use("/collections", createCollectionsRouter(pool, uploadsDir));
