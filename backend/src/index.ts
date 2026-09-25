@@ -5,6 +5,7 @@ import { createPool } from "./db/pool";
 import { seedDemoData } from "./db/seed";
 import {
   createGeminiExtractor,
+  createGeminiTranslator,
   createGeminiVideoExtractor,
   type GeminiUsageListener,
 } from "./llm/geminiClient";
@@ -53,6 +54,10 @@ async function start(): Promise<void> {
       : undefined,
     geminiVideoExtract: env.geminiApiKey
       ? createGeminiVideoExtractor(env.geminiApiKey, env.geminiVideoModel, fetch, recordUsage)
+      : undefined,
+    // Text model: translating is a text-only task, like page extraction.
+    geminiTranslate: env.geminiApiKey
+      ? createGeminiTranslator(env.geminiApiKey, env.geminiTextModel, fetch, recordUsage)
       : undefined,
     downloadSocialVideo,
     vapidPublicKey: env.vapid?.publicKey,

@@ -6,7 +6,7 @@ import { createRateLimiter, limitPerUser } from "../middleware/rateLimit";
 import { requireAuth } from "../middleware/requireAuth";
 import { findCollectionOwnerId } from "../repositories/collections";
 import { findImportJob, listPendingImportJobs, markImportJobReviewed } from "../repositories/importJobs";
-import { findImportModel } from "../repositories/users";
+import { findImportModel, findRecipePreferences } from "../repositories/users";
 import type { ImportJobRunner } from "../services/importJobs";
 import { InvalidUrlError, validateUrl } from "../services/recipeExtraction";
 import { importRequestSchema } from "../validation/import";
@@ -61,10 +61,19 @@ export function createImportRouter(deps: ImportRouterDeps): Router {
         res.status(404).json({ error: "Collection not found" });
         return;
       }
-      // Resolved now, at request time, so the job uses whatever model the
-      // user had picked when they started it.
-      const model = resolveImportModel(magicImport, await findImportModel(pool, userId));
-      const job = await runner.start(userId, url, { model, collectionId });
+      // Resolved now, at request time, so the job uses whatever model,
+      // language and units the user had picked when they started it.
+      const [savedModel, { language, ...units }] = await Promise.all([
+        findImportModel(pool, userId),
+        findRecipePreferences(pool, userId),
+      ]);
+      const model = resolveImportModel(magicImport, savedModel);
+      const job = await runner.start(userId, url, {
+        model,
+        language: language ?? undefined,
+        units,
+        collectionId,
+      });
       res.status(202).json(job);
     } catch (err) {
       next(err);

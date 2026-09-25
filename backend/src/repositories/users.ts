@@ -1,4 +1,5 @@
 import type { Pool } from "pg";
+import { DEFAULT_UNIT_PREFERENCES, type RecipeLanguage, type UnitPreferences } from "@nosh/units";
 
 export interface User {
   id: number;
@@ -72,8 +73,66 @@ export async function findImportModel(pool: Pool, userId: number): Promise<strin
   return result.rows[0]?.import_model ?? null;
 }
 
-export async function setImportModel(pool: Pool, userId: number, model: string | null): Promise<void> {
+export async function setImportModel(
+  pool: Pool,
+  userId: number,
+  model: string | null,
+): Promise<void> {
   await pool.query(`UPDATE users SET import_model = $2 WHERE id = $1`, [userId, model]);
+}
+
+/** What a user's recipes are shown (and imported) in. */
+export interface RecipePreferences extends UnitPreferences {
+  /** Language imports are translated into; null = keep the original. */
+  language: RecipeLanguage | null;
+}
+
+interface RecipePreferencesRow {
+  recipe_language: RecipeLanguage | null;
+  unit_system: UnitPreferences["unitSystem"];
+  temperature_unit: UnitPreferences["temperatureUnit"];
+  keep_spoons: boolean;
+}
+
+export async function findRecipePreferences(
+  pool: Pool,
+  userId: number,
+): Promise<RecipePreferences> {
+  const result = await pool.query<RecipePreferencesRow>(
+    `SELECT recipe_language, unit_system, temperature_unit, keep_spoons FROM users WHERE id = $1`,
+    [userId],
+  );
+  const row = result.rows[0];
+  if (!row) return { language: null, ...DEFAULT_UNIT_PREFERENCES };
+  return {
+    language: row.recipe_language,
+    unitSystem: row.unit_system,
+    temperatureUnit: row.temperature_unit,
+    keepSpoons: row.keep_spoons,
+  };
+}
+
+/** Updates only the fields present in `changes`. */
+export async function updateRecipePreferences(
+  pool: Pool,
+  userId: number,
+  changes: Partial<RecipePreferences>,
+): Promise<void> {
+  const columns: Record<keyof RecipePreferences, string> = {
+    language: "recipe_language",
+    unitSystem: "unit_system",
+    temperatureUnit: "temperature_unit",
+    keepSpoons: "keep_spoons",
+  };
+  const sets: string[] = [];
+  const values: unknown[] = [userId];
+  for (const key of Object.keys(columns) as (keyof RecipePreferences)[]) {
+    if (changes[key] === undefined) continue;
+    values.push(changes[key]);
+    sets.push(`${columns[key]} = $${values.length}`);
+  }
+  if (sets.length === 0) return;
+  await pool.query(`UPDATE users SET ${sets.join(", ")} WHERE id = $1`, values);
 }
 
 export async function findUserById(pool: Pool, id: number): Promise<User | null> {

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   createGeminiExtractor,
+  createGeminiTranslator,
   createGeminiVideoExtractor,
   GeminiExtractionError,
   GeminiUnavailableError,
@@ -224,5 +225,75 @@ describe("createGeminiVideoExtractor", () => {
     await expect(extract(video, null, "https://www.tiktok.com/@x/video/1")).rejects.toBeInstanceOf(
       GeminiUnavailableError,
     );
+  });
+});
+
+function promptOf(fetchImpl: ReturnType<typeof vi.fn>): string {
+  const [, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
+  return JSON.parse(init.body as string).contents[0].parts[0].text as string;
+}
+
+describe("recipe language instruction", () => {
+  it("asks for the target language only when one is set", async () => {
+    const plain = vi.fn().mockResolvedValue(jsonResponse(geminiPayload({ title: "Soup" })));
+    await createGeminiExtractor("k", "m", plain as unknown as typeof fetch)("text", "https://e.com");
+    expect(promptOf(plain)).not.toContain("Dutch");
+
+    const dutch = vi.fn().mockResolvedValue(jsonResponse(geminiPayload({ title: "Soep" })));
+    await createGeminiExtractor("k", "m", dutch as unknown as typeof fetch)("text", "https://e.com", {
+      language: "nl",
+    });
+    expect(promptOf(dutch)).toContain("Dutch");
+    expect(promptOf(dutch)).toMatch(/never convert/i);
+    // Only spoons may be translated: kopje/ons/pond are different measures.
+    expect(promptOf(dutch)).toMatch(/ONLY ones you may translate are the spoons/);
+    expect(promptOf(dutch)).toContain('"kopje", "ons" and "pond" are different quantities');
+  });
+
+  it("applies to the video prompt too", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(geminiPayload({ title: "Soup" })));
+    const extract = createGeminiVideoExtractor("k", "m", fetchImpl as unknown as typeof fetch);
+
+    await extract({ buffer: Buffer.from("v"), mimeType: "video/mp4" }, null, "https://e.com", {
+      language: "en",
+    });
+
+    expect(promptOf(fetchImpl)).toContain("in English");
+  });
+});
+
+describe("createGeminiTranslator", () => {
+  it("sends the recipe as fenced JSON with the response schema", async () => {
+    const translated = { title: "Tomatensoep", ingredients: [], steps: [] };
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(geminiPayload(translated)));
+    const translate = createGeminiTranslator("k", "text-model", fetchImpl as unknown as typeof fetch);
+
+    const result = await translate(
+      {
+        title: "Tomato soup",
+        description: null,
+        servings: 4,
+        prepTimeMinutes: null,
+        cookTimeMinutes: null,
+        sourceUrl: "https://e.com",
+        collectionId: null,
+        ingredients: [{ quantity: "1", unit: "kg", name: "tomatoes" }],
+        steps: [{ instruction: "Simmer" }],
+        tags: [],
+      },
+      "nl",
+      { model: "chosen-model" },
+    );
+
+    expect(result).toEqual(translated);
+    const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain("chosen-model");
+    const prompt = promptOf(fetchImpl);
+    expect(prompt).toContain("<recipe-json>");
+    expect(prompt).toContain('"name":"tomatoes"');
+    expect(prompt).toContain("Dutch");
+    // The source URL is ours, not something to hand the model.
+    expect(prompt).not.toContain("https://e.com");
+    expect(JSON.parse(init.body as string).generationConfig.responseSchema.type).toBe("OBJECT");
   });
 });

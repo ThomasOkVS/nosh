@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { GeminiExtractionError } from "../llm/geminiClient";
+import { GeminiExtractionError, GeminiUnavailableError } from "../llm/geminiClient";
 import {
   ExtractionError,
   extractRecipeFromUrl,
@@ -397,5 +397,255 @@ describe("extractRecipeFromUrl — Instagram/TikTok video path", () => {
         geminiVideoExtract,
       }),
     ).rejects.toThrow(ExtractionError);
+  });
+});
+
+describe("extractRecipeFromUrl — translation", () => {
+  const ENGLISH_JSON_LD = {
+    "@context": "https://schema.org",
+    "@type": "Recipe",
+    name: "Butter cookies",
+    recipeIngredient: ["2 cups flour", "1 cup butter", "1 tbsp sugar"],
+    recipeInstructions: [
+      "Heat the oven to 350°F and add the butter to the flour.",
+      "Mix the sugar into the dough with a spoon until smooth, then bake for 12 minutes.",
+    ],
+    totalTime: "PT20M",
+  };
+  const DUTCH_JSON_LD = {
+    "@context": "https://schema.org",
+    "@type": "Recipe",
+    name: "Stoofvlees",
+    recipeIngredient: ["1 kg rundvlees", "2 el boter"],
+    recipeInstructions: [
+      "Snijd het vlees in blokjes en bak het aan in de boter.",
+      "Voeg het bier toe en laat het vlees met de ui een uur op een laag vuur stoven tot het zacht is.",
+    ],
+  };
+
+  function jsonLdFetch(jsonLd: unknown) {
+    return vi.fn().mockResolvedValue(htmlResponse(pageWithJsonLd(jsonLd)));
+  }
+
+  const dutchTranslation = {
+    title: "Boterkoekjes",
+    ingredients: [
+      { quantity: "2", unit: "cups", name: "bloem" },
+      { quantity: "1", unit: "cup", name: "boter" },
+      { quantity: "1", unit: "el", name: "suiker" },
+    ],
+    steps: [
+      { instruction: "Verwarm de oven voor op 350°F en voeg de boter toe aan de bloem." },
+      { instruction: "Meng de suiker door het deeg tot het glad is en bak 12 minuten." },
+    ],
+    // The model must not get to change tags; these are discarded.
+    tags: ["vegan"],
+  };
+
+  it("translates a schema.org recipe that isn't in the target language", async () => {
+    const geminiTranslate = vi.fn().mockResolvedValue(dutchTranslation);
+    const stages: string[] = [];
+
+    const result = await extractRecipeFromUrl("https://example.com/cookies", {
+      fetchImpl: jsonLdFetch(ENGLISH_JSON_LD),
+      geminiTranslate,
+      language: "nl",
+      model: "chosen-model",
+      onProgress: (stage) => stages.push(stage),
+    });
+
+    expect(stages).toContain("translating");
+    expect(geminiTranslate).toHaveBeenCalledTimes(1);
+    expect(geminiTranslate.mock.calls[0]?.[1]).toBe("nl");
+    expect(geminiTranslate.mock.calls[0]?.[2]).toMatchObject({ model: "chosen-model" });
+    expect(result.recipe.title).toBe("Boterkoekjes");
+    expect(result.recipe.tags).toEqual(["quick"]);
+    expect(result.recipe.sourceUrl).toBe("https://example.com/cookies");
+    expect(result.translationSkipped).toBe(false);
+  });
+
+  it("makes no translation call when the recipe is already in the target language", async () => {
+    const geminiTranslate = vi.fn();
+
+    const result = await extractRecipeFromUrl("https://example.com/stoofvlees", {
+      fetchImpl: jsonLdFetch(DUTCH_JSON_LD),
+      geminiTranslate,
+      language: "nl",
+    });
+
+    expect(geminiTranslate).not.toHaveBeenCalled();
+    expect(result.recipe.title).toBe("Stoofvlees");
+    expect(result.translationSkipped).toBe(false);
+  });
+
+  it("makes no translation call with no language set", async () => {
+    const geminiTranslate = vi.fn();
+
+    await extractRecipeFromUrl("https://example.com/cookies", {
+      fetchImpl: jsonLdFetch(ENGLISH_JSON_LD),
+      geminiTranslate,
+    });
+
+    expect(geminiTranslate).not.toHaveBeenCalled();
+  });
+
+  it("keeps the original and flags it when translation fails", async () => {
+    const geminiTranslate = vi.fn().mockRejectedValue(new GeminiUnavailableError("quota"));
+
+    const result = await extractRecipeFromUrl("https://example.com/cookies", {
+      fetchImpl: jsonLdFetch(ENGLISH_JSON_LD),
+      geminiTranslate,
+      language: "nl",
+    });
+
+    expect(result.recipe.title).toBe("Butter cookies");
+    expect(result.translationSkipped).toBe(true);
+  });
+
+  it("keeps the original when the translation doesn't validate", async () => {
+    const geminiTranslate = vi.fn().mockResolvedValue({ title: "", ingredients: [], steps: [] });
+
+    const result = await extractRecipeFromUrl("https://example.com/cookies", {
+      fetchImpl: jsonLdFetch(ENGLISH_JSON_LD),
+      geminiTranslate,
+      language: "nl",
+    });
+
+    expect(result.recipe.title).toBe("Butter cookies");
+    expect(result.translationSkipped).toBe(true);
+  });
+
+  it("flags a skipped translation when no translator is configured", async () => {
+    const result = await extractRecipeFromUrl("https://example.com/cookies", {
+      fetchImpl: jsonLdFetch(ENGLISH_JSON_LD),
+      language: "nl",
+    });
+
+    expect(result.translationSkipped).toBe(true);
+  });
+
+  it("still rethrows when the user cancelled mid-translation", async () => {
+    const controller = new AbortController();
+    const geminiTranslate = vi.fn().mockImplementation(() => {
+      controller.abort();
+      return Promise.reject(new GeminiExtractionError("Gemini request timed out"));
+    });
+
+    await expect(
+      extractRecipeFromUrl("https://example.com/cookies", {
+        fetchImpl: jsonLdFetch(ENGLISH_JSON_LD),
+        geminiTranslate,
+        language: "nl",
+        signal: controller.signal,
+      }),
+    ).rejects.toThrow(GeminiExtractionError);
+  });
+
+  it("asks the AI text path to write in the target language, with no extra call", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(htmlResponse("<html><body>Tomato soup</body></html>"));
+    const geminiExtract = vi.fn().mockResolvedValue({
+      title: "Tomatensoep",
+      ingredients: [{ quantity: "1", unit: "kg", name: "tomaten" }],
+      steps: [{ instruction: "Laat de tomaten sudderen" }],
+    });
+    const geminiTranslate = vi.fn();
+
+    const result = await extractRecipeFromUrl("https://example.com/soup", {
+      fetchImpl,
+      geminiExtract,
+      geminiTranslate,
+      language: "nl",
+    });
+
+    expect(geminiExtract.mock.calls[0]?.[2]).toMatchObject({ language: "nl" });
+    expect(geminiTranslate).not.toHaveBeenCalled();
+    expect(result.translationSkipped).toBe(false);
+  });
+});
+
+describe("extractRecipeFromUrl — unit conversion", () => {
+  const US_JSON_LD = {
+    "@context": "https://schema.org",
+    "@type": "Recipe",
+    name: "Butter cookies",
+    recipeIngredient: ["2 cups flour", "8 oz butter", "2 eggs"],
+    recipeInstructions: ["Heat the oven to 350°F.", "Bake for 12 minutes."],
+  };
+  const metric = { unitSystem: "metric", temperatureUnit: "C", keepSpoons: true } as const;
+
+  it("converts amounts and oven temperatures into the user's units", async () => {
+    const result = await extractRecipeFromUrl("https://example.com/cookies", {
+      fetchImpl: vi.fn().mockResolvedValue(htmlResponse(pageWithJsonLd(US_JSON_LD))),
+      units: metric,
+    });
+
+    expect(result.recipe.ingredients).toEqual([
+      { quantity: "473.18", unit: "ml", name: "flour" },
+      { quantity: "226.8", unit: "g", name: "butter" },
+      { quantity: "2", unit: null, name: "eggs" },
+    ]);
+    expect(result.recipe.steps[0]?.instruction).toBe("Heat the oven to 177°C.");
+  });
+
+  it("converts after translating, recognising Dutch unit words", async () => {
+    const geminiTranslate = vi.fn().mockResolvedValue({
+      title: "Boterkoekjes",
+      ingredients: [
+        { quantity: "2", unit: "cups", name: "bloem" },
+        { quantity: "3", unit: "tl", name: "suiker" },
+      ],
+      steps: [{ instruction: "Verwarm de oven voor op 350°F." }],
+    });
+
+    const result = await extractRecipeFromUrl("https://example.com/cookies", {
+      fetchImpl: vi.fn().mockResolvedValue(htmlResponse(pageWithJsonLd(US_JSON_LD))),
+      geminiTranslate,
+      language: "nl",
+      units: metric,
+    });
+
+    expect(result.recipe.ingredients).toEqual([
+      { quantity: "473.18", unit: "ml", name: "bloem" },
+      // 3 tl tidies up to 1 el, labelled in Dutch.
+      { quantity: "1", unit: "el", name: "suiker" },
+    ]);
+    expect(result.recipe.steps[0]?.instruction).toBe("Verwarm de oven voor op 177°C.");
+  });
+
+  it("undoes a translation that changed what a unit means", async () => {
+    // Real models "translate" cup -> kopje and oz -> ons, which are different
+    // quantities (a Belgian ons is 100 g) — and sometimes fiddle with numbers.
+    const geminiTranslate = vi.fn().mockResolvedValue({
+      title: "Boterkoekjes",
+      servings: 99,
+      ingredients: [
+        { quantity: "2", unit: "kopjes", name: "bloem" },
+        { quantity: "8", unit: "ons", name: "boter" },
+        { quantity: "3", unit: null, name: "eieren" },
+      ],
+      steps: [{ instruction: "Verwarm de oven voor op 350°F." }],
+    });
+
+    const result = await extractRecipeFromUrl("https://example.com/cookies", {
+      fetchImpl: vi.fn().mockResolvedValue(htmlResponse(pageWithJsonLd(US_JSON_LD))),
+      geminiTranslate,
+      language: "nl",
+      units: metric,
+    });
+
+    expect(result.recipe.ingredients).toEqual([
+      { quantity: "473.18", unit: "ml", name: "bloem" },
+      { quantity: "226.8", unit: "g", name: "boter" },
+      { quantity: "2", unit: null, name: "eieren" },
+    ]);
+    expect(result.recipe.servings).toBeNull();
+  });
+
+  it("leaves amounts as written with no unit preferences", async () => {
+    const result = await extractRecipeFromUrl("https://example.com/cookies", {
+      fetchImpl: vi.fn().mockResolvedValue(htmlResponse(pageWithJsonLd(US_JSON_LD))),
+    });
+
+    expect(result.recipe.ingredients[0]).toEqual({ quantity: "2", unit: "cups", name: "flour" });
   });
 });

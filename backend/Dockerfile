@@ -13,7 +13,10 @@ WORKDIR /repo
 # this build context.
 COPY . .
 RUN pnpm install --frozen-lockfile
-RUN pnpm --filter backend build
+# `backend...` = backend plus the workspace packages it depends on
+# (@nosh/units), built in dependency order so backend's tsc finds their
+# compiled types.
+RUN pnpm --filter "backend..." build
 
 FROM node:22-alpine
 # Express reads this: in production its fallback error handling never puts a
@@ -31,9 +34,13 @@ WORKDIR /repo
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY backend/package.json backend/package.json
 COPY frontend/package.json frontend/package.json
+COPY packages/units/package.json packages/units/package.json
 RUN pnpm install --frozen-lockfile --prod --filter backend
 
 COPY --from=build /repo/backend/dist backend/dist
+# The shared @nosh/units package runs from its compiled CommonJS output here
+# (plain `node`, no "source" condition) — see docs/decisions.md#shared-units-package.
+COPY --from=build /repo/packages/units/dist packages/units/dist
 COPY backend/migrations backend/migrations
 
 WORKDIR /repo/backend

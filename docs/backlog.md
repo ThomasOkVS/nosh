@@ -26,8 +26,6 @@ priority.
       from Safari, tap "Notify me when it's done", start an Instagram
       import, lock the phone, and check that the notification arrives and the
       tap opens the pre-filled form.
-- [ ] Auto translate imported recipes to the user's native language and preferred units of measure.
-- [ ] Smart unit conversions and recipe scaling.
 - [ ] Notes & ratings on recipes.
 - [ ] Nutrition info via an external nutrition database.
 - [ ] Active cooking mode (ingredients can be checked of, cooking steps can be checked off, other ideas?).
@@ -51,6 +49,21 @@ priority.
       just a code edit.
 
 ### Follow-ups
+
+- [ ] Full-text search uses the `'english'` stemming config, so recipes
+      translated to (or written in) Dutch search poorly — consider a
+      per-recipe or `'simple'` config now that Dutch recipes are expected.
+- [ ] More recipe languages than NL/EN. The stopword check in
+      `backend/src/services/recipeLanguage.ts` won't scale far; beyond a
+      handful of languages, a detection library is probably warranted.
+- [ ] Volume↔weight conversion ("1 cup flour → 125 g") — needs a
+      per-ingredient density table; deliberately out of scope for the first
+      unit-conversion cut.
+- [ ] Scale planned meals: let a meal-planner entry carry its own servings
+      and show scaled amounts (depends on nothing new — `@nosh/units`
+      already does the math).
+- [ ] Locale-aware decimals: amounts always use a "." decimal separator
+      (`1.5`), even in Dutch. Consider locale-aware formatting.
 
 - [ ] Public HTTPS cutover, homelab side (2026-09-24): apply the `edge`
       network + `FRONTEND_ORIGINS`/`TRUSTED_PROXIES` on the box, *then* flip
@@ -84,6 +97,46 @@ priority.
 
 ## Completed
 
+- **2026-09-25** — Smart unit conversions & recipe scaling, together with
+  auto-translating imports into the user's language and units (two backlog
+  items done as one, at the owner's request, replacing a separate
+  translation-only plan). See
+  [decisions.md](decisions.md#2026-09-25-recipe-units-and-language).
+  - **`@nosh/units`**, a new shared workspace package (`packages/units`),
+    does all the arithmetic:
+    - quantity parsing;
+    - exact metric/US conversion with Dutch unit words;
+    - auto-tidy (1500 g → 1.5 kg);
+    - oven temperatures in step text;
+    - the "I have 200 g" factor.
+
+    Backend and frontend both use it. Dev and tests read its source through
+    a `"source"` export condition; production runs its build.
+  - **Settings → Language & units:**
+    - recipe language (keep original/Nederlands/English);
+    - metric/US;
+    - °C/°F;
+    - keep spoons.
+
+    Stored on `users` (migration 015), via
+    `GET/PUT /settings/recipe-preferences`.
+  - **Recipe page.** Every recipe is shown in those units. A servings stepper
+    (or ×multiplier) and a tap-an-amount "I have…" popover rescale it,
+    view-only. Amounts are exact to two decimals, never rounded to
+    fractions, because the owner bakes.
+  - **Imports:**
+    - AI imports are written in the target language by the existing prompt.
+    - Schema.org imports get one extra Gemini call, only when a stopword
+      check says they aren't already in that language. This fails open, with
+      a "couldn't translate" banner on the review form.
+    - Every import is then converted to the user's units before it
+      pre-fills the form.
+  - **Out of scope, now follow-ups above:**
+    - Dutch-aware search;
+    - more languages;
+    - volume↔weight;
+    - meal-planner scaling;
+    - locale decimals.
 - **2026-09-24** — Readiness for public HTTPS at
   `https://nosh.itsthomassito.com`. Came from a homelab-side checklist that
   couldn't see this repo, so every item was audited against the code first.

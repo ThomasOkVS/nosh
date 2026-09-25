@@ -41,10 +41,21 @@ export const inputClass =
 export const errorBannerClass =
   "rounded-sm bg-danger-50 px-3 py-2 text-sm text-danger-700 dark:bg-danger-500/15 dark:text-danger-500";
 
+/** A neutral, non-error notice (e.g. "couldn't translate this import") —
+ * quieter than errorBannerClass, see docs/design-system.md#recipe-scaling. */
+export const infoBannerClass =
+  "flex items-start gap-2 rounded-sm bg-surface-sunken px-3 py-2 text-sm text-ink-muted";
+
 export const labelClass = "block text-sm font-medium text-ink-muted";
 
-export const sectionHeadingClass = "flex items-center gap-2 font-display text-lg font-bold text-ink";
+export const sectionHeadingClass =
+  "flex items-center gap-2 font-display text-lg font-bold text-ink";
 
 /** Groups a form section (Basics/Ingredients/Steps/Tags/Photos) into a
  * visually distinct chunk — see docs/design-system.md#forms. */
 export const sectionCardClass = "rounded-lg bg-surface-sunken p-4 sm:p-6";
+
+/** A bordered, clickable radio/checkbox option card (Settings) — the border
+ * turns sauce-red when its input is checked. */
+export const optionCardClass =
+  "flex cursor-pointer items-start gap-3 rounded-md border border-border bg-surface p-3 transition-colors duration-standard ease-standard has-[:checked]:border-sauce-500 has-[:disabled]:cursor-wait";

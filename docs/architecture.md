@@ -66,6 +66,9 @@ nosh/
 │   ├── migrations/         # SQL migrations for PostgreSQL
 │   ├── Dockerfile.dev      # dev image (tsx watch, bind-mounted source)
 │   └── Dockerfile          # production image (tsc build -> node dist/)
+├── packages/
+│   └── units/              # @nosh/units: quantity parsing, scaling, unit &
+│                           # temperature conversion, shared by both apps
 ├── docker-compose.yml      # local dev (builds Dockerfile.dev, hot reload)
 └── docker-compose.prod.yml # homelab deployment (pulls published GHCR images)
 ```
@@ -101,14 +104,21 @@ even though there is exactly one user today — see
   below.
 - **users.import_model** — nullable `TEXT`, the user's magic-import model
   preference (`NULL` = Automatic).
+- **users.recipe_language / unit_system / temperature_unit / keep_spoons** —
+  the Settings page's "Language & units" preferences. `recipe_language` is
+  nullable `TEXT` `CHECK IN ('nl','en')` (`NULL` = keep the original);
+  `unit_system` `'metric'|'us'` (default `metric`), `temperature_unit`
+  `'C'|'F'` (default `C`), `keep_spoons` `BOOLEAN` (default `true`). See
+  [Language, units & scaling](#language-units--scaling).
 - **llm_usage** — `usage_day` (`DATE`, Pacific time), `model`, `requests`,
   `prompt_tokens`, `output_tokens`, primary key `(usage_day, model)`. Global,
   not per-user. See [Magic import settings](#magic-import-settings) below.
 - **import_jobs** — `id`, `user_id`, `url`, `collection_id` (nullable,
   `ON DELETE SET NULL`), `status` (`running`/`done`/`error`/
   `cancelled`), `seen_stages` (`TEXT[]`), `recipe` (`JSONB`, the unsaved
-  `RecipeInput`), `image_url`, `error_status`, `error_message`, `reviewed_at`,
-  `created_at`, `updated_at`. One row per recipe import — see
+  `RecipeInput`), `image_url`, `translation_skipped` (`BOOLEAN`, the user
+  wanted a translation that couldn't happen), `error_status`,
+  `error_message`, `reviewed_at`, `created_at`, `updated_at`. One row per recipe import — see
   [Import jobs & push notifications](#import-jobs).
 - **push_subscriptions** — `id`, `user_id`, `endpoint` (`UNIQUE`), `p256dh`,
   `auth`, `created_at`. One row per device opted into Web Push.
@@ -317,7 +327,8 @@ below. Extraction is two-stage:
    constraining the output to `RecipeInput`'s shape.
 
 Either way the result is validated with the same `recipeSchema` the recipe
-routes use, `source_url` is set to the imported URL, and two normalizations
+routes use, then translated and unit-converted to the user's preferences
+(see [Language, units & scaling](#language-units--scaling)), `source_url` is set to the imported URL, and two normalizations
 run over both paths' output: ingredient lines are split into
 quantity/unit/name (`services/ingredientLine.ts`), and tags are restricted to
 a fixed attribute vocabulary — "high protein", "quick", "gluten free" and
@@ -499,6 +510,53 @@ immediately on becoming visible again.
   in the app added to the home screen.
 - The sender is injected via `createApp` (`AppDeps.sendPush`), so tests
   never reach a real push service.
+
+## Language, units & scaling {#language-units--scaling}
+
+Ingredient amounts are stored as free text (`"1 1/2"`, `"½"`, `"2-3"`,
+`"2 x 400"`), so everything that does arithmetic on them goes through one
+shared workspace package, **`packages/units` (`@nosh/units`)** — pure
+TypeScript, no dependencies:
+- `parseQuantity` evaluates the text (singles incl. fractions and comma
+  decimals, ranges, multipacks); anything else is `null` and shown as
+  written.
+- `lookupUnit` knows measurable units in English *and Dutch* (`el`, `tl`,
+  `eetlepel`…) with their exact metric factors; count units (clove, blik,
+  kopje…) are recognised but never converted. The same word list feeds the
+  backend's ingredient-line parser.
+- `convertIngredient` scales by a factor, converts to metric or US and
+  "auto-tidies" (1500 g → 1.5 kg, 48 tsp → 1 cup), formatting exactly to two
+  decimals. `convertTemperaturesInText` rewrites explicit oven temperatures
+  in step text. `anchorFactor` computes "the recipe says 150 g, I have
+  200 g".
+
+**How both apps consume it.** The package's `exports` has a `"source"`
+condition pointing at `src/index.ts`. Vite (build, dev and Vitest), the
+backend's Vitest config and `tsx --conditions=source` in backend dev all
+resolve that, so nothing needs a prebuilt `dist/`. The backend's `tsc -b`
+builds the package through a TypeScript project reference, and the
+production backend image runs its compiled CommonJS `dist/`. See
+[decisions.md](decisions.md#shared-units-package).
+
+**Where conversion happens.**
+- **On display** (`RecipeDetailPage`): every recipe — typed in or
+  imported — is converted to the user's preferences at render time, derived
+  with `useMemo` from the stored recipe, the scale factor and the
+  preferences (`useRecipePreferences`). Scaling (the servings stepper, or
+  "I have…" on a tappable amount) is view-only state: a single factor.
+- **On import** (`services/recipeExtraction.ts`): after validation, a
+  schema.org recipe that isn't already in the user's `recipe_language`
+  (`services/recipeLanguage.ts`, a stopword count) is translated with one
+  extra Gemini call (`createGeminiTranslator`); the AI paths are told the
+  language in their own prompt instead. Translation fails open
+  (`import_jobs.translation_skipped`, a banner on the review form). *Then*
+  `services/recipeUnits.ts` converts amounts and temperatures, so the
+  pre-filled form — and the saved recipe — is already in the user's units.
+
+Preferences are one resource, `GET/PUT /settings/recipe-preferences` (PUT
+takes any subset of fields). See
+[decisions.md](decisions.md#2026-09-25-recipe-units-and-language) for the
+reasoning behind the choices.
 
 ## Deployment target
 

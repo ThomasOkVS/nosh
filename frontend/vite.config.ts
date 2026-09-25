@@ -2,8 +2,23 @@ import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { VitePWA } from "vite-plugin-pwa";
+import { defaultClientConditions, defaultServerConditions } from "vite";
+
+// "source" makes workspace packages (@nosh/units) resolve to their TypeScript
+// source via their package.json `exports` instead of their compiled dist/, so
+// the frontend never needs a separate build step for them. See
+// docs/decisions.md#shared-units-package.
+const workspaceSourceCondition = "source";
 
 export default defineConfig({
+  resolve: {
+    conditions: [workspaceSourceCondition, ...defaultClientConditions],
+  },
+  ssr: {
+    resolve: {
+      conditions: [workspaceSourceCondition, ...defaultServerConditions],
+    },
+  },
   server: {
     // Docker Desktop's bind mount doesn't reliably deliver filesystem change
     // events into the container (content syncs; inotify doesn't) — chokidar

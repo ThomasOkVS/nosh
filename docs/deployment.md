@@ -283,6 +283,11 @@ migration that ships alongside an update still needs the manual
 `pnpm migrate up` step above; Watchtower only replaces the running
 container, it doesn't run one-off commands inside it.
 
+Updates that need more than a routine pull (a migration, a config change)
+get a step-by-step note for whoever runs the box in [handover/](handover/),
+e.g. [2026-09-25: recipe units & translation](handover/2026-09-25-recipe-units-and-translation.md)
+(migration 015).
+
 **A migration that reshapes existing data needs a check, not just a run.**
 The first-deploy step above is against an empty database, so nothing there
 is at risk — but a later update's migration runs against whatever real data

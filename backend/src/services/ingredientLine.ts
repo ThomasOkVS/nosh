@@ -1,3 +1,4 @@
+import { UNIT_WORDS as UNITS } from "@nosh/units";
 import type { RecipeInput } from "../validation/recipes";
 
 type Ingredient = RecipeInput["ingredients"][number];
@@ -85,28 +86,16 @@ const QUANTITY_MATCHERS: QuantityMatcher[] = [
 ];
 
 /**
- * Words treated as a measurement unit when they directly follow a quantity.
- * Deliberately excludes size adjectives ("medium", "large", "small") — in
+ * Words treated as a measurement unit when they directly follow a quantity
+ * come from the shared @nosh/units list (English and Dutch, measurable and
+ * countable), so the parser and the unit converter agree on what a unit is.
+ * It deliberately excludes size adjectives ("medium", "large", "small") — in
  * "2 medium sweet potatoes" the unit is genuinely absent, and calling
  * "medium" a unit would be worse than leaving it in the name.
  *
- * Singular forms only; `matchUnit` handles plurals.
+ * Singular forms (plus irregular plurals) only; `matchUnit` handles regular
+ * plurals.
  */
-const UNITS = new Set([
-  // metric
-  "g", "gr", "gram", "kg", "kilo", "kilogram", "mg",
-  "ml", "cl", "dl", "l", "liter", "litre",
-  // imperial / US
-  "oz", "ounce", "lb", "pound", "fl oz", "floz",
-  "tsp", "teaspoon", "tbsp", "tablespoon", "cup",
-  "pint", "quart", "gallon",
-  // countable containers & natural units
-  "can", "tin", "jar", "packet", "pack", "package", "box", "bag", "bottle",
-  "clove", "stick", "stalk", "sprig", "bunch", "head", "rasher", "slice",
-  "piece", "sheet", "ball", "knob", "strip", "fillet", "rib", "ear",
-  "pinch", "dash", "drop", "handful", "splash", "scoop", "square",
-]);
-
 function matchUnit(rawToken: string): string | null {
   const token = rawToken.replace(/[.,;:]+$/, "");
   const lower = token.toLowerCase();

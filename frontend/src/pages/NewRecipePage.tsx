@@ -70,6 +70,7 @@ export function NewRecipePage() {
             importedRecipe: job.recipe,
             importedImageUrl: job.imageUrl,
             collectionId: job.collectionId,
+            translationSkipped: job.translationSkipped,
           };
           navigate({ search: location.search }, { replace: true, state });
         } else if (job.status === "error") {

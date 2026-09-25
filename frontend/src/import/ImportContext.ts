@@ -18,6 +18,8 @@ export interface ActiveImport {
   /** The recipe's photo, found during import — attached automatically once
    * the form is saved and a real recipe id exists to attach it to. */
   imageUrl?: string | null;
+  /** Translation was wanted but didn't happen (see ImportJob). */
+  translationSkipped?: boolean;
   errorMessage?: string;
   /** Where the imported recipe should be filed — the folder the import was
    * started from (`null` = Home). Pre-selects the form's collection picker. */

@@ -1,7 +1,11 @@
 import type { Express } from "express";
 import request from "supertest";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { GeminiExtractFn, GeminiVideoExtractFn } from "../llm/geminiClient";
+import type {
+  GeminiExtractFn,
+  GeminiTranslateFn,
+  GeminiVideoExtractFn,
+} from "../llm/geminiClient";
 import { VideoTooLargeError, VideoUnavailableError, type SocialVideoDownloadFn } from "../services/socialVideo";
 import { recoverImportJobs } from "../repositories/importJobs";
 import type { SendPushFn } from "../services/pushNotifier";
@@ -55,6 +59,7 @@ interface ImportJobBody {
   seenStages: string[];
   recipe: Record<string, unknown> | null;
   imageUrl: string | null;
+  translationSkipped: boolean;
   errorStatus: number | null;
   errorMessage: string | null;
   reviewed: boolean;
@@ -149,6 +154,44 @@ describe("import routes", () => {
 
     const models = vi.mocked(geminiExtract).mock.calls.map((call) => call[2]?.model);
     expect(models).toEqual([undefined, "other-model"]);
+  });
+
+  it("imports in the language and units saved on the Settings page", async () => {
+    stubFetchWithHtml(`<html><head><script type="application/ld+json">${JSON.stringify({
+      "@type": "Recipe",
+      name: "Pancakes",
+      recipeIngredient: ["1 cup milk"],
+      recipeInstructions: ["Heat the pan and cook the batter until golden, then flip it over."],
+    })}</script></head><body></body></html>`);
+    const geminiTranslate: GeminiTranslateFn = vi.fn().mockResolvedValue({
+      title: "Pannenkoeken",
+      ingredients: [{ quantity: "1", unit: "cup", name: "melk" }],
+      steps: [{ instruction: "Verwarm de pan en bak het beslag goudbruin, draai het dan om." }],
+    });
+    const app = createTestApp({ geminiTranslate });
+    const agent = await signedInAgent(app, "importprefs@example.com");
+    await agent.put("/settings/recipe-preferences").send({ language: "nl", unitSystem: "metric" });
+
+    const job = await importAndWait(agent, "https://example.com/pancakes");
+
+    expect(vi.mocked(geminiTranslate).mock.calls[0]?.[1]).toBe("nl");
+    expect(job.seenStages).toEqual(["fetching", "structured-data", "translating"]);
+    expect(job.recipe!.title).toBe("Pannenkoeken");
+    expect(job.recipe!.ingredients).toEqual([{ quantity: "236.59", unit: "ml", name: "melk" }]);
+    expect(job.translationSkipped).toBe(false);
+  });
+
+  it("flags a job whose translation couldn't happen", async () => {
+    stubFetchWithHtml(RECIPE_JSON_LD_PAGE);
+    const app = createTestApp();
+    const agent = await signedInAgent(app, "importnotranslator@example.com");
+    await agent.put("/settings/recipe-preferences").send({ language: "nl" });
+
+    const job = await importAndWait(agent, "https://example.com/recipe");
+
+    expect(job.status).toBe("done");
+    expect(job.recipe!.title).toBe("Tomato Soup");
+    expect(job.translationSkipped).toBe(true);
   });
 
   it("stops at the structured-data stage when the page has JSON-LD", async () => {

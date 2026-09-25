@@ -2,7 +2,13 @@ import { apiFetch } from "./client";
 import type { RecipeInput } from "./types";
 
 /** Mirrors `ImportStage` in the backend's recipeExtraction service. */
-export type ImportStage = "fetching" | "structured-data" | "downloading-video" | "analyzing-video" | "ai";
+export type ImportStage =
+  | "fetching"
+  | "structured-data"
+  | "downloading-video"
+  | "analyzing-video"
+  | "ai"
+  | "translating";
 
 /**
  * A server-side import job (backend/src/repositories/importJobs.ts). The
@@ -24,6 +30,9 @@ export interface ImportJob {
   /** The recipe's photo, found on a best-effort basis — null when the page
    * (or video) had no discoverable image. */
   imageUrl: string | null;
+  /** The user wanted the recipe translated but it couldn't be (no AI,
+   * quota, outage) — it's in its original language. */
+  translationSkipped: boolean;
   errorStatus: number | null;
   errorMessage: string | null;
   reviewed: boolean;

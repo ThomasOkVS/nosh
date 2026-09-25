@@ -22,6 +22,7 @@ export function createTestApp(
       AppDeps,
       | "geminiExtract"
       | "geminiVideoExtract"
+      | "geminiTranslate"
       | "downloadSocialVideo"
       | "fetchImpl"
       | "magicImport"

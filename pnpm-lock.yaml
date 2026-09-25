@@ -13,6 +13,9 @@ importers:
 
   backend:
     dependencies:
+      '@nosh/units':
+        specifier: workspace:*
+        version: link:../packages/units
       argon2:
         specifier: ^0.45.1
         version: 0.45.1
@@ -107,6 +110,9 @@ importers:
 
   frontend:
     dependencies:
+      '@nosh/units':
+        specifier: workspace:*
+        version: link:../packages/units
       '@phosphor-icons/react':
         specifier: ^2.1.10
         version: 2.1.10(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -189,6 +195,27 @@ importers:
       workbox-window:
         specifier: ^7.4.1
         version: 7.4.1
+
+  packages/units:
+    devDependencies:
+      '@eslint/js':
+        specifier: ^9.39.5
+        version: 9.39.5
+      eslint:
+        specifier: ^9.39.5
+        version: 9.39.5(jiti@2.7.0)(supports-color@7.2.0)
+      eslint-config-prettier:
+        specifier: ^9.1.2
+        version: 9.1.2(eslint@9.39.5(jiti@2.7.0)(supports-color@7.2.0))
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      typescript-eslint:
+        specifier: ^8.67.0
+        version: 8.67.0(eslint@9.39.5(jiti@2.7.0)(supports-color@7.2.0))(supports-color@7.2.0)(typescript@5.9.3)
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/node@22.20.1)(jiti@2.7.0)(jsdom@25.0.1(supports-color@7.2.0))(lightningcss@1.32.0)(supports-color@7.2.0)(terser@5.49.2)(tsx@4.23.12)
 
 packages:
 

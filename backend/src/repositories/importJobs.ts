@@ -14,6 +14,9 @@ export interface ImportJob {
   seenStages: ImportStage[];
   recipe: RecipeInput | null;
   imageUrl: string | null;
+  /** Translation was wanted but couldn't happen; the recipe is in its
+   * original language. */
+  translationSkipped: boolean;
   errorStatus: number | null;
   errorMessage: string | null;
   reviewed: boolean;
@@ -29,6 +32,7 @@ interface ImportJobRow {
   seen_stages: ImportStage[];
   recipe: RecipeInput | null;
   image_url: string | null;
+  translation_skipped: boolean;
   error_status: number | null;
   error_message: string | null;
   reviewed_at: Date | null;
@@ -36,7 +40,7 @@ interface ImportJobRow {
 }
 
 const COLUMNS = `id, user_id, url, collection_id, status, seen_stages, recipe, image_url,
-  error_status, error_message, reviewed_at, created_at`;
+  translation_skipped, error_status, error_message, reviewed_at, created_at`;
 
 function toImportJob(row: ImportJobRow): ImportJob {
   return {
@@ -48,6 +52,7 @@ function toImportJob(row: ImportJobRow): ImportJob {
     seenStages: row.seen_stages,
     recipe: row.recipe,
     imageUrl: row.image_url,
+    translationSkipped: row.translation_skipped,
     errorStatus: row.error_status,
     errorMessage: row.error_message,
     reviewed: row.reviewed_at !== null,
@@ -107,11 +112,13 @@ export async function completeImportJob(
   id: number,
   recipe: RecipeInput,
   imageUrl: string | null,
+  translationSkipped = false,
 ): Promise<ImportJob | null> {
   const result = await pool.query<ImportJobRow>(
-    `UPDATE import_jobs SET status = 'done', recipe = $2, image_url = $3, updated_at = now()
+    `UPDATE import_jobs
+     SET status = 'done', recipe = $2, image_url = $3, translation_skipped = $4, updated_at = now()
      WHERE id = $1 AND status = 'running' RETURNING ${COLUMNS}`,
-    [id, JSON.stringify(recipe), imageUrl],
+    [id, JSON.stringify(recipe), imageUrl, translationSkipped],
   );
   const row = result.rows[0];
   return row ? toImportJob(row) : null;

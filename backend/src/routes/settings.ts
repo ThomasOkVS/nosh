@@ -4,12 +4,30 @@ import { z } from "zod";
 import { resolveImportModel, type MagicImportConfig } from "../config/llmModels";
 import { requireAuth } from "../middleware/requireAuth";
 import { listTodaysLlmUsage } from "../repositories/llmUsage";
-import { findImportModel, setImportModel } from "../repositories/users";
+import { RECIPE_LANGUAGES, TEMPERATURE_UNITS, UNIT_SYSTEMS } from "@nosh/units";
+import {
+  findImportModel,
+  findRecipePreferences,
+  setImportModel,
+  updateRecipePreferences,
+} from "../repositories/users";
 
 const updateMagicImportSchema = z.object({
   // null = automatic (each import path uses its own default model).
   model: z.string().nullable(),
 });
+
+// Partial: each Settings control saves just the field it changed.
+const updateRecipePreferencesSchema = z
+  .object({
+    // null = keep the recipe's original language (no translation).
+    language: z.enum(RECIPE_LANGUAGES).nullable(),
+    unitSystem: z.enum(UNIT_SYSTEMS),
+    temperatureUnit: z.enum(TEMPERATURE_UNITS),
+    keepSpoons: z.boolean(),
+  })
+  .partial()
+  .strict();
 
 export interface SettingsRouterDeps {
   pool: Pool;
@@ -82,6 +100,38 @@ export function createSettingsRouter(deps: SettingsRouterDeps): Router {
     try {
       await setImportModel(pool, userId, model);
       res.json(await magicImportResponse(userId));
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.get("/recipe-preferences", async (req, res, next) => {
+    const userId = req.session.userId;
+    if (userId === undefined) {
+      res.status(401).json({ error: "Not authenticated" });
+      return;
+    }
+    try {
+      res.json(await findRecipePreferences(pool, userId));
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.put("/recipe-preferences", async (req, res, next) => {
+    const parsed = updateRecipePreferencesSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+      return;
+    }
+    const userId = req.session.userId;
+    if (userId === undefined) {
+      res.status(401).json({ error: "Not authenticated" });
+      return;
+    }
+    try {
+      await updateRecipePreferences(pool, userId, parsed.data);
+      res.json(await findRecipePreferences(pool, userId));
     } catch (err) {
       next(err);
     }

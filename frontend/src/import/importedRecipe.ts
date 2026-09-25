@@ -7,6 +7,8 @@ export interface ImportedRecipeState {
   importedImageUrl: string | null;
   /** Read by RecipeFormPage's `initialCollectionIdFrom`. */
   collectionId: number | null;
+  /** Translation was wanted but didn't happen — the form says so. */
+  translationSkipped?: boolean;
 }
 
 /**
@@ -23,6 +25,11 @@ export function importedRecipeFrom(state: unknown): RecipeInput | null {
   if (!Array.isArray(recipe.ingredients) || !Array.isArray(recipe.steps)) return null;
   if (!Array.isArray(recipe.tags)) return null;
   return recipe as RecipeInput;
+}
+
+export function translationSkippedFrom(state: unknown): boolean {
+  if (!state || typeof state !== "object" || !("translationSkipped" in state)) return false;
+  return (state as { translationSkipped?: unknown }).translationSkipped === true;
 }
 
 export function importedImageUrlFrom(state: unknown): string | null {

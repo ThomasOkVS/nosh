@@ -11,6 +11,7 @@ WORKDIR /repo
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY backend/package.json backend/
 COPY frontend/package.json frontend/
+COPY packages/units/package.json packages/units/
 
 RUN pnpm install && chown -R node:node /repo
 

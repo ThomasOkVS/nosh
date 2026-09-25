@@ -2533,3 +2533,167 @@ survived as long as the tab stayed alive.
   through `NewRecipePage`'s state.
 - Migration `1700000000014_create-import-jobs-and-push-subscriptions`
   follows main's 012/013.
+
+## 2026-09-25: Recipe scaling, unit conversion and auto-translated imports {#2026-09-25-recipe-units-and-language}
+
+**Decision:** Two backlog items shipped together, at the owner's request:
+"Smart unit conversions and recipe scaling" (roadmap #4) and "Auto translate
+imported recipes to the user's native language and preferred units". A
+separate translation-only plan was folded into this one so the two wouldn't
+collide in the same settings, migration and import-pipeline files.
+
+Scope was agreed in an interview first:
+- **Scaling is view-only.** A servings stepper (a ×multiplier for recipes
+  without a servings count), plus "I have ___" on a tapped ingredient
+  ("the recipe needs 150 g cottage cheese, I have 200 g").
+- **Amounts are exact.** At most two decimals, never snapped to fractions.
+  The owner bakes, and friendly rounding was explicitly rejected.
+- **Settings page preferences:**
+  - unit system (metric/US);
+  - temperature (°C/°F);
+  - keep spoons as spoons;
+  - recipe language (keep original/Nederlands/English).
+- **Every recipe view converts,** including typed-in recipes.
+- **Imports are converted and stored.** The review form arrives translated
+  and in the user's units, and so does the saved recipe.
+- **Out of scope:**
+  - volume↔weight conversion (it needs ingredient densities);
+  - scaling in the meal planner;
+  - saving a scaled copy;
+  - languages beyond NL/EN.
+
+### A shared workspace package, `@nosh/units` {#shared-units-package}
+
+The frontend needs the arithmetic for live scaling and display, and the
+backend needs the same arithmetic for import conversion. It lives once, in
+`packages/units`. In Java terms this is a shared module in a Maven
+multi-module build; in Angular terms, a library in an Nx workspace.
+
+**Alternatives rejected:**
+- Copying the code into both apps, which would drift.
+- Converting only on the backend through an API, which costs a round trip
+  on every stepper click and still leaves the frontend unable to format.
+
+**The wiring cost, and how it's kept small:**
+- The package's `exports` has a `"source"` condition pointing at its
+  TypeScript. Vite (dev, build, Vitest), the backend's Vitest config and
+  `tsx --conditions=source` all resolve through it, so day-to-day work never
+  needs a build of the package.
+- The backend's `tsc -b` builds it through a TypeScript project reference,
+  so production types and output are never stale. Editors also follow the
+  reference to the source.
+- The production backend image runs the package's compiled CommonJS
+  (`backend/Dockerfile` builds `backend...` and copies `packages/units/dist`).
+- The package is CommonJS because the backend is. The frontend never sees
+  that, since it compiles the source itself.
+
+### Unit semantics {#unit-semantics}
+
+- `cup`, `pint`, `quart` and `gallon` are the US measures (1 cup =
+  236.5882365 ml). `oz` is weight; `fl oz` is volume.
+- Conversion factors are the exact definitions, and rounding happens once,
+  at formatting.
+- **Dutch unit words are first-class.**
+  - `el`/`eetlepel` = tbsp and `tl`/`theelepel` = tsp.
+  - Count words such as `teen`, `blik` and `snufje` are recognised, because
+    translation turns "tbsp" into "el" *before* conversion runs.
+  - `kopje` is deliberately a count unit, not a cup: a Dutch "kopje" isn't
+    a US cup.
+  - The shared word list also feeds the ingredient-line parser, so Dutch
+    schema.org lines now split into quantity/unit/name too.
+- **Labels.** A unit the author wrote keeps their spelling ("tablespoons"
+  stays "tablespoons"). A unit that conversion *introduces* is labelled in
+  the user's recipe language (`el` or `tbsp`).
+
+### Auto-tidy ladders {#auto-tidy-ladders}
+
+Each system has a ladder of units, smallest to largest:
+- metric weight: mg → g → kg; metric volume: ml → l;
+- US weight: oz → lb; US volume: tsp → tbsp → cup (fl oz only if the author
+  used it).
+
+**Converting into a system** picks the largest unit on the ladder whose
+value is ≥ 1.
+
+**Already in that system,** the author's unit is kept unless:
+- scaling lands on a whole quarter of a bigger unit (48 tsp → 1 cup, 3 tsp →
+  1 tbsp, 750 g ×2 → 1.5 kg), or
+- the amount drops below a quarter of it (⅛ cup → 2 tbsp).
+
+Without these two rules, exact decimals produce things like "4 tsp → 1.33
+tbsp" or "½ cup → 8 tbsp", both harder to read than what the author wrote.
+
+**Keep spoons** keeps tsp/tbsp in metric, until the amount passes a cup's
+worth (16 tbsp), where it becomes ml.
+
+**Ranges and multipacks.**
+- A range scales and converts both ends.
+- A multipack `2 x 400 g` scales the *count* (→ `3 x 400 g`) and converts
+  the pack size.
+- Neither can anchor "I have…".
+
+### Temperatures {#temperatures}
+
+Only explicit temperatures are converted:
+- `350°F`, `180 °C`;
+- "350 degrees F", "200 graden Celsius";
+- a bare uppercase `200C`, as UK sites write it.
+
+A lone number is never touched. Temperatures round to whole degrees (350 °F
+→ 177 °C), because ovens don't have decimals; ingredient amounts keep their
+two decimals.
+
+### Translation
+
+- **Language only, overwriting the original.** The model is told to keep
+  every amount as written. Conversion is deterministic code, never the LLM,
+  so it's exact and testable.
+- **Tags stay English** (they're vocabulary identifiers) and `sourceUrl` is
+  restored after translating.
+- **Only spoon units may be translated** (tbsp ↔ `el`, tsp ↔ `tl`). The
+  "usual Dutch" words for other measures are *different quantities*: a
+  `kopje` isn't a US cup, and in Belgium an `ons` is 100 g and a `pond`
+  500 g. So the prompt forbids translating them.
+- **The schema.org path also restores the numbers.** Quantities, servings
+  and times come back from the original, and so does any unit whose meaning
+  the translation changed (`lookupUnit` differs). This is a backstop for a
+  model that ignores the prompt; the AI paths rely on the prompt alone.
+- **AI imports translate inside their existing prompt,** at no extra cost.
+- **Schema.org imports** get one extra call, and only when a stopword check
+  (`services/recipeLanguage.ts`, no dependency) says the recipe isn't
+  already in the target language. An uncertain result translates. This is
+  the same quota concern that rejected tagging every import with an LLM
+  (2026-08-11), and it's why the check exists.
+- **Fails open.** On quota errors, outages or unusable output the import
+  succeeds untranslated, `import_jobs.translation_skipped` is set, and the
+  review form says so. Cancelling the import still cancels it.
+
+### Pipeline order
+
+The import pipeline runs extract → validate → translate → convert.
+
+Conversion is last, so it runs the same way whether or not translation
+happened, and it's the only step that touches amounts.
+
+**Store-on-import is lossy, and the owner accepted that.** A recipe
+imported in metric and later viewed in US units is converted twice, with
+two-decimal rounding baked in after the first pass.
+
+### `CHECK` constraints on the new columns
+
+`users.recipe_language`, `unit_system` and `temperature_unit` carry `CHECK`
+constraints, unlike `import_model` (migration 013). These option lists live
+in code (`@nosh/units`), not runtime config, so the database can safely
+reject anything else. It's the SQL counterpart of a Java enum column.
+
+### Verification
+
+- `@nosh/units`: 40 tests, including the baking cases (150 g → 200 g gives
+  factor 1.3333; 2 eggs → 2.67).
+- Backend: 394 tests. They cover the settings routes, language detection,
+  the translator prompt, and translation plus conversion through both
+  extraction paths and the job routes.
+- Frontend: 169 tests. These include the first `RecipeDetailPage` tests
+  (stepper, anchor popover, metric/US display, the no-servings multiplier),
+  the settings section, the stage label and the review-form banner.
+- `pnpm build` passes.

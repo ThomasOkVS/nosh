@@ -38,17 +38,24 @@ export function statusForError(err: unknown): number {
 
 export type ImportJobRunnerDeps = Pick<
   ExtractDeps,
-  "geminiExtract" | "geminiVideoExtract" | "downloadSocialVideo" | "fetchImpl"
+  "geminiExtract" | "geminiVideoExtract" | "geminiTranslate" | "downloadSocialVideo" | "fetchImpl"
 > & {
   /** Unset when push isn't configured (no VAPID keys) — the job still
    * finishes and is saved; the user just isn't pinged about it. */
   notify?: ImportFinishedNotifier;
 };
 
+/** Per-import choices, resolved from the user's settings when they start
+ * the import (routes/import.ts), so a settings change mid-import doesn't
+ * affect it. */
+export type ImportJobOptions = Pick<ExtractDeps, "model" | "language" | "units"> & {
+  collectionId?: number | null;
+};
+
 export interface ImportJobRunner {
   /** Saves a new `running` job and returns it immediately; the extraction
    * carries on in the background, independent of any HTTP request. */
-  start(userId: number, url: string, options?: { model?: string; collectionId?: number | null }): Promise<ImportJob>;
+  start(userId: number, url: string, options?: ImportJobOptions): Promise<ImportJob>;
   cancel(userId: number, id: number): Promise<boolean>;
   /** Resolves once every in-flight job has settled. Only tests need this —
    * the app itself never waits on a job. */
@@ -70,7 +77,11 @@ export function createImportJobRunner(pool: Pool, deps: ImportJobRunnerDeps): Im
   // it only needs to live as long as this process runs the job anyway.
   const inFlight = new Map<number, { controller: AbortController; done: Promise<void> }>();
 
-  async function run(job: ImportJob, controller: AbortController, model: string | undefined): Promise<void> {
+  async function run(
+    job: ImportJob,
+    controller: AbortController,
+    options: ImportJobOptions,
+  ): Promise<void> {
     let finished: ImportJob | null;
     // `onProgress` is synchronous, so stage writes are chained rather than
     // awaited — and the chain is drained before the final write, otherwise
@@ -78,11 +89,14 @@ export function createImportJobRunner(pool: Pool, deps: ImportJobRunnerDeps): Im
     // is already `done` (and be dropped by its `status = 'running'` guard).
     let stageWrites = Promise.resolve();
     try {
-      const { recipe, imageUrl } = await extractRecipeFromUrl(job.url, {
+      const { recipe, imageUrl, translationSkipped } = await extractRecipeFromUrl(job.url, {
         ...extractDeps,
-        // The user's Settings-page model choice, resolved when they started
-        // the import (routes/import.ts); unset = each extractor's default.
-        model,
+        // The user's Settings-page choices, resolved when they started the
+        // import (routes/import.ts): model (unset = each extractor's
+        // default), recipe language and units.
+        model: options.model,
+        language: options.language,
+        units: options.units,
         signal: controller.signal,
         onProgress: (stage) => {
           stageWrites = stageWrites
@@ -91,7 +105,7 @@ export function createImportJobRunner(pool: Pool, deps: ImportJobRunnerDeps): Im
         },
       });
       await stageWrites;
-      finished = await completeImportJob(pool, job.id, recipe, imageUrl);
+      finished = await completeImportJob(pool, job.id, recipe, imageUrl, translationSkipped);
     } catch (err) {
       await stageWrites;
       if (controller.signal.aborted) return;
@@ -108,7 +122,7 @@ export function createImportJobRunner(pool: Pool, deps: ImportJobRunnerDeps): Im
     async start(userId, url, options = {}) {
       const job = await createImportJob(pool, userId, url, options.collectionId ?? null);
       const controller = new AbortController();
-      const done = run(job, controller, options.model)
+      const done = run(job, controller, options)
         .catch((err: unknown) => console.error("Import job crashed:", err))
         .finally(() => inFlight.delete(job.id));
       inFlight.set(job.id, { controller, done });

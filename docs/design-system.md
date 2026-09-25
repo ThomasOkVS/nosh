@@ -581,6 +581,41 @@ recipe card rather than a generic checklist UI:
 badge. That version is still the right model if this pattern is ever needed
 somewhere *outside* the Cookbook Editorial pages.
 
+### Recipe scaling — servings stepper & "I have…" popover {#recipe-scaling}
+
+**Added 2026-09-25** (smart unit conversion & recipe scaling). Scaling is a
+*view* of the recipe, never an edit, so its controls stay quiet and sit
+with the thing they change — the Ingredients heading — rather than in the
+masthead's action row next to Edit/Delete.
+
+- **Servings stepper:** on the right of the Ingredients heading row, a
+  compact `[−] 6 servings [+]` group: two 44px icon buttons (`MinusIcon`/
+  `PlusIcon`, ghost style, hairline `border-border`, `radius-md`) either side
+  of a `font-mono` count. A recipe without a servings value shows a
+  multiplier instead (`×1.5`, ½× steps). The number is exact, like every
+  amount — a recipe scaled from one ingredient can read `5.33 servings`.
+- **Reset:** once scaled, a ghost "Reset" text button
+  (`ArrowCounterClockwiseIcon`) appears next to the stepper, and the mono
+  meta line's "Serves" follows the scaled count.
+- **Tappable quantity:** an ingredient whose amount can anchor a rescale
+  (a single evaluable number — not a range, multipack or "to taste") renders
+  its quantity + unit as a text button: `font-medium`, dotted
+  `underline decoration-sauce-500/50 underline-offset-4`, no fill. Other
+  rows stay plain text, so the affordance only appears where it works. The
+  anchor row keeps a `text-sauce-600`/`dark:text-sauce-400` quantity while
+  the recipe is scaled from it.
+- **"I have…" popover:** anchored under the tapped row, `.glass-menu` (see
+  Anchored menus — it floats over ordinary page content), `radius-lg`,
+  `animate-dialog-in`, closes on outside click or Escape and returns focus
+  to the quantity button. Contents: a one-line prompt ("I have"), a numeric
+  `inputClass` field prefilled with the shown amount and focused on open, a
+  unit `<select>` limited to the ingredient's own dimension (no
+  volume↔weight), and a primary "Scale" button. Count ingredients (eggs,
+  cloves) show their unit as plain text instead of a select.
+- **Amounts** are never snapped to fractions: at most two decimals, trailing
+  zeros trimmed (`133.33 g`, `2.67`). Oven temperatures in steps show whole
+  degrees.
+
 ### Detail page layout — photo leads, not metadata
 
 **Added 2026-08-06, revised same day, restructured 2026-08-26.** The
