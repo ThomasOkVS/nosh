@@ -2650,6 +2650,14 @@ two decimals.
   so it's exact and testable.
 - **Tags stay English** (they're vocabulary identifiers) and `sourceUrl` is
   restored after translating.
+- **Only spoon units may be translated** (tbsp ↔ `el`, tsp ↔ `tl`). The
+  "usual Dutch" words for other measures are *different quantities*: a
+  `kopje` isn't a US cup, and in Belgium an `ons` is 100 g and a `pond`
+  500 g. So the prompt forbids translating them.
+- **The schema.org path also restores the numbers.** Quantities, servings
+  and times come back from the original, and so does any unit whose meaning
+  the translation changed (`lookupUnit` differs). This is a backstop for a
+  model that ignores the prompt; the AI paths rely on the prompt alone.
 - **AI imports translate inside their existing prompt,** at no extra cost.
 - **Schema.org imports** get one extra call, and only when a stopword check
   (`services/recipeLanguage.ts`, no dependency) says the recipe isn't
@@ -2682,7 +2690,7 @@ reject anything else. It's the SQL counterpart of a Java enum column.
 
 - `@nosh/units`: 40 tests, including the baking cases (150 g → 200 g gives
   factor 1.3333; 2 eggs → 2.67).
-- Backend: 393 tests. They cover the settings routes, language detection,
+- Backend: 394 tests. They cover the settings routes, language detection,
   the translator prompt, and translation plus conversion through both
   extraction paths and the job routes.
 - Frontend: 169 tests. These include the first `RecipeDetailPage` tests

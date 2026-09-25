@@ -1,5 +1,5 @@
 import { isIP } from "node:net";
-import type { RecipeLanguage, UnitPreferences } from "@nosh/units";
+import { lookupUnit, type RecipeLanguage, type UnitPreferences } from "@nosh/units";
 import { BlockedAddressError, isBlockedAddress, safeFetch } from "./safeFetch";
 import type {
   GeminiExtractFn,
@@ -451,10 +451,16 @@ async function translateRecipe(
     }
     throw err;
   }
-  // Tags are English vocabulary identifiers and the source URL is ours, not
-  // the model's — both are restored from the original, whatever came back.
+  // Tags are English vocabulary identifiers, the source URL is ours, and
+  // numbers aren't language — all restored from the original, whatever came
+  // back.
+  const translated = sanitizeCandidate(raw);
   const parsed = recipeSchema.safeParse({
-    ...sanitizeCandidate(raw),
+    ...translated,
+    servings: recipe.servings,
+    prepTimeMinutes: recipe.prepTimeMinutes,
+    cookTimeMinutes: recipe.cookTimeMinutes,
+    ingredients: restoreAmounts(recipe.ingredients, translated.ingredients),
     tags: recipe.tags,
     sourceUrl: recipe.sourceUrl,
   });
@@ -463,6 +469,27 @@ async function translateRecipe(
     return null;
   }
   return parsed.data;
+}
+
+/**
+ * Puts the original amounts back onto translated ingredients: every
+ * quantity, and any unit whose *meaning* the translation changed. A pure
+ * respelling (tbsp -> el) means the same unit to @nosh/units and is kept; a
+ * "translation" to a different measure (cup -> kopje, oz -> ons) is undone,
+ * because it would change the recipe. Only possible when the lists still
+ * line up one to one — otherwise the translation is used as returned.
+ */
+function restoreAmounts(original: RecipeInput["ingredients"], translated: unknown): unknown {
+  if (!Array.isArray(translated) || translated.length !== original.length) return translated;
+  return translated.map((entry: RecipeInput["ingredients"][number], index) => {
+    const source = original[index]!;
+    const sameUnit = lookupUnit(entry.unit) === lookupUnit(source.unit);
+    return {
+      ...entry,
+      quantity: source.quantity,
+      unit: sameUnit && (entry.unit === null) === (source.unit === null) ? entry.unit : source.unit,
+    };
+  });
 }
 
 export async function extractRecipeFromUrl(

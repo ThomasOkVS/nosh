@@ -245,6 +245,9 @@ describe("recipe language instruction", () => {
     });
     expect(promptOf(dutch)).toContain("Dutch");
     expect(promptOf(dutch)).toMatch(/never convert/i);
+    // Only spoons may be translated: kopje/ons/pond are different measures.
+    expect(promptOf(dutch)).toMatch(/ONLY ones you may translate are the spoons/);
+    expect(promptOf(dutch)).toContain('"kopje", "ons" and "pond" are different quantities');
   });
 
   it("applies to the video prompt too", async () => {

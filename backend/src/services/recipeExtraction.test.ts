@@ -612,6 +612,35 @@ describe("extractRecipeFromUrl — unit conversion", () => {
     expect(result.recipe.steps[0]?.instruction).toBe("Verwarm de oven voor op 177°C.");
   });
 
+  it("undoes a translation that changed what a unit means", async () => {
+    // Real models "translate" cup -> kopje and oz -> ons, which are different
+    // quantities (a Belgian ons is 100 g) — and sometimes fiddle with numbers.
+    const geminiTranslate = vi.fn().mockResolvedValue({
+      title: "Boterkoekjes",
+      servings: 99,
+      ingredients: [
+        { quantity: "2", unit: "kopjes", name: "bloem" },
+        { quantity: "8", unit: "ons", name: "boter" },
+        { quantity: "3", unit: null, name: "eieren" },
+      ],
+      steps: [{ instruction: "Verwarm de oven voor op 350°F." }],
+    });
+
+    const result = await extractRecipeFromUrl("https://example.com/cookies", {
+      fetchImpl: vi.fn().mockResolvedValue(htmlResponse(pageWithJsonLd(US_JSON_LD))),
+      geminiTranslate,
+      language: "nl",
+      units: metric,
+    });
+
+    expect(result.recipe.ingredients).toEqual([
+      { quantity: "473.18", unit: "ml", name: "bloem" },
+      { quantity: "226.8", unit: "g", name: "boter" },
+      { quantity: "2", unit: null, name: "eieren" },
+    ]);
+    expect(result.recipe.servings).toBeNull();
+  });
+
   it("leaves amounts as written with no unit preferences", async () => {
     const result = await extractRecipeFromUrl("https://example.com/cookies", {
       fetchImpl: vi.fn().mockResolvedValue(htmlResponse(pageWithJsonLd(US_JSON_LD))),

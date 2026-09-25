@@ -120,15 +120,21 @@ const LANGUAGE_NAMES: Record<RecipeLanguage, string> = {
 
 /**
  * Amounts are deliberately left alone: unit *conversion* happens afterwards,
- * deterministically, in @nosh/units — the model only translates words. Unit
- * words are translated too (tbsp -> el), which is why @nosh/units recognises
- * Dutch unit spellings.
+ * deterministically, in @nosh/units — the model only translates words.
+ *
+ * Measurement units are the dangerous part. Only the spoons have safe
+ * one-to-one Dutch names (tbsp <-> el, tsp <-> tl), which @nosh/units
+ * understands. The "usual Dutch" words for the rest are *different
+ * quantities* — a kopje isn't a US cup, and in Belgium an ons is 100 g and a
+ * pond 500 g, not an ounce or a pound — so letting the model "translate"
+ * them would silently change the recipe. Count words (clove, can) have no
+ * such problem and translate normally.
  */
 function languageInstruction(language: RecipeLanguage | undefined): string {
   if (!language) return "";
   const name = LANGUAGE_NAMES[language];
   return `
-Write the title, description, ingredient names, ingredient units, and steps in ${name}, translating from the source's language if it differs. Keep every quantity exactly as the source gives it — never convert, round, or recalculate an amount or a temperature. Translate unit words to the usual ${name} abbreviation (for Dutch: "el" for tablespoon, "tl" for teaspoon; g, kg, ml and l stay as they are). Tags are fixed English identifiers: keep them exactly as listed, never translate them.
+Write the title, description, ingredient names, ingredient units, and steps in ${name}, translating from the source's language if it differs. Keep every quantity exactly as the source gives it — never convert, round, or recalculate an amount or a temperature. Measurement units are special: the ONLY ones you may translate are the spoons (tablespoon/tbsp <-> "el", teaspoon/tsp <-> "tl"). Every other measurement unit — cup, oz, lb, fl oz, pint, quart, g, kg, ml, l — must be kept exactly as written, untranslated: in Dutch "kopje", "ons" and "pond" are different quantities, so never use them for cup, oz or lb. Counting words such as clove, can or slice may be translated normally. Tags are fixed English identifiers: keep them exactly as listed, never translate them.
 `;
 }
 
