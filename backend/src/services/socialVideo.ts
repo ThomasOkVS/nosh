@@ -14,9 +14,9 @@ export class VideoUnavailableError extends Error {}
  * checked up front (duration) and after download (byte length), so a
  * multi-minute video doesn't get downloaded only to be rejected. */
 export class VideoTooLargeError extends Error {}
-/** yt-dlp itself isn't runnable (missing binary, bad PATH). Distinct from
- * "not configured" for Gemini — this is an environment problem, not a
- * missing API key. */
+/** yt-dlp itself isn't runnable (missing binary, bad PATH, no egress proxy).
+ * Distinct from "not configured" for Gemini — this is an environment
+ * problem, not a missing API key. */
 export class DownloaderUnavailableError extends Error {}
 
 export type SocialPlatform = "instagram" | "tiktok";
@@ -28,10 +28,8 @@ const PLATFORM_HOSTS: Record<SocialPlatform, string[]> = {
 
 /**
  * Recognizes the URL as a Reels/TikTok link worth routing to the video
- * pipeline, rather than validating it's safe to fetch — yt-dlp does its own
- * fetching against a small set of known platform hosts, not arbitrary
- * user-supplied endpoints, so this is a routing check, not the SSRF guard
- * `recipeExtraction.ts` applies to plain URL imports.
+ * pipeline. A routing check, not the SSRF guard: that is applied to every
+ * connection yt-dlp makes, by the egress proxy (see ytDlpSafetyArgs).
  */
 export function detectSocialPlatform(url: URL): SocialPlatform | null {
   const hostname = url.hostname.toLowerCase();
@@ -50,14 +48,45 @@ const MAX_VIDEO_BYTES = 18 * 1024 * 1024;
 const YT_DLP_TIMEOUT_MS = 45_000;
 
 /**
- * yt-dlp does its own networking, so services/safeFetch.ts's address guard
- * can't cover it. `-generic` removes the one extractor that will fetch and
- * crawl an arbitrary page: only the site-specific extractors (Instagram,
- * TikTok) remain, and those only talk to their platform's own hosts. What's
- * left — a platform open redirect bouncing yt-dlp inward — is why
- * docs/deployment.md also recommends a network-level egress block.
+ * yt-dlp does its own networking, so every invocation is pointed at the
+ * in-process egress proxy (egressProxy.ts), which applies safeFetch.ts's
+ * address guard to each connection yt-dlp opens — redirects, API calls and
+ * CDN media included. On top of that:
+ *  - `--ignore-config`: a yt-dlp config file on the box could otherwise set
+ *    its own `--proxy` (or `--proxy ""`) and route around this one.
+ *  - `--downloader native`: yt-dlp hands some formats (HLS/DASH) to ffmpeg to
+ *    download, and ffmpeg makes its own connections, ignoring the proxy.
+ *    The native downloaders use yt-dlp's own HTTP stack, i.e. the proxy.
+ *  - `--fixup never`: no ffmpeg post-processing either. The format string
+ *    never merges (no `+`), so nothing else runs ffmpeg.
+ *  - `--ies default,-generic`: only the site-specific extractors (Instagram,
+ *    TikTok) remain — not the one that crawls an arbitrary page.
  */
-const YT_DLP_SAFETY_ARGS = ["--no-warnings", "--no-playlist", "--ies", "default,-generic"];
+export function ytDlpSafetyArgs(proxyUrl: string): string[] {
+  return [
+    "--ignore-config",
+    "--proxy",
+    proxyUrl,
+    "--downloader",
+    "native",
+    "--fixup",
+    "never",
+    "--no-warnings",
+    "--no-playlist",
+    "--ies",
+    "default,-generic",
+  ];
+}
+
+const PROXY_ENV_VAR = /^(?:http|https|all|no|ftp|socks)_proxy$/i;
+
+/** The environment yt-dlp runs with: the backend's own, minus every proxy
+ * variable. `--proxy` alone is not enough: checked against Alpine's yt-dlp
+ * 2026.07.04, `NO_PROXY=*` in the environment makes it skip an explicit
+ * `--proxy` entirely and connect directly. So none of them get through. */
+export function ytDlpEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  return Object.fromEntries(Object.entries(env).filter(([name]) => !PROXY_ENV_VAR.test(name)));
+}
 
 export interface DownloadedVideo {
   videoBuffer: Buffer;
@@ -95,19 +124,26 @@ export function wrapYtDlpError(err: unknown): Error {
   );
 }
 
-function runYtDlpText(args: string[], signal: AbortSignal | undefined): Promise<string> {
-  return new Promise((resolve, reject) => {
+/** Runs yt-dlp and resolves with its stdout. Injectable so tests can see
+ * exactly which arguments every invocation gets, without the real binary. */
+export type YtDlpRunner = (
+  args: string[],
+  options: { encoding: "utf8" | "buffer"; maxBuffer: number; signal: AbortSignal | undefined },
+) => Promise<string | Buffer>;
+
+const runYtDlp: YtDlpRunner = (args, { encoding, maxBuffer, signal }) =>
+  new Promise((resolve, reject) => {
     execFile(
       YT_DLP_PATH,
       args,
-      { timeout: YT_DLP_TIMEOUT_MS, maxBuffer: 5 * 1024 * 1024, signal },
+      { timeout: YT_DLP_TIMEOUT_MS, maxBuffer, encoding, signal, env: ytDlpEnv() },
       (err, stdout, stderr) => {
         if (err) {
           // Attach stderr to `err` in place, then reject with the bare `err`
           // identifier — some static analyzers can't tell that
           // Object.assign(err, ...)'s return value is still that same Error
           // instance, and flag rejecting with it as if it might not be one.
-          Object.assign(err, { stderr });
+          Object.assign(err, { stderr: stderr.toString() });
           reject(err);
           return;
         }
@@ -115,91 +151,85 @@ function runYtDlpText(args: string[], signal: AbortSignal | undefined): Promise<
       },
     );
   });
-}
 
-/** Video bytes come back over stdout (`-o -`) rather than a temp file —
- * yt-dlp writes progress/status to stderr in this mode specifically so it
- * doesn't corrupt the media on stdout. */
-function runYtDlpBuffer(args: string[], signal: AbortSignal | undefined): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    execFile(
-      YT_DLP_PATH,
-      args,
-      { timeout: YT_DLP_TIMEOUT_MS, maxBuffer: MAX_VIDEO_BYTES + 5 * 1024 * 1024, encoding: "buffer", signal },
-      (err, stdout, stderr) => {
-        if (err) {
-          // See runYtDlpText above: mutate then reject with the bare
-          // identifier, not Object.assign's return value.
-          Object.assign(err, { stderr: stderr?.toString() });
-          reject(err);
-          return;
-        }
-        resolve(stdout);
-      },
-    );
-  });
-}
-
-async function fetchVideoInfo(url: URL, signal: AbortSignal | undefined): Promise<YtDlpInfo> {
-  try {
-    const stdout = await runYtDlpText(
-      ["--dump-json", ...YT_DLP_SAFETY_ARGS, url.toString()],
-      signal,
-    );
-    return JSON.parse(stdout) as YtDlpInfo;
-  } catch (err) {
-    throw wrapYtDlpError(err);
-  }
-}
-
-async function fetchVideoBytes(url: URL, signal: AbortSignal | undefined): Promise<Buffer> {
-  try {
-    return await runYtDlpBuffer(
-      [
-        // Keeps the file small enough for Gemini's inline-data limit without
-        // a hard --max-filesize cutoff, which would abort mid-download
-        // rather than degrading quality first.
-        "-f",
-        "best[height<=480]/best",
-        // Forces a single consistent container so the caller never has to
-        // sniff the format — Instagram/TikTok both serve pre-muxed mp4
-        // formats at this resolution, so this never triggers an ffmpeg remux.
-        "--merge-output-format",
-        "mp4",
-        "-o",
-        "-",
-        ...YT_DLP_SAFETY_ARGS,
-        url.toString(),
-      ],
-      signal,
-    );
-  } catch (err) {
-    throw wrapYtDlpError(err);
-  }
+export interface SocialVideoDownloaderOptions {
+  /** The egress proxy's URL. Required: there is no way to build a
+   * downloader whose yt-dlp talks to the network directly. */
+  proxyUrl: string;
+  run?: YtDlpRunner;
 }
 
 /**
- * Downloads a Reel/TikTok's video and caption via yt-dlp. Two subprocess
- * calls rather than one: metadata first (near-instant, no video bytes) so an
- * over-long video is rejected before spending any bandwidth downloading it.
+ * Builds the Reel/TikTok downloader (video + caption via yt-dlp). Two
+ * subprocess calls rather than one: metadata first (near-instant, no video
+ * bytes) so an over-long video is rejected before spending any bandwidth
+ * downloading it.
+ *
+ * Video bytes come back over stdout (`-o -`) rather than a temp file —
+ * yt-dlp writes progress/status to stderr in this mode specifically so it
+ * doesn't corrupt the media on stdout.
  */
-export async function downloadSocialVideo(url: URL, signal?: AbortSignal): Promise<DownloadedVideo> {
-  const info = await fetchVideoInfo(url, signal);
-  if (typeof info.duration === "number" && info.duration > MAX_DURATION_SECONDS) {
-    throw new VideoTooLargeError("That video is too long to import");
+export function createSocialVideoDownloader({
+  proxyUrl,
+  run = runYtDlp,
+}: SocialVideoDownloaderOptions): SocialVideoDownloadFn {
+  const safetyArgs = ytDlpSafetyArgs(proxyUrl);
+
+  async function fetchVideoInfo(url: URL, signal: AbortSignal | undefined): Promise<YtDlpInfo> {
+    try {
+      const stdout = await run(["--dump-json", ...safetyArgs, url.toString()], {
+        encoding: "utf8",
+        maxBuffer: 5 * 1024 * 1024,
+        signal,
+      });
+      return JSON.parse(stdout.toString()) as YtDlpInfo;
+    } catch (err) {
+      throw wrapYtDlpError(err);
+    }
   }
 
-  const videoBuffer = await fetchVideoBytes(url, signal);
-  if (videoBuffer.length === 0) {
-    throw new VideoUnavailableError("Couldn't download that video");
-  }
-  if (videoBuffer.length > MAX_VIDEO_BYTES) {
-    throw new VideoTooLargeError("That video is too large to import");
+  async function fetchVideoBytes(url: URL, signal: AbortSignal | undefined): Promise<Buffer> {
+    try {
+      const stdout = await run(
+        [
+          // Keeps the file small enough for Gemini's inline-data limit
+          // without a hard --max-filesize cutoff, which would abort
+          // mid-download rather than degrading quality first. Single-file
+          // formats only (no `+`), so yt-dlp never needs ffmpeg to merge —
+          // Instagram/TikTok both serve pre-muxed mp4 at this resolution.
+          "-f",
+          "best[height<=480]/best",
+          "-o",
+          "-",
+          ...safetyArgs,
+          url.toString(),
+        ],
+        { encoding: "buffer", maxBuffer: MAX_VIDEO_BYTES + 5 * 1024 * 1024, signal },
+      );
+      return Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout);
+    } catch (err) {
+      throw wrapYtDlpError(err);
+    }
   }
 
-  const caption =
-    typeof info.description === "string" && info.description.trim() ? info.description.trim() : null;
-  const thumbnailUrl =
-    typeof info.thumbnail === "string" && info.thumbnail.trim() ? info.thumbnail.trim() : null;
-  return { videoBuffer, mimeType: "video/mp4", caption, thumbnailUrl };
+  return async (url, signal) => {
+    const info = await fetchVideoInfo(url, signal);
+    if (typeof info.duration === "number" && info.duration > MAX_DURATION_SECONDS) {
+      throw new VideoTooLargeError("That video is too long to import");
+    }
+
+    const videoBuffer = await fetchVideoBytes(url, signal);
+    if (videoBuffer.length === 0) {
+      throw new VideoUnavailableError("Couldn't download that video");
+    }
+    if (videoBuffer.length > MAX_VIDEO_BYTES) {
+      throw new VideoTooLargeError("That video is too large to import");
+    }
+
+    const caption =
+      typeof info.description === "string" && info.description.trim() ? info.description.trim() : null;
+    const thumbnailUrl =
+      typeof info.thumbnail === "string" && info.thumbnail.trim() ? info.thumbnail.trim() : null;
+    return { videoBuffer, mimeType: "video/mp4", caption, thumbnailUrl };
+  };
 }

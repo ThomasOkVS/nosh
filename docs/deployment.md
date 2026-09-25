@@ -98,17 +98,20 @@ self-hosted GitHub Actions runner.
   - signup off by default (`ALLOW_SIGNUP`);
   - rate-limited login and import;
   - an `Origin` check on every state-changing request;
-  - an SSRF guard on every server-side fetch of a user-supplied URL.
+  - an SSRF guard on every outbound request whose destination comes from a
+    user or a remote page: the backend's own fetches, every `yt-dlp`
+    connection (through an in-process egress proxy on `127.0.0.1`), and
+    Web Push sends (allowlisted push-service hosts). The full list is in
+    [architecture.md](architecture.md#outbound-network-calls).
 
-  Details: [decisions.md](decisions.md#2026-09-24-public-https-behind-caddy).
+  Details: [decisions.md](decisions.md#2026-09-24-public-https-behind-caddy)
+  and [decisions.md](decisions.md#2026-09-25-ssrf-yt-dlp-and-web-push).
 - **Recommended defense in depth (homelab side):** block egress from nosh's
   Docker networks to the host and the LAN. For example, a `DOCKER-USER`
   iptables rule that drops traffic from the nosh subnets to RFC1918 and
-  CGNAT destinations.
-  - The app's SSRF guard covers every fetch the backend makes itself.
-  - It can't cover `yt-dlp`, which does its own networking. yt-dlp is limited
-    to Instagram's and TikTok's own extractors, but a platform open redirect
-    could still send it inward.
+  CGNAT destinations. It's a second layer: the app doesn't depend on it.
+- The egress proxy is internal to the backend process: no host port, no
+  extra container, nothing to configure.
 
 ## Public HTTPS cutover
 

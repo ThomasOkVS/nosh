@@ -7,7 +7,8 @@ import zlib from "node:zlib";
 
 /**
  * Outbound-fetch guard for every URL a user can make the backend request
- * (recipe import, attaching a photo from a URL).
+ * (recipe import, attaching a photo from a URL), and the address check
+ * shared with the yt-dlp egress proxy and the Web Push sender.
  *
  * Why this exists: the backend's Docker networks can reach things that must
  * never be reachable from the internet — the host's own published ports
@@ -110,11 +111,56 @@ export type ResolveAllFn = (hostname: string) => Promise<dns.LookupAddress[]>;
 const resolveWithSystemDns: ResolveAllFn = (hostname) =>
   dns.promises.lookup(hostname, { all: true, verbatim: true });
 
+export interface AddressGuardOptions {
+  /** Overridable so tests can make a hostname resolve to anything. */
+  resolve?: ResolveAllFn;
+  /** Overridable so tests can reach a local test server on 127.0.0.1. */
+  isBlocked?: (address: string) => boolean;
+}
+
+function notFound(hostname: string): NodeJS.ErrnoException {
+  const err: NodeJS.ErrnoException = new Error(`No addresses for ${hostname}`);
+  err.code = "ENOTFOUND";
+  return err;
+}
+
 /**
- * A `lookup` for `net.connect` that refuses to hand back a blocked address.
- * If *any* address a name resolves to is blocked, the whole name is refused —
- * otherwise a name with one public and one private A record would connect to
- * the private one whenever the socket happens to try it.
+ * The one guard every outbound connection to an untrusted destination goes
+ * through: `safeFetch`'s socket lookup, the yt-dlp egress proxy
+ * (egressProxy.ts) and the Web Push sender (pushNotifier.ts) all call this,
+ * so the blocklist can't drift between them.
+ *
+ * Resolves `host` and returns its addresses, or rejects with
+ * `BlockedAddressError` if *any* of them is blocked — otherwise a name with
+ * one public and one private A record would connect to the private one
+ * whenever the socket happens to try it. An IP literal is checked as-is
+ * (`dns.lookup` hands a literal straight back), which matters because
+ * `net.connect` never calls a custom `lookup` for a literal. Callers must
+ * connect to an address this returned, never re-resolve the name.
+ */
+export async function resolveCheckedAddresses(
+  host: string,
+  options: AddressGuardOptions & { family?: number | "IPv4" | "IPv6" } = {},
+): Promise<dns.LookupAddress[]> {
+  const { resolve = resolveWithSystemDns, isBlocked = isBlockedAddress } = options;
+  const hostname = host.replace(/^\[|]$/g, "");
+  const family =
+    options.family === 4 || options.family === "IPv4"
+      ? 4
+      : options.family === 6 || options.family === "IPv6"
+        ? 6
+        : 0;
+  const version = isIP(hostname);
+  const addresses = version !== 0 ? [{ address: hostname, family: version }] : await resolve(hostname);
+  const usable = addresses.filter((entry) => family === 0 || entry.family === family);
+  if (usable.length === 0) throw notFound(hostname);
+  if (usable.some((entry) => isBlocked(entry.address))) throw new BlockedAddressError();
+  return usable;
+}
+
+/**
+ * A `lookup` for `net.connect` that refuses to hand back a blocked address
+ * (see `resolveCheckedAddresses`).
  *
  * Node calls `lookup` two ways: with `{ all: true }` (happy-eyeballs, the
  * default since Node 20) wanting an array back, and without it wanting a
@@ -125,20 +171,8 @@ export function createGuardedLookup(
   isBlocked: (address: string) => boolean = isBlockedAddress,
 ): LookupFunction {
   return (hostname, options, callback) => {
-    resolve(hostname)
-      .then((addresses) => {
-        const family = options.family === 4 || options.family === 6 ? options.family : 0;
-        const usable = addresses.filter((entry) => family === 0 || entry.family === family);
-        if (usable.length === 0) {
-          const err: NodeJS.ErrnoException = new Error(`No addresses for ${hostname}`);
-          err.code = "ENOTFOUND";
-          callback(err, "", 0);
-          return;
-        }
-        if (usable.some((entry) => isBlocked(entry.address))) {
-          callback(new BlockedAddressError(), "", 0);
-          return;
-        }
+    resolveCheckedAddresses(hostname, { resolve, isBlocked, family: options.family })
+      .then((usable) => {
         if (options.all) {
           // The callback's declared type is the single-address overload; the
           // array form is what Node expects when `all` is set.
@@ -183,12 +217,7 @@ function toHeaders(res: http.IncomingMessage, decoded: boolean): Headers {
   return headers;
 }
 
-export interface SafeFetchOptions {
-  /** Overridable so tests can make a hostname resolve to anything. */
-  resolve?: ResolveAllFn;
-  /** Overridable so tests can reach a local test server on 127.0.0.1. */
-  isBlocked?: (address: string) => boolean;
-}
+export type SafeFetchOptions = AddressGuardOptions;
 
 /**
  * A drop-in for the subset of `fetch` the import code uses (GET, custom

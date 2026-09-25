@@ -2697,3 +2697,94 @@ reject anything else. It's the SQL counterpart of a Java enum column.
   (stepper, anchor popover, metric/US display, the no-servings multiplier),
   the settings section, the stage label and the review-form banner.
 - `pnpm build` passes.
+
+## 2026-09-25: SSRF guard extended to yt-dlp and Web Push {#2026-09-25-ssrf-yt-dlp-and-web-push}
+
+Nosh is public now, and the backend's containers can reach the Docker host
+(`172.28.0.1`, where dockge on `:5001` has `docker.sock`), the LAN and the
+tailnet. The 2026-09-24 guard only covered fetches the backend makes itself.
+This entry **supersedes** that entry's paragraph that said yt-dlp "does its own
+networking, so the guard can't reach it". Now it can.
+
+### One guard, three callers
+
+`resolveCheckedAddresses` in `services/safeFetch.ts` is the only place that
+decides whether an address may be connected to. It resolves the host, refuses
+the whole name if any address is blocked, checks IP literals as-is, and returns
+the addresses to connect to. Three things call it:
+- `safeFetch`'s socket `lookup` (page and photo fetches);
+- the egress proxy (yt-dlp);
+- the Web Push sender's `https.Agent` `lookup`.
+
+The blocklist can't drift, because there's only one.
+
+### yt-dlp: an in-process egress proxy
+
+`services/egressProxy.ts` is a ~200-line HTTP forward proxy on `127.0.0.1`
+at an ephemeral port, started in `index.ts` before the app. yt-dlp gets
+`--proxy http://127.0.0.1:<port>` on every call.
+- **`CONNECT host:port`** (how every `https://` request travels: a raw TCP
+  tunnel that TLS runs through end to end) and **absolute-form plain HTTP**
+  are both handled.
+- Ports 80 and 443 only. Everything else gets a 403, logged with the host
+  and port, never the path (paths can carry tokens).
+- The proxy connects to the **checked IP**, not the hostname, so a DNS
+  rebind between check and connect has nothing to answer.
+- Plain-HTTP requests are checked one by one, each on a fresh upstream
+  connection, so a keep-alive connection can't smuggle a second host past
+  the check.
+
+**Making sure yt-dlp can't go around it:**
+- **Proxy env vars are stripped** from yt-dlp's environment (`ytDlpEnv`).
+  This isn't hypothetical: against Alpine's yt-dlp 2026.07.04,
+  **`NO_PROXY=*` made it ignore an explicit `--proxy` and connect
+  directly.**
+- `--ignore-config`, so no config file can set its own proxy.
+- `--downloader native`, so HLS/DASH are never handed to ffmpeg to
+  download. ffmpeg opens its own connections and ignores the proxy.
+  `--fixup never` and single-file formats (no `+`) mean ffmpeg isn't
+  started at all. The redundant `--merge-output-format mp4` is gone.
+- **It fails closed.** `createSocialVideoDownloader` requires the proxy URL.
+  `recipeExtraction.ts` no longer defaults to an unproxied downloader: with
+  none injected, a Reels/TikTok import fails with `DownloaderUnavailableError`
+  (503). If the proxy can't bind at startup, the backend doesn't start.
+
+**Why not a separate container** (Squid, tinyproxy): that would mean another
+image, another network and another blocklist to keep in step with
+`safeFetch.ts`. An in-process proxy shares the code and needs no new ports or
+containers. The cost is about 200 lines we own. The closest Java equivalent
+is a `ProxySelector` pointing at a filtering Squid, except that here the
+"Squid" is a few Node handlers in the same JVM, so to speak.
+
+**Verified live** in the dev container, with the real yt-dlp and a real
+TikTok post:
+- metadata and the 2 MB video both downloaded through the proxy (hosts seen:
+  `www.tiktok.com` and the CDN `v19-webapp-prime.tiktok.com`);
+- with the resolver forced to `172.28.0.1`, yt-dlp failed with
+  `Tunnel connection failed: 403 Forbidden` and didn't retry around it.
+
+### Web Push: allowlist on store and on send
+
+- The allowlist moved to `services/pushEndpoint.ts` and got stricter:
+  https only, port 443 only (`url.port === ""`), no credentials in the URL,
+  and hosts `*.push.apple.com`, `fcm.googleapis.com`,
+  `*.push.services.mozilla.com` and `*.notify.windows.com`.
+- **Not all of `*.googleapis.com`,** as the handoff suggested: that
+  includes `storage.googleapis.com` and other non-push hosts. Chrome/Android
+  endpoints are `fcm.googleapis.com/fcm/send/…` or `/wp/…`; Chromium Edge
+  uses WNS (`*.notify.windows.com`). If a real browser ever hands out
+  something else, subscribing returns 400 and the list gets extended.
+- It's checked on subscribe (400) and again in the notifier before every
+  send. That catches rows stored before the check existed. A failing row
+  is deleted and logged, host only, because the path is the device's push
+  token.
+- The send itself uses a fresh `https.Agent` whose `lookup` is the guarded
+  one, so even an allowlisted name that resolved internally is refused
+  (`BlockedAddressError`, row deleted). web-push silently ignores an agent
+  that isn't an `https.Agent`, so the test asserts the refusal really
+  happens.
+
+### No migration
+
+The schema is unchanged. Existing bad `push_subscriptions` rows, if any,
+are cleaned up the next time their owner's import finishes.
