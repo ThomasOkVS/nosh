@@ -102,7 +102,16 @@ One package at a time:
 ```bash
 pnpm --filter backend test
 pnpm --filter frontend test
+pnpm --filter @nosh/units test
 ```
+
+`packages/units` (`@nosh/units`, the shared quantity/unit-conversion code)
+never needs building by hand: dev servers and tests read its TypeScript
+source, and `pnpm --filter backend build` (`tsc -b`) builds it first through
+a project reference. After adding a workspace package, rerun
+`pnpm install` and rebuild the dev images
+(`docker compose up -d --build`), since each package's `node_modules`
+lives in the image.
 
 Backend tests need a reachable Postgres. If the stack is already up via
 Docker, run them inside the container instead of on the host:
