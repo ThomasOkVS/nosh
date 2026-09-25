@@ -32,8 +32,9 @@ and [architecture.md](../architecture.md#outbound-network-calls).
 3. **Check the flags against the image's yt-dlp.** They were verified against
    Alpine's 2026.07.04. Confirm the build that shipped still has them:
    ```bash
-   docker compose exec backend sh -c 'yt-dlp --version; yt-dlp --help | grep -cE -- "--ignore-config|--downloader |--fixup |--proxy "'
-   # expect a version line and then 4
+   docker compose exec backend yt-dlp --version
+   docker compose exec backend sh -c "yt-dlp --help | grep -cE -- '^\s+(--ignore-config|--proxy URL|--downloader \[PROTO|--fixup POLICY)'"
+   # expect a version line, then 4
    ```
 4. **Report back to the owner:** the three outputs above and the running
    image tag (`docker compose images backend`).

@@ -386,7 +386,9 @@ the caption had no steps at all and the model recovered them purely from
 the video. **Not verified live against a real TikTok URL** — the same
 `yt-dlp` extractor and pipeline handle both platforms, but only Instagram
 was actually exercised. Do a real TikTok import before considering this
-fully proven for that platform.
+fully proven for that platform. (The yt-dlp half has since run live
+against a real TikTok post through the egress proxy, metadata and video.
+Only the Gemini step is still unexercised for TikTok.)
 
 ## Recipe photo auto-import {#recipe-photo-auto-import}
 
@@ -537,6 +539,11 @@ connects to that checked address — no second lookup for DNS rebinding.
 | ffmpeg | — | never given a URL (`--downloader native`, `--fixup never`, no merged formats) |
 | Web Push (`pushNotifier.ts`) | client (subscription endpoint) | host allowlist on subscribe and send + guarded lookup on the send's socket |
 | Gemini (`llm/geminiClient.ts`) | fixed constant `generativelanguage.googleapis.com` | trusted fixed host; plain `fetch` |
+| Postgres (`pg`) | `DATABASE_URL` from `.env` | operator-configured, not user input |
+
+yt-dlp is the only child process in production (`test/migrate.ts`'s
+`spawnSync` runs migrations in tests only). Nothing else uses axios,
+undici, `net.connect` or `tls.connect`.
 
 The egress proxy binds `127.0.0.1` only, and there is no way to build the
 video downloader without it (`createSocialVideoDownloader` requires the
