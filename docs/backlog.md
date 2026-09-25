@@ -111,6 +111,23 @@ priority.
     banner item was dropped, since the tailnet origin no longer exists.
   - **Verification.** `pnpm lint`/`test`/`build` pass (backend 400
     tests, frontend 164).
+- **2026-09-25** — Closed the remaining SSRF gaps (homelab handoff after
+  going public). See
+  [decisions.md](decisions.md#2026-09-25-ssrf-yt-dlp-and-web-push).
+  - yt-dlp now sends every connection through an in-process egress proxy
+    on `127.0.0.1`. The proxy runs the same address guard as `safeFetch`
+    and only allows ports 80/443.
+  - yt-dlp also runs with proxy env vars stripped, `--ignore-config` and
+    `--downloader native`, so ffmpeg never fetches. Live testing found that
+    `NO_PROXY=*` alone made yt-dlp skip `--proxy`.
+  - Web Push endpoints are allowlisted on subscribe and again before each
+    send (https, port 443, known push hosts), and the send uses the guarded
+    DNS lookup. Bad stored rows are deleted.
+  - One shared guard (`resolveCheckedAddresses`), so the blocklist can't
+    drift. The inventory of outbound calls is in
+    [architecture.md](architecture.md#outbound-network-calls).
+  - No migration.
+
 - **2026-09-25** — Smart unit conversions & recipe scaling, together with
   auto-translating imports into the user's language and units (two backlog
   items done as one, at the owner's request, replacing a separate

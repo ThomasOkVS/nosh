@@ -1,9 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
+  createSocialVideoDownloader,
   detectSocialPlatform,
   DownloaderUnavailableError,
   VideoUnavailableError,
   wrapYtDlpError,
+  ytDlpEnv,
+  type YtDlpRunner,
 } from "./socialVideo";
 
 describe("detectSocialPlatform", () => {
@@ -49,5 +52,64 @@ describe("wrapYtDlpError", () => {
     );
     expect(err).toBeInstanceOf(VideoUnavailableError);
     expect(err.message).not.toContain("ERROR:");
+  });
+});
+
+describe("createSocialVideoDownloader", () => {
+  const PROXY_URL = "http://127.0.0.1:41234";
+
+  function fakeRunner(): ReturnType<typeof vi.fn<YtDlpRunner>> {
+    return vi.fn<YtDlpRunner>(async (args) =>
+      args.includes("--dump-json")
+        ? JSON.stringify({ duration: 30, description: "A caption", thumbnail: "https://cdn.test/t.jpg" })
+        : Buffer.from("fake mp4 bytes"),
+    );
+  }
+
+  it("routes every yt-dlp invocation through the egress proxy", async () => {
+    const run = fakeRunner();
+    const download = createSocialVideoDownloader({ proxyUrl: PROXY_URL, run });
+
+    await download(new URL("https://www.instagram.com/reel/abc/"));
+
+    expect(run).toHaveBeenCalledTimes(2);
+    for (const [args] of run.mock.calls) {
+      const proxyFlag = args.indexOf("--proxy");
+      expect(proxyFlag).toBeGreaterThanOrEqual(0);
+      expect(args[proxyFlag + 1]).toBe(PROXY_URL);
+      // No config file may override --proxy, and no download may be handed
+      // to ffmpeg, which would fetch the URL itself without the proxy.
+      expect(args).toContain("--ignore-config");
+      expect(args.join(" ")).toContain("--downloader native");
+      expect(args.join(" ")).toContain("--fixup never");
+      expect(args.join(" ")).toContain("--ies default,-generic");
+      // The post URL is last, after every option.
+      expect(args.at(-1)).toBe("https://www.instagram.com/reel/abc/");
+    }
+  });
+
+  it("returns the video, caption and thumbnail", async () => {
+    const download = createSocialVideoDownloader({ proxyUrl: PROXY_URL, run: fakeRunner() });
+    await expect(download(new URL("https://www.tiktok.com/@chef/video/1"))).resolves.toMatchObject({
+      mimeType: "video/mp4",
+      caption: "A caption",
+      thumbnailUrl: "https://cdn.test/t.jpg",
+    });
+  });
+});
+
+describe("ytDlpEnv", () => {
+  it("drops every proxy variable, in either case, and keeps the rest", () => {
+    expect(
+      ytDlpEnv({
+        PATH: "/usr/bin",
+        HOME: "/home/node",
+        NO_PROXY: "172.28.0.1",
+        no_proxy: "*",
+        HTTP_PROXY: "http://evil:3128",
+        https_proxy: "http://evil:3128",
+        ALL_PROXY: "socks5://evil:1080",
+      }),
+    ).toEqual({ PATH: "/usr/bin", HOME: "/home/node" });
   });
 });

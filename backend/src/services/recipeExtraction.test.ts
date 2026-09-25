@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { GeminiExtractionError, GeminiUnavailableError } from "../llm/geminiClient";
 import {
+  DownloaderUnavailableError,
   ExtractionError,
   extractRecipeFromUrl,
   FetchError,
@@ -307,6 +308,12 @@ describe("extractRecipeFromUrl — Instagram/TikTok video path", () => {
     caption: "1kg tomatoes",
     thumbnailUrl: null,
   };
+
+  it("fails closed with no downloader rather than running yt-dlp without the egress proxy", async () => {
+    await expect(
+      extractRecipeFromUrl("https://www.instagram.com/p/abc123/", { geminiVideoExtract: vi.fn() }),
+    ).rejects.toBeInstanceOf(DownloaderUnavailableError);
+  });
 
   it("skips the HTML fetch entirely and goes straight to video download + Gemini", async () => {
     const fetchImpl = vi.fn();

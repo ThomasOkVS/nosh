@@ -456,6 +456,29 @@ describe("import routes", () => {
       expect(sendPush.mock.calls[0]![1]).toMatchObject({ title: "Import failed", url: "/" });
     });
 
+    it("never sends to a stored endpoint that isn't a known push service, and deletes it", async () => {
+      stubFetchWithHtml(RECIPE_JSON_LD_PAGE);
+      const sendPush = vi.fn<SendPushFn>().mockResolvedValue(undefined);
+      const app = createTestApp({ vapidPublicKey: "test-public-key", sendPush });
+      const agent = await signedInAgent(app, "importpushbad@example.com");
+      await subscribe(agent, "https://web.push.apple.com/phone");
+      await subscribe(agent, "https://fcm.googleapis.com/fcm/send/laptop");
+      // Stands in for a row stored before endpoints were validated.
+      await getTestPool().query(
+        `UPDATE push_subscriptions SET endpoint = 'http://172.28.0.1:5001/api' WHERE endpoint LIKE '%apple%'`,
+      );
+
+      await importAndWait(agent, "https://example.com/recipe");
+      await waitForCalls(sendPush, 1);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      expect(sendPush.mock.calls.map(([sub]) => sub.endpoint)).toEqual([
+        "https://fcm.googleapis.com/fcm/send/laptop",
+      ]);
+      const rows = await getTestPool().query<{ endpoint: string }>("SELECT endpoint FROM push_subscriptions");
+      expect(rows.rows.map((row) => row.endpoint)).toEqual(["https://fcm.googleapis.com/fcm/send/laptop"]);
+    });
+
     it("forgets a subscription the push service reports as gone", async () => {
       stubFetchWithHtml(RECIPE_JSON_LD_PAGE);
       const gone = Object.assign(new Error("Gone"), { statusCode: 410 });
