@@ -71,6 +71,9 @@ Full details: [architecture.md](architecture.md).
   hardware, OS, container management, monitoring, backups, and update mechanism.
   Also tracks what's genuinely not written yet (Compose file, first-deploy
   runbook) rather than guessing at it early. Maintained by the project owner.
+- **[handover/](handover/)** — per-release, step-by-step notes for whoever
+  operates the homelab box (migrations to run, checks to do, rollback), one
+  file per release that needs more than Watchtower's routine pull.
 - **[dev-commands.md](dev-commands.md)** — cheat sheet of the commands you
   actually type day to day (running the stack, tests, migrations, demo data,
   troubleshooting). Update it whenever a command changes rather than letting
