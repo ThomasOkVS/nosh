@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { parseOrigins, parseTrustedProxies } from "./origins";
+import { assertProductionConfig, parseOrigins, parseTrustedProxies } from "./origins";
 
 describe("parseOrigins", () => {
   it("splits a comma-separated list and trims whitespace", () => {
-    expect(
-      parseOrigins(" https://nosh.itsthomassito.com , http://homelab.tail43ff2b.ts.net:8080 "),
-    ).toEqual(["https://nosh.itsthomassito.com", "http://homelab.tail43ff2b.ts.net:8080"]);
+    expect(parseOrigins(" https://nosh.itsthomassito.com , http://localhost:5173 ")).toEqual([
+      "https://nosh.itsthomassito.com",
+      "http://localhost:5173",
+    ]);
   });
 
   it("strips a trailing slash", () => {
@@ -37,5 +38,31 @@ describe("parseTrustedProxies", () => {
   it("parses a comma-separated list, and empty means trust none", () => {
     expect(parseTrustedProxies("10.101.0.10, 10.101.0.11")).toEqual(["10.101.0.10", "10.101.0.11"]);
     expect(parseTrustedProxies("")).toEqual([]);
+  });
+});
+
+describe("assertProductionConfig", () => {
+  it("accepts origins and a trusted proxy", () => {
+    expect(() =>
+      assertProductionConfig({
+        frontendOriginsRaw: "https://nosh.itsthomassito.com",
+        trustedProxies: ["10.101.0.10"],
+      }),
+    ).not.toThrow();
+  });
+
+  it.each([[undefined], [""]])("refuses FRONTEND_ORIGINS=%j", (raw) => {
+    expect(() =>
+      assertProductionConfig({ frontendOriginsRaw: raw, trustedProxies: ["10.101.0.10"] }),
+    ).toThrow(/FRONTEND_ORIGINS must be set/);
+  });
+
+  it("refuses an empty TRUSTED_PROXIES", () => {
+    expect(() =>
+      assertProductionConfig({
+        frontendOriginsRaw: "https://nosh.itsthomassito.com",
+        trustedProxies: [],
+      }),
+    ).toThrow(/TRUSTED_PROXIES must be set/);
   });
 });

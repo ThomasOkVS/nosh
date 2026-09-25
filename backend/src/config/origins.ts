@@ -43,3 +43,24 @@ export function parseTrustedProxies(raw: string): string[] {
     .map((entry) => entry.trim())
     .filter((entry) => entry !== "");
 }
+
+/**
+ * Production settings that have no safe default, checked at boot. Each one
+ * would otherwise fail silently at request time: without FRONTEND_ORIGINS the
+ * backend falls back to the dev origin and 403s every real POST; without
+ * TRUSTED_PROXIES it never believes nginx's X-Forwarded-Proto, so
+ * express-session never issues the Secure-only cookie and nobody can log in.
+ */
+export function assertProductionConfig(config: {
+  frontendOriginsRaw: string | undefined;
+  trustedProxies: readonly string[];
+}): void {
+  if (!config.frontendOriginsRaw) {
+    throw new Error("FRONTEND_ORIGINS must be set in production");
+  }
+  if (config.trustedProxies.length === 0) {
+    throw new Error(
+      "TRUSTED_PROXIES must be set in production: the session cookie is Secure-only, and the backend only knows a request was HTTPS if its proxy says so",
+    );
+  }
+}

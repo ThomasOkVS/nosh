@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { apiFetch, ApiError, resolveApiBase } from "./client";
+import { apiFetch, ApiError } from "./client";
 
 function mockFetchResponse(status: number, body: unknown): void {
   vi.stubGlobal(
@@ -28,9 +28,15 @@ describe("apiFetch", () => {
   it("sends credentials and a JSON body for object payloads", async () => {
     mockFetchResponse(200, { ok: true });
 
-    await apiFetch("/auth/login", { method: "POST", body: { email: "a@b.com", password: "secret123" } });
+    await apiFetch("/auth/login", {
+      method: "POST",
+      body: { email: "a@b.com", password: "secret123" },
+    });
 
-    const [, init] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0] as [string, RequestInit];
+    const [, init] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0] as [
+      string,
+      RequestInit,
+    ];
     expect(init.credentials).toBe("include");
     expect(init.body).toBe(JSON.stringify({ email: "a@b.com", password: "secret123" }));
     expect((init.headers as Record<string, string>)["Content-Type"]).toBe("application/json");
@@ -50,20 +56,5 @@ describe("apiFetch", () => {
     await expect(apiFetch("/auth/login", { method: "POST", body: {} })).rejects.toMatchObject(
       new ApiError(401, "Invalid email or password"),
     );
-  });
-});
-
-describe("resolveApiBase", () => {
-  it("keeps a relative base as-is, so requests stay same-origin", () => {
-    expect(resolveApiBase("/api")).toBe("/api");
-  });
-
-  it("drops a trailing slash so paths don't double it", () => {
-    expect(resolveApiBase("/api/")).toBe("/api");
-  });
-
-  it("falls back to the local backend when unset or empty", () => {
-    expect(resolveApiBase(undefined)).toBe("http://localhost:3001");
-    expect(resolveApiBase("")).toBe("http://localhost:3001");
   });
 });

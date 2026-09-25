@@ -21,8 +21,8 @@ Confirm scope with the project owner before starting any of these — per
 go-ahead. Ordered per [index.md](index.md#planned-post-mvp)'s stated
 priority.
 
-- [ ] Verify import push notifications end-to-end on the iPhone once HTTPS
-      is live: set the `VAPID_*` env vars, re-add the app to the home screen
+- [ ] Verify import push notifications end-to-end on the iPhone: set the
+      `VAPID_*` env vars, re-add the app to the home screen
       from Safari, tap "Notify me when it's done", start an Instagram
       import, lock the phone, and check that the notification arrives and the
       tap opens the pre-filled form.
@@ -65,21 +65,12 @@ priority.
 - [ ] Locale-aware decimals: amounts always use a "." decimal separator
       (`1.5`), even in Dutch. Consider locale-aware formatting.
 
-- [ ] Public HTTPS cutover, homelab side (2026-09-24): apply the `edge`
-      network + `FRONTEND_ORIGINS`/`TRUSTED_PROXIES` on the box, *then* flip
-      the `VITE_API_URL` repo variable to `/api`, then add the Caddy route —
-      in that order, see [deployment.md](deployment.md#public-https-cutover).
-      Afterwards, verify in a real browser on `https://nosh.itsthomassito.com`
-      (login persists across reloads, photo upload, a Reel import's
-      progress stages appear one by one, PWA installs and updates) — none of
-      that could be checked before the domain existed.
-- [ ] Once the tailnet origin is retired: switch the session cookie to
-      `secure: true` and a `__Host-` name (e.g. `__Host-nosh.sid`, logs
-      everyone out once), drop it from `FRONTEND_ORIGINS`, remove the
-      backend's host port.
-- [ ] Nice-to-have from the cutover handoff: a "Nosh moved to
-      https://nosh.itsthomassito.com" banner on the old tailnet origin, for
-      existing PWA installs.
+- [ ] Apply the Tailscale-removal handover on the box *before* merging its
+      PR ([handover](handover/2026-09-25-tailscale-removal.md)), then verify
+      in a real browser on `https://nosh.itsthomassito.com`: login persists
+      across reloads (under the new `__Host-nosh.sid` cookie), photo upload,
+      a Reel import's progress stages appear one by one, the PWA installs and
+      updates.
 - [ ] Nice-to-have: a `Content-Security-Policy` from the frontend's nginx
       (Caddy already sends `nosniff`, `Referrer-Policy`, `X-Robots-Tag` and
       HSTS on every host, so don't duplicate those).
@@ -97,6 +88,29 @@ priority.
 
 ## Completed
 
+- **2026-09-25** — Tailscale support removed; Nosh is HTTPS-only at
+  `https://nosh.itsthomassito.com` (the owner confirmed the cutover was done
+  and the tailnet URL unused). See
+  [decisions.md](decisions.md#2026-09-25-tailscale-retired).
+  - **Same origin everywhere.** Vite's dev server now proxies `/api` the way
+    nginx does in production. That removed the `cors` dependency, the
+    `VITE_API_URL` build arg and its CI repo variable.
+  - **Cookie.** In production it's `__Host-nosh.sid` and always Secure. This
+    closes the "`__Host-` cookie once the tailnet is retired" item, and
+    logs everyone out once.
+  - **Boot checks.** In production the backend refuses to start without
+    `FRONTEND_ORIGINS` or `TRUSTED_PROXIES`. The singular `FRONTEND_ORIGIN`
+    fallback is gone.
+  - **Compose.** No host ports in production; the `proxy` network is now
+    part of the reference file instead of commented out.
+  - **Removed:** `frontend/src/lib/id.ts`, the plain-HTTP
+    `crypto.randomUUID()` fallback.
+  - **Docs.** deployment.md no longer has cutover or tailnet steps.
+    Box steps are in a new
+    [handover](handover/2026-09-25-tailscale-removal.md). The "Nosh moved"
+    banner item was dropped, since the tailnet origin no longer exists.
+  - **Verification.** `pnpm lint`/`test`/`build` pass (backend 400
+    tests, frontend 164).
 - **2026-09-25** — Smart unit conversions & recipe scaling, together with
   auto-translating imports into the user's language and units (two backlog
   items done as one, at the owner's request, replacing a separate

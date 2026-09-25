@@ -4,7 +4,12 @@ import { Router } from "express";
 import type { Pool } from "pg";
 import { createRateLimiter, rejectIfLimited } from "../middleware/rateLimit";
 import { requireAuth } from "../middleware/requireAuth";
-import { createUser, findUserByEmail, findUserById, findUserByUsername } from "../repositories/users";
+import {
+  createUser,
+  findUserByEmail,
+  findUserById,
+  findUserByUsername,
+} from "../repositories/users";
 import { loginSchema, signupSchema } from "../validation/auth";
 
 // Regenerating the session on login/signup gives each authenticated session a
@@ -37,13 +42,15 @@ const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
 export interface AuthRouterDeps {
   pool: Pool;
   allowSignup: boolean;
+  /** The session cookie's name, so logout clears the right one. */
+  cookieName: string;
   /** Added to every failed login, so each guess costs the guesser a second
    * even within the rate limit. */
   failureDelayMs?: number;
 }
 
 export function createAuthRouter(deps: AuthRouterDeps): Router {
-  const { pool, allowSignup, failureDelayMs = 1000 } = deps;
+  const { pool, allowSignup, cookieName, failureDelayMs = 1000 } = deps;
   const router = Router();
 
   // Two independent login limits, because each alone has a gap: per IP
@@ -115,7 +122,10 @@ export function createAuthRouter(deps: AuthRouterDeps): Router {
 
     try {
       const user = await findUserByUsername(pool, username);
-      const passwordMatches = await argon2.verify(user?.passwordHash ?? (await dummyHash), password);
+      const passwordMatches = await argon2.verify(
+        user?.passwordHash ?? (await dummyHash),
+        password,
+      );
       if (!user || !passwordMatches) {
         loginFailuresPerAccount.hit(account);
         await delay(failureDelayMs);
@@ -138,7 +148,7 @@ export function createAuthRouter(deps: AuthRouterDeps): Router {
         next(err);
         return;
       }
-      res.clearCookie("connect.sid");
+      res.clearCookie(cookieName, { path: "/" });
       res.status(204).end();
     });
   });

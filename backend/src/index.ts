@@ -47,6 +47,7 @@ async function start(): Promise<void> {
     uploadsDir: env.uploadsDir,
     frontendOrigins: env.frontendOrigins,
     trustedProxies: env.trustedProxies,
+    secureCookie: env.secureCookie,
     allowSignup: env.allowSignup,
     magicImport,
     geminiExtract: env.geminiApiKey

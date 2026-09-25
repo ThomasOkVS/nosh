@@ -20,6 +20,20 @@ export default defineConfig({
     },
   },
   server: {
+    // The browser calls the API on the page's own origin under /api, exactly
+    // as in production, where frontend/nginx.conf does this forwarding. So
+    // dev needs no CORS either. API_PROXY_TARGET is where the backend is
+    // reachable from the Vite process: `backend:3001` inside docker-compose,
+    // localhost when Vite runs on the host. Same idea as Angular CLI's
+    // proxy.conf.json. The Origin header is passed through untouched (no
+    // changeOrigin), which is what the backend's origin check compares
+    // against FRONTEND_ORIGINS.
+    proxy: {
+      "/api": {
+        target: process.env.API_PROXY_TARGET ?? "http://localhost:3001",
+        rewrite: (path) => path.replace(/^\/api/, ""),
+      },
+    },
     // Docker Desktop's bind mount doesn't reliably deliver filesystem change
     // events into the container (content syncs; inotify doesn't) — chokidar
     // falls back to silently never noticing an edit. Polling doesn't depend

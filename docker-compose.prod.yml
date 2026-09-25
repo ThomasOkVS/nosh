@@ -7,14 +7,14 @@
 #
 # First deploy: see docs/deployment.md's "First-deploy runbook" section.
 #
-# Reference file: the homelab keeps its own copy (/opt/nosh), which can differ
-# in details such as the backend's host port. Changes here have to be applied
-# there by hand — see docs/deployment.md's "Public HTTPS cutover".
+# Reference file: the homelab keeps its own copy (/opt/nosh). Changes here
+# have to be applied there by hand.
 #
 # Topology: browser → Caddy (TLS, `proxy` network, 172.28.255.2) → frontend
 # nginx :8080 → /api/* → backend :3001. The backend only ever sees the
 # frontend container as its peer, which is why the frontend has a fixed IP
-# on `edge` and that exact IP is the backend's TRUSTED_PROXIES.
+# on `edge` and that exact IP is the backend's TRUSTED_PROXIES. No host
+# ports are published: Caddy is the only way in.
 
 services:
   postgres:
@@ -45,7 +45,6 @@ services:
       UPLOADS_DIR: /repo/backend/uploads
       # See .env.prod.example for each of these.
       FRONTEND_ORIGINS: ${FRONTEND_ORIGINS:-}
-      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-}
       TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
       ALLOW_SIGNUP: ${ALLOW_SIGNUP:-false}
       # SEED_DEMO_DATA intentionally not set — env.ts defaults it to false,
@@ -59,8 +58,6 @@ services:
       VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
       VAPID_SUBJECT: ${VAPID_SUBJECT:-}
       PORT: 3001
-    ports:
-      - "3001:3001"
     volumes:
       - /DATA/nosh/uploads:/repo/backend/uploads
     networks:
@@ -86,20 +83,18 @@ services:
   frontend:
     image: ghcr.io/thomasokvs/nosh-frontend:${TAG:-latest}
     restart: unless-stopped
-    ports:
-      # Container port is 8080 (not 80) because the image runs nginx as a
-      # non-root user — see frontend/Dockerfile.
-      - "8080:8080"
+    # Listens on 8080 (not 80) because the image runs nginx as a non-root
+    # user — see frontend/Dockerfile. Not published on the host.
     networks:
       edge:
         # Must equal the backend's TRUSTED_PROXIES.
         ipv4_address: 10.101.0.10
-      # Uncomment at cutover so Caddy can reach this container, as
-      # `reverse_proxy nosh-frontend:8080` — a unique name for the same
-      # reason as the backend's alias. Only the frontend joins `proxy`; the
-      # backend never does.
-      # proxy:
-      #   aliases: [nosh-frontend]
+      # How Caddy reaches this container, as `reverse_proxy
+      # nosh-frontend:8080` — a unique name for the same reason as the
+      # backend's alias. Only the frontend joins `proxy`; the backend never
+      # does.
+      proxy:
+        aliases: [nosh-frontend]
     depends_on:
       - backend
 
@@ -111,5 +106,6 @@ networks:
     ipam:
       config:
         - subnet: 10.101.0.0/24
-  # proxy:
-  #   external: true
+  # Caddy's network, owned by the Caddy stack.
+  proxy:
+    external: true

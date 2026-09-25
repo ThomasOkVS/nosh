@@ -56,7 +56,7 @@ file there has that name.
    `Migrations complete!`.
 3. **Verify:**
    ```bash
-   curl -s localhost:3101/health                  # {"status":"ok"}
+   curl -s https://nosh.itsthomassito.com/api/health   # {"status":"ok"}
    docker compose exec postgres psql -U nosh -d nosh -c \
      "SELECT name FROM pgmigrations ORDER BY id DESC LIMIT 1;"
      # 1700000000015_recipe-preferences

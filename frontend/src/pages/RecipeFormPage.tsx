@@ -10,7 +10,15 @@ import {
   UploadSimpleIcon,
   XIcon,
 } from "@phosphor-icons/react";
-import { useCallback, useEffect, useRef, useState, type ChangeEvent, type DragEvent, type SubmitEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type DragEvent,
+  type SubmitEvent,
+} from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { listCollections } from "../api/collections";
@@ -36,7 +44,6 @@ import {
   translationSkippedFrom,
 } from "../import/importedRecipe";
 import { libraryPath } from "../lib/collectionTree";
-import { generateId } from "../lib/id";
 import {
   buttonClass,
   errorBannerClass,
@@ -61,11 +68,11 @@ interface StepRow {
 }
 
 function createEmptyIngredient(): IngredientRow {
-  return { id: generateId(), quantity: "", unit: "", name: "" };
+  return { id: crypto.randomUUID(), quantity: "", unit: "", name: "" };
 }
 
 function createEmptyStep(): StepRow {
-  return { id: generateId(), instruction: "" };
+  return { id: crypto.randomUUID(), instruction: "" };
 }
 
 function numberFieldValue(value: number | null | undefined): string {
@@ -147,7 +154,7 @@ export function RecipeFormPage() {
   const [ingredients, setIngredients] = useState<IngredientRow[]>(() =>
     imported?.ingredients.length
       ? imported.ingredients.map((ingredient) => ({
-          id: generateId(),
+          id: crypto.randomUUID(),
           quantity: ingredient.quantity ?? "",
           unit: ingredient.unit ?? "",
           name: ingredient.name,
@@ -156,7 +163,7 @@ export function RecipeFormPage() {
   );
   const [steps, setSteps] = useState<StepRow[]>(() =>
     imported?.steps.length
-      ? imported.steps.map((step) => ({ id: generateId(), instruction: step.instruction }))
+      ? imported.steps.map((step) => ({ id: crypto.randomUUID(), instruction: step.instruction }))
       : [createEmptyStep()],
   );
   const [tags, setTags] = useState<string[]>(imported?.tags ?? []);
@@ -231,9 +238,14 @@ export function RecipeFormPage() {
     if (submitError) submitErrorRef.current?.focus();
   }, [submitError]);
 
-  const updateIngredient = useCallback((index: number, field: keyof IngredientRow, value: string) => {
-    setIngredients((prev) => prev.map((row, i) => (i === index ? { ...row, [field]: value } : row)));
-  }, []);
+  const updateIngredient = useCallback(
+    (index: number, field: keyof IngredientRow, value: string) => {
+      setIngredients((prev) =>
+        prev.map((row, i) => (i === index ? { ...row, [field]: value } : row)),
+      );
+    },
+    [],
+  );
   const addIngredient = useCallback(() => {
     setIngredients((prev) => [...prev, createEmptyIngredient()]);
   }, []);
@@ -395,7 +407,8 @@ export function RecipeFormPage() {
   } else if (isDraggingImage) {
     dropzoneStateClass = "cursor-pointer border-sauce-500 bg-sauce-50 dark:bg-sauce-500/10";
   } else {
-    dropzoneStateClass = "cursor-pointer border-border hover:border-sauce-500 hover:bg-sauce-50 dark:hover:bg-sauce-500/10";
+    dropzoneStateClass =
+      "cursor-pointer border-border hover:border-sauce-500 hover:bg-sauce-50 dark:hover:bg-sauce-500/10";
   }
 
   return (
@@ -537,7 +550,10 @@ export function RecipeFormPage() {
         </h2>
         <div className="mt-3 space-y-2">
           {ingredients.map((row, index) => (
-            <div key={row.id} className="flex flex-wrap items-start gap-2 rounded-sm border border-border bg-surface p-2">
+            <div
+              key={row.id}
+              className="flex flex-wrap items-start gap-2 rounded-sm border border-border bg-surface p-2"
+            >
               <label htmlFor={`ingredient-quantity-${row.id}`} className="sr-only">
                 Ingredient {index + 1} quantity
               </label>
@@ -698,7 +714,11 @@ export function RecipeFormPage() {
         )}
       </section>
 
-      <button type="submit" disabled={submitting} className={`w-full sm:w-auto ${buttonClass("primary")}`}>
+      <button
+        type="submit"
+        disabled={submitting}
+        className={`w-full sm:w-auto ${buttonClass("primary")}`}
+      >
         {submitting ? "Saving…" : "Save recipe"}
       </button>
 
