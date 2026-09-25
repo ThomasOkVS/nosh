@@ -132,3 +132,63 @@ describe("PUT /settings/magic-import", () => {
     expect((await second.get("/settings/magic-import")).body.selectedModel).toBeNull();
   });
 });
+
+describe("/settings/recipe-preferences", () => {
+  it("requires a session", async () => {
+    const res = await request(createTestApp()).get("/settings/recipe-preferences");
+    expect(res.status).toBe(401);
+  });
+
+  it("defaults to original language, metric, °C and keeping spoons", async () => {
+    const agent = await signedInAgent(createTestApp(), "jack");
+
+    const res = await agent.get("/settings/recipe-preferences");
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      language: null,
+      unitSystem: "metric",
+      temperatureUnit: "C",
+      keepSpoons: true,
+    });
+  });
+
+  it("updates only the fields sent", async () => {
+    const agent = await signedInAgent(createTestApp(), "kim");
+
+    await agent.put("/settings/recipe-preferences").send({ language: "nl" });
+    const res = await agent.put("/settings/recipe-preferences").send({ unitSystem: "us" });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      language: "nl",
+      unitSystem: "us",
+      temperatureUnit: "C",
+      keepSpoons: true,
+    });
+    const cleared = await agent.put("/settings/recipe-preferences").send({ language: null });
+    expect(cleared.body.language).toBeNull();
+  });
+
+  it.each([
+    { language: "fr" },
+    { unitSystem: "imperial" },
+    { temperatureUnit: "K" },
+    { keepSpoons: "yes" },
+    { somethingElse: true },
+  ])("rejects %j", async (body) => {
+    const agent = await signedInAgent(createTestApp(), "lou");
+    const res = await agent.put("/settings/recipe-preferences").send(body);
+    expect(res.status).toBe(400);
+  });
+
+  it("keeps each user's preferences separate", async () => {
+    const app = createTestApp();
+    const first = await signedInAgent(app, "max");
+    const second = await signedInAgent(app, "nia");
+
+    await first.put("/settings/recipe-preferences").send({ temperatureUnit: "F" });
+
+    expect((await second.get("/settings/recipe-preferences")).body.temperatureUnit).toBe("C");
+  });
+});

@@ -1,14 +1,21 @@
-import { SparkleIcon, WarningIcon } from "@phosphor-icons/react";
+import { ScalesIcon, SparkleIcon, WarningIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 import {
   getMagicImportSettings,
+  getRecipePreferences,
   setMagicImportModel,
   type MagicImportModel,
   type MagicImportSettings,
 } from "../api/settings";
 import { Skeleton } from "../components/Skeleton";
 import { useAsync } from "../hooks/useAsync";
-import { errorBannerClass, sectionCardClass, sectionHeadingClass } from "../styles";
+import { RecipePreferencesSection } from "../components/RecipePreferencesSection";
+import {
+  errorBannerClass,
+  optionCardClass,
+  sectionCardClass,
+  sectionHeadingClass,
+} from "../styles";
 import { useToast } from "../toast/ToastContext";
 
 const compactNumber = new Intl.NumberFormat(undefined, { notation: "compact" });
@@ -47,9 +54,6 @@ function RequestsLine({ model }: Readonly<{ model: MagicImportModel }>) {
   );
 }
 
-const optionClass =
-  "flex cursor-pointer items-start gap-3 rounded-md border border-border bg-surface p-3 transition-colors duration-standard ease-standard has-[:checked]:border-sauce-500 has-[:disabled]:cursor-wait";
-
 function MagicImportSection({ initial }: Readonly<{ initial: MagicImportSettings }>) {
   const [settings, setSettings] = useState(initial);
   const [saving, setSaving] = useState(false);
@@ -85,7 +89,7 @@ function MagicImportSection({ initial }: Readonly<{ initial: MagicImportSettings
         Only used when a page has no recipe data of its own, or for Instagram and TikTok videos.
       </legend>
 
-      <label className={optionClass}>
+      <label className={optionCardClass}>
         <input
           type="radio"
           name="import-model"
@@ -104,7 +108,7 @@ function MagicImportSection({ initial }: Readonly<{ initial: MagicImportSettings
       </label>
 
       {settings.models.map((model) => (
-        <label key={model.id} className={optionClass}>
+        <label key={model.id} className={optionCardClass}>
           <input
             type="radio"
             name="import-model"
@@ -134,6 +138,7 @@ function MagicImportSection({ initial }: Readonly<{ initial: MagicImportSettings
 
 export function SettingsPage() {
   const { data, error, loading } = useAsync(getMagicImportSettings);
+  const preferences = useAsync(getRecipePreferences);
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
@@ -160,6 +165,26 @@ export function SettingsPage() {
           </p>
         )}
         {data && <MagicImportSection initial={data} />}
+      </section>
+
+      <section aria-labelledby="recipes-heading" className={sectionCardClass}>
+        <h2 id="recipes-heading" className={`${sectionHeadingClass} mb-3`}>
+          <ScalesIcon size={20} weight="fill" className="text-sauce-500" />
+          Language &amp; units
+        </h2>
+        {preferences.loading && !preferences.data && (
+          <div className="space-y-2" aria-label="Loading">
+            <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" />
+          </div>
+        )}
+        {preferences.error && (
+          <p role="alert" className={errorBannerClass}>
+            <WarningIcon size={16} weight="fill" className="mr-1 inline" />
+            {preferences.error}
+          </p>
+        )}
+        {preferences.data && <RecipePreferencesSection initial={preferences.data} />}
       </section>
     </div>
   );
