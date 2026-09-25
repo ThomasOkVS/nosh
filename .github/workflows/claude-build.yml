@@ -1,0 +1,202 @@
+name: Claude build
+
+# Builds a feature from an issue, unattended. The homelab agent opens an issue
+# and applies the `claude-build` label; this job plans the work on Opus, hands
+# pieces to Sonnet workers (.claude/agents/), runs lint/test/build against a
+# real Postgres like CI does, and commits to `claude/issue-<n>`.
+#
+# Claude never pushes and never touches GitHub. The steps after it do, so the
+# only things that leave the runner are a branch and one issue comment. The PR
+# itself is opened from the homelab with the owner's token: a PR opened with
+# GITHUB_TOKEN would not trigger CI, and CI is the merge gate.
+
+on:
+  issues:
+    types: [labeled]
+
+concurrency:
+  group: claude-build
+  cancel-in-progress: false
+
+jobs:
+  build:
+    # The action already rejects actors without write access. This also pins
+    # it to the owner, since the repo is public.
+    if: github.event.label.name == 'claude-build' && github.actor == 'ThomasOkVS'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      issues: write
+      id-token: write
+      actions: read
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: nosh
+          POSTGRES_PASSWORD: nosh
+          POSTGRES_DB: nosh_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U nosh"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgres://nosh:nosh@localhost:5432/nosh_test
+      TEST_DATABASE_URL: postgres://nosh:nosh@localhost:5432/nosh_test
+      SESSION_SECRET: ci-secret
+      BRANCH: claude/issue-${{ github.event.issue.number }}
+      ISSUE: ${{ github.event.issue.number }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          # Claude gets no push credentials. The push step below adds its own.
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # Dependencies are installed here, from the lockfile, so Claude never
+      # needs to run an install itself (and is denied it below).
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm --filter backend migrate up
+
+      - name: Prepare branch
+        run: |
+          git config user.name "claude[bot]"
+          git config user.email "41898282+claude[bot]@users.noreply.github.com"
+          git switch -c "$BRANCH"
+          echo ".claude-handover.md" >> .git/info/exclude
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: |
+            --model claude-opus-5-5
+            --max-turns 200
+            --allowedTools "Read,Edit,Write,Glob,Grep,Agent,Task,TodoWrite,Bash(pnpm lint*),Bash(pnpm test*),Bash(pnpm build*),Bash(pnpm -r *),Bash(pnpm --filter *),Bash(pnpm exec *),Bash(git status*),Bash(git diff*),Bash(git log*),Bash(git show*),Bash(git add *),Bash(git commit *)"
+          settings: |
+            {
+              "permissions": {
+                "deny": [
+                  "Bash(git push*)",
+                  "Bash(git remote*)",
+                  "Bash(git switch*)",
+                  "Bash(git checkout*)",
+                  "Bash(gh *)",
+                  "Bash(curl *)",
+                  "Bash(wget *)",
+                  "Bash(npx *)",
+                  "Bash(pnpm add*)",
+                  "Bash(pnpm install*)",
+                  "Bash(pnpm remove*)",
+                  "Bash(pnpm dlx*)",
+                  "Edit(.github/**)",
+                  "Write(.github/**)",
+                  "Edit(.claude/**)",
+                  "Write(.claude/**)"
+                ]
+              }
+            }
+          prompt: |
+            You are the nosh lead developer, running unattended in CI. Nobody
+            can answer questions. Where the issue is ambiguous, pick the
+            simplest reading that fits docs/index.md and say which you picked.
+
+            The issue (#${{ github.event.issue.number }}) is your request. It
+            counts as the owner explicitly asking, including for anything on
+            the "Planned (post-MVP)" list:
+
+            TITLE: ${{ github.event.issue.title }}
+
+            ${{ github.event.issue.body }}
+
+            How to work:
+            1. Read CLAUDE.md and docs/index.md, then plan. Split the work into
+               pieces that touch different files where you can.
+            2. Hand each piece to the `nosh-dev` subagent with an exact spec:
+               files, behaviour, and the tests it must add. Run independent
+               pieces in parallel. Do integration work yourself.
+            3. Run `pnpm lint`, `pnpm test` and `pnpm build` until all pass.
+               Postgres is running and migrated. DATABASE_URL is set.
+            4. Have the `nosh-reviewer` subagent review `git diff main...HEAD`.
+               Fix what it finds, then rerun step 3.
+            5. Commit to the current branch with conventional messages. Do not
+               switch branches. Do not push: a later step does that.
+
+            Limits:
+            - No new dependencies. If one is truly needed, stop and say so in
+              the handover under "Blocked".
+            - Never edit .github/ or .claude/.
+            - Keep docs/ in sync as CLAUDE.md asks, including backlog.md and
+              decisions.md.
+
+            Finally write `.claude-handover.md` in the repo root (it is
+            gitignored for this run). The homelab agent deploys from it, so
+            use exactly these headings:
+
+            ## Summary
+            What changed and why, in a few bullets.
+            ## Box changes before merge
+            New or changed env vars, compose changes, volumes. Name variables,
+            never values. Write "None" if there are none.
+            ## Migrations
+            "None", "Additive", or "Data-changing", plus the migration files.
+            ## Post-deploy checks
+            Exact commands or requests that prove it works on the live box,
+            with the expected result for each.
+            ## Rollback notes
+            Anything beyond "go back to the previous images".
+            ## Blocked
+            "None", or what stopped you.
+            ## What's new for you
+            The concepts this change uses, per CLAUDE.md's Teaching section,
+            related to Angular/Java where it helps.
+
+      # Deterministic guards: Claude's deny rules should already prevent
+      # these, but a failure here stops the branch from ever being pushed.
+      - name: Check what Claude changed
+        run: |
+          if git diff --quiet main...HEAD; then
+            echo "::error::No commits on $BRANCH"; exit 1
+          fi
+          if git diff --name-only main...HEAD | grep -E '^\.(github|claude)/'; then
+            echo "::error::Claude changed protected paths"; exit 1
+          fi
+          test -s .claude-handover.md || { echo "::error::No handover"; exit 1; }
+          git status --porcelain | grep -q . && { echo "::error::Uncommitted changes left"; exit 1; } || true
+
+      - name: Push branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/$BRANCH"
+
+      - name: Post handover
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          {
+            echo "Branch: \`$BRANCH\` · Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo
+            cat .claude-handover.md
+          } > /tmp/comment.md
+          gh issue comment "$ISSUE" --body-file /tmp/comment.md
+          gh issue edit "$ISSUE" --remove-label claude-build --add-label claude-ready
+
+      - name: Report failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue comment "$ISSUE" --body "Build failed: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          gh issue edit "$ISSUE" --remove-label claude-build --add-label claude-failed
