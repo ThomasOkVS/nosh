@@ -1,12 +1,19 @@
 import { isIP } from "node:net";
+import type { RecipeLanguage, UnitPreferences } from "@nosh/units";
 import { BlockedAddressError, isBlockedAddress, safeFetch } from "./safeFetch";
-import type { GeminiExtractFn, GeminiVideoExtractFn } from "../llm/geminiClient";
+import type {
+  GeminiExtractFn,
+  GeminiTranslateFn,
+  GeminiVideoExtractFn,
+} from "../llm/geminiClient";
 import { GeminiExtractionError, GeminiUnavailableError } from "../llm/geminiClient";
 import { recipeSchema, type RecipeInput } from "../validation/recipes";
 import { stripHtmlToText } from "./htmlText";
 import { normalizeIngredients } from "./ingredientLine";
 import { extractJsonLdRecipe, extractMetaImageUrl, isCompleteEnough } from "./jsonLd";
+import { needsTranslation } from "./recipeLanguage";
 import { filterToVocabulary } from "./recipeTags";
+import { convertRecipeUnits } from "./recipeUnits";
 import {
   detectSocialPlatform,
   downloadSocialVideo as downloadSocialVideoDefault,
@@ -271,7 +278,13 @@ function sanitizeCandidate(candidate: unknown): RawRecord {
  * video is tens of seconds), so "loading" alone doesn't tell the user
  * whether to expect a wait.
  */
-export type ImportStage = "fetching" | "structured-data" | "downloading-video" | "analyzing-video" | "ai";
+export type ImportStage =
+  | "fetching"
+  | "structured-data"
+  | "downloading-video"
+  | "analyzing-video"
+  | "ai"
+  | "translating";
 
 export interface ExtractDeps {
   /** Optional: the schema.org path works without it, most recipe sites
@@ -291,11 +304,23 @@ export interface ExtractDeps {
   /** The user's Settings-page model choice, applied to whichever AI path
    * runs. Unset means "automatic" — each extractor's configured default. */
   model?: string;
+  /** Translates a schema.org recipe (the AI paths translate in their own
+   * prompt instead). Optional like the extractors: no API key, no
+   * translation — the import still succeeds, untranslated. */
+  geminiTranslate?: GeminiTranslateFn;
+  /** The user's "Recipe language" setting; unset = keep the original. */
+  language?: RecipeLanguage;
+  /** The user's unit preferences; unset = leave amounts as the source wrote
+   * them. */
+  units?: UnitPreferences;
 }
 
 interface ExtractionCandidate {
   candidate: unknown;
   imageUrl: string | null;
+  /** Whether the recipe came from the page's own schema.org data or from a
+   * model — only the former still needs a separate translation call. */
+  source: "structured-data" | "ai";
 }
 
 async function extractFromSocialVideo(
@@ -319,9 +344,9 @@ async function extractFromSocialVideo(
       { buffer: videoBuffer, mimeType },
       caption,
       url.toString(),
-      { model: deps.model, signal: deps.signal },
+      { model: deps.model, signal: deps.signal, language: deps.language },
     );
-    return { candidate, imageUrl: thumbnailUrl };
+    return { candidate, imageUrl: thumbnailUrl, source: "ai" };
   } catch (err) {
     if (err instanceof GeminiUnavailableError) {
       throw new ExtractionUnavailableError(err.message);
@@ -361,7 +386,7 @@ async function extractFromWebPage(
   const imageUrl = resolveImageUrl(jsonLdResult?.imageUrl ?? extractMetaImageUrl(html), url);
 
   if (isCompleteEnough(jsonLdResult)) {
-    return { candidate: jsonLdResult, imageUrl };
+    return { candidate: jsonLdResult, imageUrl, source: "structured-data" };
   }
 
   if (!deps.geminiExtract) {
@@ -375,8 +400,9 @@ async function extractFromWebPage(
     const candidate = await deps.geminiExtract(pageText, url.toString(), {
       model: deps.model,
       signal: deps.signal,
+      language: deps.language,
     });
-    return { candidate, imageUrl };
+    return { candidate, imageUrl, source: "ai" };
   } catch (err) {
     if (err instanceof GeminiUnavailableError) {
       throw new ExtractionUnavailableError(err.message);
@@ -395,6 +421,48 @@ export interface RecipeExtractionResult {
    * `recipe` — attaching it happens as a separate step after the recipe is
    * saved, since recipe images are keyed off an id that doesn't exist yet. */
   imageUrl: string | null;
+  /** A translation was wanted but couldn't happen (no AI configured, quota,
+   * outage, unusable output) — the recipe is in its original language. */
+  translationSkipped: boolean;
+}
+
+/**
+ * Translates a schema.org recipe with one extra model call. Fails open:
+ * any model failure or unusable output returns null and the import carries
+ * on untranslated — a recipe in the wrong language beats no recipe. Only a
+ * user cancelling the import is passed through as an error.
+ */
+async function translateRecipe(
+  recipe: RecipeInput,
+  language: RecipeLanguage,
+  deps: ExtractDeps,
+  report: (stage: ImportStage) => void,
+): Promise<RecipeInput | null> {
+  if (!deps.geminiTranslate) return null;
+  report("translating");
+  let raw: unknown;
+  try {
+    raw = await deps.geminiTranslate(recipe, language, { model: deps.model, signal: deps.signal });
+  } catch (err) {
+    if (deps.signal?.aborted) throw err;
+    if (err instanceof GeminiExtractionError) {
+      console.warn("Recipe translation failed, keeping the original:", err.message);
+      return null;
+    }
+    throw err;
+  }
+  // Tags are English vocabulary identifiers and the source URL is ours, not
+  // the model's — both are restored from the original, whatever came back.
+  const parsed = recipeSchema.safeParse({
+    ...sanitizeCandidate(raw),
+    tags: recipe.tags,
+    sourceUrl: recipe.sourceUrl,
+  });
+  if (!parsed.success) {
+    console.warn("Recipe translation failed validation, keeping the original:", parsed.error.issues);
+    return null;
+  }
+  return parsed.data;
 }
 
 export async function extractRecipeFromUrl(
@@ -407,7 +475,7 @@ export async function extractRecipeFromUrl(
   // No schema.org/text fast path exists for a video post — it's the only
   // extraction route those platforms have.
   const platform = detectSocialPlatform(url);
-  const { candidate, imageUrl } = platform
+  const { candidate, imageUrl, source } = platform
     ? await extractFromSocialVideo(url, deps, report)
     : await extractFromWebPage(url, deps, report);
 
@@ -418,5 +486,19 @@ export async function extractRecipeFromUrl(
     console.warn("Import produced data that failed validation:", parsed.error.issues);
     throw new ExtractionError("No recipe could be found on that page");
   }
-  return { recipe: parsed.data, imageUrl };
+
+  // Post-processing order matters (docs/decisions.md): translate first,
+  // then convert units last — the converter understands both English and
+  // Dutch unit words, so it works on either, and it's the only step that
+  // touches amounts.
+  let recipe = parsed.data;
+  let translationSkipped = false;
+  if (deps.language && source === "structured-data" && needsTranslation(recipe, deps.language)) {
+    const translated = await translateRecipe(recipe, deps.language, deps, report);
+    if (translated) recipe = translated;
+    else translationSkipped = true;
+  }
+  if (deps.units) recipe = convertRecipeUnits(recipe, deps.units, deps.language);
+
+  return { recipe, imageUrl, translationSkipped };
 }

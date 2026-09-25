@@ -2,6 +2,7 @@ import {
   ArrowLeftIcon,
   BookOpenIcon,
   CameraIcon,
+  InfoIcon,
   ListChecksIcon,
   ListNumbersIcon,
   PlusIcon,
@@ -29,10 +30,22 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Skeleton } from "../components/Skeleton";
 import { TagInput } from "../components/TagInput";
 import { useAsync } from "../hooks/useAsync";
-import { importedImageUrlFrom, importedRecipeFrom } from "../import/importedRecipe";
+import {
+  importedImageUrlFrom,
+  importedRecipeFrom,
+  translationSkippedFrom,
+} from "../import/importedRecipe";
 import { libraryPath } from "../lib/collectionTree";
 import { generateId } from "../lib/id";
-import { buttonClass, errorBannerClass, inputClass, labelClass, sectionCardClass, sectionHeadingClass } from "../styles";
+import {
+  buttonClass,
+  errorBannerClass,
+  infoBannerClass,
+  inputClass,
+  labelClass,
+  sectionCardClass,
+  sectionHeadingClass,
+} from "../styles";
 import { useToast } from "../toast/ToastContext";
 
 interface IngredientRow {
@@ -120,6 +133,7 @@ export function RecipeFormPage() {
   const [searchParams] = useSearchParams();
   const imported = isEditMode ? null : importedRecipeFrom(state);
   const importedImageUrl = isEditMode ? null : importedImageUrlFrom(state);
+  const translationSkipped = !isEditMode && translationSkippedFrom(state);
 
   const [title, setTitle] = useState(imported?.title ?? "");
   const [description, setDescription] = useState(imported?.description ?? "");
@@ -396,6 +410,13 @@ export function RecipeFormPage() {
       <h1 className="font-display text-2xl font-bold italic text-ink sm:text-3xl">
         {isEditMode ? "Edit recipe" : "New recipe"}
       </h1>
+
+      {translationSkipped && (
+        <p role="status" className={infoBannerClass}>
+          <InfoIcon size={16} className="mt-0.5 flex-shrink-0" />
+          Couldn&rsquo;t translate this recipe — it&rsquo;s in its original language.
+        </p>
+      )}
 
       {submitError && (
         <p ref={submitErrorRef} tabIndex={-1} role="alert" className={errorBannerClass}>

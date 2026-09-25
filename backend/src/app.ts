@@ -4,7 +4,7 @@ import express, { type Express } from "express";
 import session from "express-session";
 import type { Pool } from "pg";
 import type { MagicImportConfig } from "./config/llmModels";
-import type { GeminiExtractFn, GeminiVideoExtractFn } from "./llm/geminiClient";
+import type { GeminiExtractFn, GeminiTranslateFn, GeminiVideoExtractFn } from "./llm/geminiClient";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler";
 import { requireAllowedOrigin } from "./middleware/originCheck";
 import { createAuthRouter } from "./routes/auth";
@@ -36,6 +36,8 @@ export interface AppDeps {
   magicImport: MagicImportConfig;
   geminiExtract?: GeminiExtractFn;
   geminiVideoExtract?: GeminiVideoExtractFn;
+  /** Translates schema.org imports into the user's recipe language. */
+  geminiTranslate?: GeminiTranslateFn;
   /** Overridable only so tests never shell out to the real yt-dlp binary —
    * see services/socialVideo.ts. */
   downloadSocialVideo?: SocialVideoDownloadFn;
@@ -63,6 +65,7 @@ export function createApp(deps: AppDeps): Express {
     magicImport,
     geminiExtract,
     geminiVideoExtract,
+    geminiTranslate,
     downloadSocialVideo,
     fetchImpl,
     vapidPublicKey,
@@ -123,6 +126,7 @@ export function createApp(deps: AppDeps): Express {
   const importJobRunner = createImportJobRunner(pool, {
     geminiExtract,
     geminiVideoExtract,
+    geminiTranslate,
     downloadSocialVideo,
     fetchImpl,
     notify: sendPush ? createImportFinishedNotifier(pool, sendPush) : undefined,

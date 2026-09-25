@@ -22,9 +22,10 @@ const STEP_LABELS: Record<ImportStage, string> = {
   "downloading-video": "Downloading the video",
   "analyzing-video": "Watching the video and reading the caption",
   ai: "Asking the AI to read it",
+  translating: "Translating the recipe",
 };
 
-const AI_STAGES: ReadonlySet<ImportStage> = new Set(["ai", "analyzing-video"]);
+const AI_STAGES: ReadonlySet<ImportStage> = new Set(["ai", "analyzing-video", "translating"]);
 const VIDEO_STAGES: ReadonlySet<ImportStage> = new Set(["downloading-video", "analyzing-video"]);
 
 function ElapsedTimer({ startedAt }: Readonly<{ startedAt: number }>) {

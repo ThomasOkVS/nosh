@@ -41,6 +41,11 @@ export const inputClass =
 export const errorBannerClass =
   "rounded-sm bg-danger-50 px-3 py-2 text-sm text-danger-700 dark:bg-danger-500/15 dark:text-danger-500";
 
+/** A neutral, non-error notice (e.g. "couldn't translate this import") —
+ * quieter than errorBannerClass, see docs/design-system.md#recipe-scaling. */
+export const infoBannerClass =
+  "flex items-start gap-2 rounded-sm bg-surface-sunken px-3 py-2 text-sm text-ink-muted";
+
 export const labelClass = "block text-sm font-medium text-ink-muted";
 
 export const sectionHeadingClass =

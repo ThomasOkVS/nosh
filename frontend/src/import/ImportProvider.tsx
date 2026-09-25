@@ -33,7 +33,14 @@ function applyJob(prev: ActiveImport, job: ImportJob): ActiveImport | null {
     case "running":
       return { ...prev, seenStages: job.seenStages };
     case "done":
-      return { ...prev, seenStages: job.seenStages, status: "done", recipe: job.recipe ?? undefined, imageUrl: job.imageUrl };
+      return {
+        ...prev,
+        seenStages: job.seenStages,
+        status: "done",
+        recipe: job.recipe ?? undefined,
+        imageUrl: job.imageUrl,
+        translationSkipped: job.translationSkipped,
+      };
     case "error":
       return { ...prev, status: "error", errorMessage: job.errorMessage ?? "Failed to import that recipe" };
     case "cancelled":
@@ -238,6 +245,7 @@ export function ImportProvider({
         importedRecipe: active.recipe,
         importedImageUrl: active.imageUrl ?? null,
         collectionId: active.collectionId,
+        translationSkipped: active.translationSkipped ?? false,
       };
       if (active.dismissed) {
         showToast(`Your recipe from ${hostnameOf(active.url)} is ready to review.`, {

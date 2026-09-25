@@ -13,5 +13,8 @@
     "outDir": "dist",
     "rootDir": "src"
   },
-  "include": ["src"]
+  "include": ["src"],
+  // Builds @nosh/units first (`tsc -b`) and lets editors follow its source
+  // rather than stale compiled types. See docs/decisions.md#shared-units-package.
+  "references": [{ "path": "../packages/units/tsconfig.build.json" }]
 }

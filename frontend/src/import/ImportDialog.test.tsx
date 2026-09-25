@@ -48,6 +48,7 @@ function makeJob(patch: Partial<ImportJob> = {}): ImportJob {
     seenStages: [],
     recipe: null,
     imageUrl: null,
+    translationSkipped: false,
     errorStatus: null,
     errorMessage: null,
     reviewed: false,
@@ -173,6 +174,16 @@ describe("ImportDialog", () => {
     expect(await screen.findByText("Reading the page's recipe data")).toBeInTheDocument();
     // The earlier stage is still shown, just no longer the active one.
     expect(screen.getByText("Fetching the page")).toBeInTheDocument();
+  });
+
+  it("labels the translation stage", async () => {
+    const server = fakeServer();
+    renderApp();
+    openAndSubmit();
+
+    server.update({ seenStages: ["fetching", "structured-data", "translating"] });
+
+    expect(await screen.findByText("Translating the recipe")).toBeInTheDocument();
   });
 
   it("calls out the longer wait once a video stage appears", async () => {

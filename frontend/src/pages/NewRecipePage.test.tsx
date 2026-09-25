@@ -28,6 +28,7 @@ function makeJob(patch: Partial<ImportJob> = {}): ImportJob {
     seenStages: ["fetching", "structured-data"],
     recipe: RECIPE,
     imageUrl: null,
+    translationSkipped: false,
     errorStatus: null,
     errorMessage: null,
     reviewed: false,
@@ -70,6 +71,25 @@ describe("NewRecipePage", () => {
     expect(await screen.findByDisplayValue("Shakshuka")).toBeInTheDocument();
     expect(screen.getByDisplayValue("eggs")).toBeInTheDocument();
     expect(markReviewed).toHaveBeenCalledWith(5);
+  });
+
+  it("says when an import couldn't be translated", async () => {
+    vi.spyOn(importApi, "getImport").mockResolvedValue(makeJob({ translationSkipped: true }));
+    vi.spyOn(importApi, "markImportReviewed").mockResolvedValue(undefined);
+
+    renderAt("/recipes/new?importId=5");
+
+    expect(await screen.findByRole("status")).toHaveTextContent(/couldn.t translate this recipe/i);
+  });
+
+  it("shows no translation notice for a normal import", async () => {
+    vi.spyOn(importApi, "getImport").mockResolvedValue(makeJob());
+    vi.spyOn(importApi, "markImportReviewed").mockResolvedValue(undefined);
+
+    renderAt("/recipes/new?importId=5");
+
+    expect(await screen.findByDisplayValue("Shakshuka")).toBeInTheDocument();
+    expect(screen.queryByText(/couldn.t translate/i)).not.toBeInTheDocument();
   });
 
   it("uses router state when it's already there, without refetching", async () => {
