@@ -33,10 +33,13 @@ variable. Both steps are harmless for the images running now.
 From `/opt/nosh`. Replace `docker compose` with
 `docker compose -f docker-compose.prod.yml` if the file there has that name.
 
-1. **`.env`:**
+1. **Backend environment, wherever the stack sets it.** That's `.env` if the
+   compose file reads `${FRONTEND_ORIGINS}` like the repo's reference does,
+   or the compose file's `environment:` if the values are written there as
+   literals (this box does that):
    - `FRONTEND_ORIGINS=https://nosh.itsthomassito.com`, with no tailnet
      origin in the list;
-   - delete any `FRONTEND_ORIGIN=` line;
+   - delete any `FRONTEND_ORIGIN` setting (an unused leftover in `.env` is harmless, but remove it);
    - `TRUSTED_PROXIES=10.101.0.10` (the frontend's fixed IP on `edge`).
 2. **Compose file**, to match the repo's
    [docker-compose.prod.yml](../../docker-compose.prod.yml):
@@ -66,8 +69,9 @@ From `/opt/nosh`. Replace `docker compose` with
 ## If something goes wrong
 
 - **The backend crash-loops with `FRONTEND_ORIGINS must be set` or
-  `TRUSTED_PROXIES must be set`.** Step 1 wasn't applied to the `.env` the
-  stack actually uses. Fix it and run `docker compose up -d backend`.
+  `TRUSTED_PROXIES must be set`.** Step 1 wasn't applied where the stack
+  actually sets its environment (`.env` or the compose file's
+  `environment:`; check with `docker compose config`). Fix it and run `docker compose up -d backend`.
 - **The site loads, but login does nothing (no cookie).** The backend isn't
   seeing the request as HTTPS. Check that `TRUSTED_PROXIES` equals the
   frontend's `ipv4_address` on `edge`, and that Caddy sends

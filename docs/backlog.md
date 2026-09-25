@@ -65,9 +65,11 @@ priority.
 - [ ] Locale-aware decimals: amounts always use a "." decimal separator
       (`1.5`), even in Dutch. Consider locale-aware formatting.
 
-- [ ] Apply the Tailscale-removal handover on the box *before* merging its
-      PR ([handover](handover/2026-09-25-tailscale-removal.md)), then verify
-      in a real browser on `https://nosh.itsthomassito.com`: login persists
+- [ ] Finish the Tailscale-removal handover
+      ([handover](handover/2026-09-25-tailscale-removal.md)). Steps 1–2 were
+      applied on the box on 2026-09-25, before the merge; the post-deploy checks
+      (step 3), deleting the `VITE_API_URL` repo variable (step 4) and reporting
+      image tags (step 5) remain. Then verify in a real browser on `https://nosh.itsthomassito.com`: login persists
       across reloads (under the new `__Host-nosh.sid` cookie), photo upload,
       a Reel import's progress stages appear one by one, the PWA installs and
       updates.
