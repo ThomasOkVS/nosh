@@ -50,6 +50,7 @@ services:
       - /repo/node_modules
       - /repo/backend/node_modules
       - /repo/frontend/node_modules
+      - /repo/packages/units/node_modules
       - uploads_data:/repo/backend/uploads
     depends_on:
       postgres:
@@ -69,6 +70,7 @@ services:
       - /repo/node_modules
       - /repo/backend/node_modules
       - /repo/frontend/node_modules
+      - /repo/packages/units/node_modules
     depends_on:
       - backend
 

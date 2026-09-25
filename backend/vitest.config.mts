@@ -1,6 +1,11 @@
 import { coverageConfigDefaults, defineConfig } from "vitest/config";
 
 export default defineConfig({
+  // Resolve workspace packages (@nosh/units) to their TypeScript source, like
+  // `tsx --conditions=source` does in dev, so tests never depend on a stale
+  // dist/. See docs/decisions.md#shared-units-package.
+  resolve: { conditions: ["source"] },
+  ssr: { resolve: { conditions: ["source"] } },
   test: {
     setupFiles: ["./src/test/setup.ts"],
     // Test files share one Postgres database (migrations + table truncation
