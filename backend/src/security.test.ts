@@ -10,9 +10,9 @@ import { createTestApp } from "./test/app";
  * rather than per-route because they're app-wide policies, not route logic.
  */
 
-const NEW_ORIGIN = "https://nosh.itsthomassito.com";
-const TAILNET_ORIGIN = "http://homelab.tail43ff2b.ts.net:8080";
-const ORIGINS = [NEW_ORIGIN, TAILNET_ORIGIN];
+const ORIGIN = "https://nosh.itsthomassito.com";
+const DEV_ORIGIN = "http://localhost:5173";
+const ORIGINS = [ORIGIN, DEV_ORIGIN];
 
 async function createUser(username: string, password = "correct-horse"): Promise<void> {
   await request(createTestApp())
@@ -22,7 +22,7 @@ async function createUser(username: string, password = "correct-horse"): Promise
 
 function sessionCookie(res: request.Response): string {
   const header = res.headers["set-cookie"] as unknown as string[] | undefined;
-  const cookie = header?.find((value) => value.startsWith("connect.sid="));
+  const cookie = header?.find((value) => /^(__Host-)?nosh\.sid=/.test(value));
   if (!cookie) throw new Error("no session cookie was set");
   return cookie;
 }
@@ -37,13 +37,10 @@ function cookieAttributes(cookie: string): string[] {
 describe("origin check on state-changing requests", () => {
   const app = (): Express => createTestApp({ frontendOrigins: ORIGINS });
 
-  it.each([[NEW_ORIGIN], [TAILNET_ORIGIN]])(
-    "accepts a POST from configured origin %s",
-    async (origin) => {
-      const res = await request(app()).post("/auth/logout").set("Origin", origin);
-      expect(res.status).toBe(204);
-    },
-  );
+  it.each([[ORIGIN], [DEV_ORIGIN]])("accepts a POST from configured origin %s", async (origin) => {
+    const res = await request(app()).post("/auth/logout").set("Origin", origin);
+    expect(res.status).toBe(204);
+  });
 
   it.each([
     ["https://evil.example"],
@@ -90,14 +87,9 @@ describe("origin check on state-changing requests", () => {
     }
   });
 
-  it("answers CORS for each configured origin (the tailnet setup calls the API cross-origin)", async () => {
-    for (const origin of ORIGINS) {
-      const res = await request(app()).get("/health").set("Origin", origin);
-      expect(res.headers["access-control-allow-origin"]).toBe(origin);
-      expect(res.headers["access-control-allow-credentials"]).toBe("true");
-    }
-    const foreign = await request(app()).get("/health").set("Origin", "https://evil.example");
-    expect(foreign.headers["access-control-allow-origin"]).toBeUndefined();
+  it("sends no CORS headers — the API is only ever called same-origin", async () => {
+    const res = await request(app()).get("/health").set("Origin", ORIGIN);
+    expect(res.headers["access-control-allow-origin"]).toBeUndefined();
   });
 });
 
@@ -122,22 +114,59 @@ describe("session cookie attributes", () => {
     expect(attributes).not.toContain("domain");
   });
 
-  it("is Secure when a trusted proxy says the request was HTTPS", async () => {
-    const app = createTestApp({ trustedProxies: ["loopback"] });
-    const cookie = await login(app, { "X-Forwarded-Proto": "https" });
-    expect(cookieAttributes(cookie)).toContain("secure");
-  });
-
-  it("is not Secure over plain HTTP, so the tailnet origin keeps working during the move", async () => {
-    const app = createTestApp({ trustedProxies: ["loopback"] });
-    const cookie = await login(app, { "X-Forwarded-Proto": "http" });
+  it("is named nosh.sid and not Secure in dev, which runs over plain http://localhost", async () => {
+    const cookie = await login(createTestApp());
+    expect(cookie).toMatch(/^nosh\.sid=/);
     expect(cookieAttributes(cookie)).not.toContain("secure");
   });
 
-  it("ignores X-Forwarded-Proto from a peer that isn't a trusted proxy", async () => {
-    const app = createTestApp({ trustedProxies: [] });
-    const cookie = await login(app, { "X-Forwarded-Proto": "https" });
-    expect(cookieAttributes(cookie)).not.toContain("secure");
+  describe("in production (secureCookie)", () => {
+    const app = (): Express => createTestApp({ secureCookie: true, trustedProxies: ["loopback"] });
+
+    it("is __Host-nosh.sid, Secure, Path=/ and has no Domain — what the __Host- prefix requires", async () => {
+      const cookie = await login(app(), { "X-Forwarded-Proto": "https" });
+      const attributes = cookieAttributes(cookie);
+
+      expect(cookie).toMatch(/^__Host-nosh\.sid=/);
+      expect(attributes).toContain("secure");
+      expect(cookie).toMatch(/; Path=\/(;|$)/);
+      expect(attributes).not.toContain("domain");
+    });
+
+    it("is never sent over plain HTTP", async () => {
+      await createUser("plainhttp");
+      const res = await request(app())
+        .post("/auth/login")
+        .set("X-Forwarded-Proto", "http")
+        .send({ username: "plainhttp", password: "correct-horse" });
+      expect(sessionCookieOrNull(res)).toBeNull();
+    });
+
+    it("ignores X-Forwarded-Proto from a peer that isn't a trusted proxy", async () => {
+      await createUser("spoofer");
+      const res = await request(createTestApp({ secureCookie: true, trustedProxies: [] }))
+        .post("/auth/login")
+        .set("X-Forwarded-Proto", "https")
+        .send({ username: "spoofer", password: "correct-horse" });
+      expect(sessionCookieOrNull(res)).toBeNull();
+    });
+
+    it("is cleared under the same name on logout", async () => {
+      const cookie = await login(app(), { "X-Forwarded-Proto": "https" });
+      const res = await request(app())
+        .post("/auth/logout")
+        .set("X-Forwarded-Proto", "https")
+        .set("Cookie", cookie.split(";")[0]!);
+      expect(res.status).toBe(204);
+      // A browser drops a __Host- Set-Cookie that lacks Secure or Path=/,
+      // so the clearing header must carry both, or the cookie survives.
+      const cleared = (res.headers["set-cookie"] as unknown as string[] | undefined)?.find(
+        (value) => value.startsWith("__Host-nosh.sid=;"),
+      );
+      expect(cleared).toBeDefined();
+      expect(cookieAttributes(cleared!)).toContain("secure");
+      expect(cleared).toMatch(/; Path=\/(;|$)/);
+    });
   });
 });
 

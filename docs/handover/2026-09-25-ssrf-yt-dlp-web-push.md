@@ -26,7 +26,7 @@ and [architecture.md](../architecture.md#outbound-network-calls).
    ```
 2. **Check it's up:**
    ```bash
-   curl -s localhost:3101/health        # {"status":"ok"}
+   docker compose exec backend wget -qO- localhost:3001/health   # {"status":"ok"}
    docker compose logs --since 10m backend | grep -iE "error|failed|refused" || echo "clean"
    ```
 3. **Check the flags against the image's yt-dlp.** They were verified against

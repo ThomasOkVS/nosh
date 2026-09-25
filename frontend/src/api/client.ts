@@ -1,20 +1,14 @@
 /**
- * The one base every request goes through. In production it's the relative
- * `/api`: the frontend's own nginx forwards that to the backend, so the page
- * and its API share an origin and the same build works on any host name.
- * The local-dev default calls the backend on its own port instead.
- *
- * `||` rather than `??`: a CI build variable that's set but empty arrives
- * here as "", which must fall back too, not become a base of "".
+ * The one base every request goes through: the API always lives under `/api`
+ * on the page's own origin. In production the frontend's nginx forwards that
+ * to the backend (frontend/nginx.conf); in dev, Vite's dev server does the
+ * same (vite.config.ts). Same origin means no CORS, and the same build works
+ * under any host name.
  */
-export function resolveApiBase(configured: string | undefined): string {
-  return (configured || "http://localhost:3001").replace(/\/$/, "");
-}
-
-const API_URL = resolveApiBase(import.meta.env.VITE_API_URL);
+const API_BASE = "/api";
 
 export function apiUrl(path: string): string {
-  return `${API_URL}${path}`;
+  return `${API_BASE}${path}`;
 }
 
 export class ApiError extends Error {
@@ -41,10 +35,11 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
     body = JSON.stringify(options.body);
   }
 
-  const response = await fetch(`${API_URL}${path}`, {
+  const response = await fetch(`${API_BASE}${path}`, {
     method: options.method ?? "GET",
     credentials: "include",
-    headers: isFormData || options.body === undefined ? undefined : { "Content-Type": "application/json" },
+    headers:
+      isFormData || options.body === undefined ? undefined : { "Content-Type": "application/json" },
     body,
   });
 

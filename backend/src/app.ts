@@ -1,6 +1,5 @@
 import connectPgSimple from "connect-pg-simple";
-import cors from "cors";
-import express, { type Express } from "express";
+import express, { type CookieOptions, type Express } from "express";
 import session from "express-session";
 import type { Pool } from "pg";
 import type { MagicImportConfig } from "./config/llmModels";
@@ -20,6 +19,18 @@ import type { SocialVideoDownloadFn } from "./services/socialVideo";
 
 const ONE_WEEK_MS = 1000 * 60 * 60 * 24 * 7;
 
+/**
+ * The session cookie's name. In production it carries the `__Host-` prefix,
+ * which browsers enforce: they only accept such a cookie if it's Secure, has
+ * `Path=/` and no `Domain` — so it can never travel over plain HTTP and no
+ * sibling subdomain can set or overwrite it. Local dev runs over
+ * http://localhost, where a Secure-only cookie would never be issued, hence
+ * the plain name there.
+ */
+export function sessionCookieName(secureCookie: boolean): string {
+  return secureCookie ? "__Host-nosh.sid" : "nosh.sid";
+}
+
 export interface AppDeps {
   pool: Pool;
   sessionSecret: string;
@@ -28,6 +39,9 @@ export interface AppDeps {
   frontendOrigins?: string[];
   /** IPs of reverse proxies whose X-Forwarded-For/-Proto are believed. */
   trustedProxies?: string[];
+  /** Production: the session cookie is always Secure and `__Host-`-prefixed
+   * (see sessionCookieName). Off for local dev and tests over plain HTTP. */
+  secureCookie?: boolean;
   /** Required rather than defaulted, so no caller gets open signup by accident. */
   allowSignup: boolean;
   /** Added to every failed login; overridable so tests don't wait on it. */
@@ -60,6 +74,7 @@ export function createApp(deps: AppDeps): Express {
     uploadsDir,
     frontendOrigins = ["http://localhost:5173"],
     trustedProxies = [],
+    secureCookie = false,
     allowSignup,
     loginFailureDelayMs,
     magicImport,
@@ -72,6 +87,23 @@ export function createApp(deps: AppDeps): Express {
     sendPush,
   } = deps;
   const PgSession = connectPgSimple(session);
+  const cookieName = sessionCookieName(secureCookie);
+  // Shared by the session and by logout's clearCookie: a browser ignores a
+  // Set-Cookie for a `__Host-` name unless it carries these same attributes,
+  // so clearing with fewer would silently leave the old cookie in place.
+  const cookieOptions: CookieOptions = {
+    httpOnly: true,
+    // With `secure: true`, express-session only sends the cookie when
+    // req.secure is true — behind nginx and Caddy that relies on
+    // X-Forwarded-Proto from a trusted proxy (see `trust proxy` below).
+    secure: secureCookie,
+    sameSite: "lax",
+    // Set explicitly: `__Host-` requires it, and a proxy that strips /api
+    // must not change the path the cookie is scoped to.
+    path: "/",
+    // No `domain` on purpose: `__Host-` forbids one, and without it the
+    // cookie is host-only, never sent to sibling subdomains.
+  };
 
   const app = express();
   app.disable("x-powered-by");
@@ -85,10 +117,9 @@ export function createApp(deps: AppDeps): Express {
   // equivalent: Tomcat's RemoteIpValve with `internalProxies`.
   app.set("trust proxy", trustedProxies.length > 0 ? trustedProxies : false);
 
-  // CORS covers the transitional setup where the frontend calls the API on
-  // its own port (a different origin). Once the frontend proxies /api itself
-  // the browser sees one origin and CORS never comes into play.
-  app.use(cors({ origin: frontendOrigins, credentials: true }));
+  // No CORS: the browser only ever calls the API on the page's own origin —
+  // through nginx's /api in production, Vite's /api proxy in dev. The origin
+  // check below is still needed; it's CSRF protection, not CORS.
   app.use(requireAllowedOrigin(frontendOrigins));
   app.use(express.json());
   app.use(
@@ -97,21 +128,8 @@ export function createApp(deps: AppDeps): Express {
       secret: sessionSecret,
       resave: false,
       saveUninitialized: false,
-      cookie: {
-        httpOnly: true,
-        // "auto" = Secure exactly when this request arrived over HTTPS
-        // (req.secure, which believes X-Forwarded-Proto only from a trusted
-        // proxy). Lets the plain-HTTP tailnet origin keep working during the
-        // move, while the HTTPS origin gets a Secure cookie.
-        secure: "auto",
-        sameSite: "lax",
-        // Set explicitly: a proxy that strips /api must not change the path
-        // the cookie is scoped to.
-        path: "/",
-        // No `domain` on purpose: without one the cookie is host-only, so it
-        // is never sent to sibling subdomains of the same parent domain.
-        maxAge: ONE_WEEK_MS,
-      },
+      name: cookieName,
+      cookie: { ...cookieOptions, maxAge: ONE_WEEK_MS },
     }),
   );
 
@@ -119,7 +137,15 @@ export function createApp(deps: AppDeps): Express {
     res.json({ status: "ok" });
   });
 
-  app.use("/auth", createAuthRouter({ pool, allowSignup, failureDelayMs: loginFailureDelayMs }));
+  app.use(
+    "/auth",
+    createAuthRouter({
+      pool,
+      allowSignup,
+      cookie: { name: cookieName, options: cookieOptions },
+      failureDelayMs: loginFailureDelayMs,
+    }),
+  );
   app.use("/recipes", createRecipesRouter(pool, uploadsDir, fetchImpl));
   app.use("/collections", createCollectionsRouter(pool, uploadsDir));
   app.use("/meal-plan", createMealPlanRouter(pool));

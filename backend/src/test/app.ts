@@ -29,6 +29,7 @@ export function createTestApp(
       | "allowSignup"
       | "frontendOrigins"
       | "trustedProxies"
+      | "secureCookie"
       | "vapidPublicKey"
       | "sendPush"
     >

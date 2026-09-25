@@ -12,8 +12,8 @@ import zlib from "node:zlib";
  *
  * Why this exists: the backend's Docker networks can reach things that must
  * never be reachable from the internet — the host's own published ports
- * (dockge on :5001 has docker.sock), other containers' admin UIs, the tailnet.
- * Once Nosh is public, "import this URL" is a way for anyone with an account
+ * (dockge on :5001 has docker.sock), other containers' admin UIs, the LAN.
+ * Nosh is public, so "import this URL" is a way for anyone with an account
  * to make requests from *inside* that network (SSRF).
  *
  * Two layers, because each covers a hole in the other:
@@ -40,7 +40,7 @@ const blocked = new BlockList();
 for (const [network, prefix] of [
   ["0.0.0.0", 8], // "this network"
   ["10.0.0.0", 8], // RFC1918
-  ["100.64.0.0", 10], // CGNAT — includes the Tailscale tailnet
+  ["100.64.0.0", 10], // CGNAT (RFC 6598) — carrier-grade NAT and overlay VPNs
   ["127.0.0.0", 8], // loopback
   ["169.254.0.0", 16], // link-local, incl. cloud metadata endpoints
   ["172.16.0.0", 12], // RFC1918 — includes every Docker bridge network

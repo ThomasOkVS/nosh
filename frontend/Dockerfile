@@ -3,24 +3,19 @@
 # Dockerfile.dev, which is a single-stage dev image that keeps the whole
 # repo and runs the Vite dev server.
 #
-# VITE_API_URL is a *build-time* value: Vite inlines `import.meta.env.VITE_*`
-# into the built JS at `vite build` time (see frontend/src/api/client.ts) —
-# there's no server-side process at runtime to read an env var from, so it
-# must be supplied as a build arg, not a container env var. See
-# docs/decisions.md for how this is wired up in CI and what to do if the
-# homelab's Tailscale address ever changes.
+# VITE_APP_VERSION is a *build-time* value: Vite inlines
+# `import.meta.env.VITE_*` into the built JS at `vite build` time — there's
+# no server-side process at runtime to read an env var from, so it must be
+# supplied as a build arg, not a container env var. It shows the running
+# commit SHA in the UI (see frontend/src/components/UserMenu.tsx); CI passes
+# the same github.sha it tags the image with, so what's displayed always
+# matches the tag a rollback would pin TAG to.
 #
-# VITE_APP_VERSION is the same mechanism, used to show the running commit SHA
-# in the UI (see frontend/src/components/UserMenu.tsx) — CI passes the same
-# github.sha it tags the image with, so what's displayed always matches the
-# tag a rollback would pin TAG to.
+# No API URL is baked in: the app always calls /api on its own origin, which
+# nginx.conf proxies to the backend, so one build works under any host name.
 
 FROM node:22-alpine AS build
-# Relative by default: nginx.conf proxies /api to the backend, so the built
-# app calls its own origin and works unchanged under any host name.
-ARG VITE_API_URL=/api
 ARG VITE_APP_VERSION
-ENV VITE_API_URL=$VITE_API_URL
 ENV VITE_APP_VERSION=$VITE_APP_VERSION
 RUN corepack enable
 WORKDIR /repo

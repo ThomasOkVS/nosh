@@ -15,7 +15,7 @@ out to be wrong for the real environment — noted inline).
 | **Monitoring** | Beszel (resource metrics), Dozzle (log viewer) |
 | **Backups** | Kopia, homelab-wide 3-2-1 |
 | **Updates** | Watchtower, homelab-wide |
-| **Networking** | Moving from Tailscale-only to public HTTPS at `https://nosh.itsthomassito.com` behind the homelab's Caddy — see "Public HTTPS cutover" below |
+| **Networking** | Public HTTPS at `https://nosh.itsthomassito.com` behind the homelab's Caddy — see "Networking" below |
 
 These are existing homelab services shared across everything running on the box,
 not things Nosh needs to set up itself.
@@ -33,8 +33,6 @@ a different box, re-derive this from wherever *that* box's Dockge/Kopia
 actually root, not from either `/DATA` or `/opt` by default.)
 
 ## Networking
-
-**Target (2026-09-24 onward):**
 
 ```
 browser ──HTTPS──▶ Caddy (proxy network, 172.28.255.2; TLS, HSTS)
@@ -59,14 +57,13 @@ browser ──HTTPS──▶ Caddy (proxy network, 172.28.255.2; TLS, HSTS)
 - The backend trusts those headers only from the frontend's fixed IP
   (`TRUSTED_PROXIES`).
 - That chain is how the backend learns the real client IP (for rate limits)
-  and whether the request was HTTPS (for the cookie's `Secure` flag). The
-  reasoning is in
-  [decisions.md](decisions.md#2026-09-24-public-https-behind-caddy).
-
-**Before the cutover:** Tailscale only. The frontend was at
-`http://homelab.tail43ff2b.ts.net:8080`, and the browser called the backend
-directly on host port `3101`. That keeps working until it's retired (see
-below).
+  and whether the request was HTTPS. The session cookie is Secure-only in
+  production, so without it nobody can log in. The reasoning is in
+  [decisions.md](decisions.md#2026-09-24-public-https-behind-caddy) and
+  [decisions.md](decisions.md#2026-09-25-tailscale-retired).
+- **No host ports are published.** Caddy is the only way in. To check the
+  backend from the box itself, use
+  `docker compose exec backend wget -qO- localhost:3001/health`.
 
 ## Monitoring
 
@@ -94,7 +91,7 @@ self-hosted GitHub Actions runner.
 
 - Secrets (DB password, API keys) live in `.env`, which git ignores.
 - No default passwords. Every service is configured through `.env`.
-- Once public, Nosh's own auth is the only access control. It rests on:
+- Nosh is public, so its own auth is the only access control. It rests on:
   - signup off by default (`ALLOW_SIGNUP`);
   - rate-limited login and import;
   - an `Origin` check on every state-changing request;
@@ -113,79 +110,31 @@ self-hosted GitHub Actions runner.
 - The egress proxy is internal to the backend process: no host port, no
   extra container, nothing to configure.
 
-## Public HTTPS cutover
-
-The frontend image serves `/api` itself, so the **first build that ships
-this change keeps the tailnet setup working unchanged.** The old absolute
-`VITE_API_URL` is still baked into that build, and browsers still call
-`:3101` directly. Nothing below has to coincide with Watchtower's 04:00 run.
+## Configuration
 
 The repo's [docker-compose.prod.yml](../docker-compose.prod.yml) is a
-reference. The box runs its own copy in `/opt/nosh` (backend host port
-`3101`), so apply the network changes there.
+reference. The box runs its own copy in `/opt/nosh`, so changes to it have
+to be applied there by hand.
 
 ### Variables, with this box's production values
 
 | Variable | Value on this box | Notes |
 |---|---|---|
-| `FRONTEND_ORIGINS` | `https://nosh.itsthomassito.com,http://homelab.tail43ff2b.ts.net:8080` | Both origins during the move, only the first later. No `:443`, no path. The backend refuses to start on a malformed entry. `FRONTEND_ORIGIN` (singular, the old name) is read only when this is unset. |
-| `TRUSTED_PROXIES` | `10.101.0.10` | The frontend container's fixed IP on `edge`. Must match `ipv4_address` in the compose file. Empty means trust nobody, which is right for direct `:3101` access. |
+| `FRONTEND_ORIGINS` | `https://nosh.itsthomassito.com` | Required. No `:443`, no path. The backend refuses to start without it, or with a malformed entry. |
+| `TRUSTED_PROXIES` | `10.101.0.10` | Required. The frontend container's fixed IP on `edge`. Must match `ipv4_address` in the compose file. |
 | `ALLOW_SIGNUP` | `false` | Turn it on briefly to create an account, then off again. |
 | `TAG` | `latest` (or `sha-<7>` to pin) | Every build is tagged `:latest`, `:sha-<7>` and `:<full sha>`. |
-| GitHub repo variable `VITE_API_URL` | `/api` (from step 3) | Build-time. Empty or unset also means `/api`. |
 
-### Order
+### Verifying a deploy
 
-The order matters in one place: **step 2 before step 3.** Once the frontend
-calls `/api`, every request reaches the backend from nginx's IP. Without
-`TRUSTED_PROXIES` naming that IP, all users would share one login and import
-rate-limit bucket.
-
-1. **Merge. Watchtower deploys it overnight.** Nothing changes for users:
-   - the backend still reads `FRONTEND_ORIGIN`;
-   - the cookie is unchanged over plain HTTP;
-   - nginx has an unused `/api` route.
-
-   This change adds no migration of its own. The import-jobs work merged
-   just before it adds `1700000000014`, so run `pnpm migrate up` after this
-   deploy as usual.
-
-   The one visible change is that **signup closes**, because `ALLOW_SIGNUP`
-   defaults to false. Existing accounts keep working.
-2. **Network and env** (in `/opt/nosh`):
-   - Add the `edge` network, with the frontend at
-     `ipv4_address: 10.101.0.10` and the backend on `default` and `edge`
-     with the alias `nosh-backend`, as in the reference compose file. Pick
-     another subnet if `10.101.0.0/24` is already used on the host or LAN.
-   - Set `FRONTEND_ORIGINS` and `TRUSTED_PROXIES` from the table.
-   - Run `docker compose up -d`.
-   - Check from the host: `curl -s localhost:8080/api/health` returns
-     `{"status":"ok"}`.
-3. **Flip `VITE_API_URL` to `/api`** and let CI rebuild. The next frontend
-   calls `/api` on its own origin, and that works on the tailnet `:8080`
-   too.
-4. **Caddy:**
-   - Put the frontend (and only the frontend) on the `proxy` network.
-     Give it the alias `nosh-frontend` there.
-   - Add `nosh.itsthomassito.com { reverse_proxy nosh-frontend:8080 }`.
-   - Add `nosh.` to DDNS.
-   - Run the checks below.
-5. **Later, retire the tailnet origin:**
-   - Drop it from `FRONTEND_ORIGINS`.
-   - Remove the backend's host port `3101`, and the frontend's `8080` if you
-     like.
-   - Then do the backlog follow-up (`__Host-` cookie with `secure: true`).
-
-### Verifying the cutover
-
-From any machine, once DNS and Caddy are live:
+From any machine:
 
 ```bash
 H=https://nosh.itsthomassito.com
 # Signup refused (403)
 curl -si -X POST $H/api/auth/signup -H "Origin: $H" -H 'Content-Type: application/json' \
   -d '{"email":"x@example.com","username":"probe","password":"x"}' | sed -n '1p;$p'
-# Login -> Set-Cookie: connect.sid=...; Path=/; Expires=...; HttpOnly; Secure; SameSite=Lax (no Domain)
+# Login -> Set-Cookie: __Host-nosh.sid=...; Path=/; Expires=...; HttpOnly; Secure; SameSite=Lax (no Domain)
 curl -si -c /tmp/nosh.jar -X POST $H/api/auth/login -H "Origin: $H" -H 'Content-Type: application/json' \
   -d '{"username":"<user>","password":"<password>"}' | grep -iE '^HTTP|^set-cookie'
 # Authenticated request -> 200 {"id":...,"username":"<user>",...}
@@ -198,44 +147,22 @@ curl -s -w ' %{http_code}\n' -b /tmp/nosh.jar -X POST $H/api/import -H "Origin: 
 ## First-deploy runbook
 
 Prerequisites: images published to GHCR (see [decisions.md](decisions.md) —
-CI does this automatically on every merge to `main`), and the homelab box
-reachable over Tailscale with Dockge running.
+CI does this automatically on every merge to `main`), shell access to the
+homelab box, and Dockge and Caddy running there.
 
-1. **Check the target box for a host-port conflict on the backend's default
-   3001 before deciding on `VITE_API_URL`.** This box's actual deploy hit
-   one: AdGuard Home's web UI already owned host port 3001, so the backend
-   was remapped to `3101:3001` in `docker-compose.prod.yml` (container-side
-   stays 3001; only the host-side mapping changed). Don't assume 3001 is
-   free on a new target — check running containers' published ports first
-   (`docker ps`).
-2. **Set the frontend's build-time API URL, once.** `VITE_API_URL` is baked
-   into the frontend's static JS at image-build time (Vite has no
-   server-side process to read a runtime env var from — see the comment atop
-   [frontend/Dockerfile](../frontend/Dockerfile)), so it has to be a GitHub
-   Actions repo variable, not a `.env` value: Settings → Secrets and
-   variables → Actions → Variables → `VITE_API_URL`, set to the backend's
-   real address as the browser will reach it — on this deploy,
-   `http://homelab.tail43ff2b.ts.net:3101` (note the remapped port from step
-   1, not the container-internal 3001). Re-run the `publish` workflow (or
-   push any commit to `main`) after setting it — any image built before
-   this is set has the wrong URL baked in. *(Superseded 2026-09-24: the
-   frontend's nginx now proxies `/api`, so the target value is the relative
-   `/api` on any box — see "Public HTTPS cutover".)*
-   - If the target box has no `gh` CLI, no local clone, and no
-     GitHub-registered SSH key (all true for this box's first deploy), `gh`
-     installs directly from Ubuntu's own apt repo (`apt-get install gh`, no
-     need to add GitHub's apt source), and `gh auth login --web`'s
-     device-code flow works with **no local browser** — it prints a URL and
-     a one-time code that can be approved from any other device (phone,
-     laptop) while the target box only needs outbound network access to
-     poll GitHub for completion.
-3. **Check GHCR package visibility.** The first time each image
+1. **Caddy.** Nosh publishes no host ports, so Caddy is the only way in.
+   The frontend joins Caddy's external `proxy` network with the alias
+   `nosh-frontend` (already in the compose file). Add
+   `nosh.itsthomassito.com { reverse_proxy nosh-frontend:8080 }` to the
+   Caddyfile and point DNS (DDNS) at the box. The frontend has no API URL to
+   configure: it always calls `/api` on its own origin.
+2. **Check GHCR package visibility.** The first time each image
    (`nosh-backend`, `nosh-frontend`) is published, GHCR sometimes defaults it
    to private regardless of the repo's own visibility. If Watchtower/`docker
    pull` later fails with a 401/403, go to the package's page on GitHub
    (org/user → Packages) and set visibility to match the repo. (Not hit on
    this deploy — both images pulled fine on the first try.)
-4. **Create the data directory** on the homelab box:
+3. **Create the data directory** on the homelab box:
    ```bash
    mkdir -p /opt/nosh/postgres /opt/nosh/uploads
    ```
@@ -243,26 +170,20 @@ reachable over Tailscale with Dockge running.
    existing `/opt`-wide backup sweep picks them up automatically — see
    "Directory layout" above. (Adjust the root if a future target box's
    Dockge/Kopia don't both live under `/opt`.)
-5. **Create `.env`** next to `docker-compose.prod.yml` (copy
+4. **Create `.env`** next to `docker-compose.prod.yml` (copy
    [.env.prod.example](../.env.prod.example) and fill in real values —
    `POSTGRES_PASSWORD`, `SESSION_SECRET`, `FRONTEND_ORIGINS`,
    `TRUSTED_PROXIES`, `ALLOW_SIGNUP` — see the variable table under
-   "Public HTTPS cutover"). Never commit this file. To create the first
+   "Configuration"). Never commit this file. To create the first
    account, start with `ALLOW_SIGNUP=true`, sign up, then set it back to
    `false` and restart the backend.
-   - **Do not set up a second hostname (e.g. a local DNS shortcut) that
-     resolves to the frontend.** `FRONTEND_ORIGIN` is an exact match
-     (scheme + host + port) enforced by the backend's CORS/cookie check —
-     any additional origin will load the page but silently fail login/signup
-     there with no visible error. This deploy deliberately skipped adding a
-     local DNS shortcut for exactly this reason; Nosh is reached only by the
-     one address in `FRONTEND_ORIGIN`. (Since 2026-09-24 the backend takes a
-     list, `FRONTEND_ORIGINS`, so a second address is possible — but it
-     still has to be listed there, exactly.)
-6. **Add the stack in Dockge**, pointing it at `docker-compose.prod.yml` and
+   - **Every host name the app is opened under must be listed in
+     `FRONTEND_ORIGINS`**, exactly (scheme + host + port). An unlisted
+     origin loads the page but every login and save fails with a 403.
+5. **Add the stack in Dockge**, pointing it at `docker-compose.prod.yml` and
    the `.env` from the previous step, then start it. First boot order is
    `postgres` (waits for its own healthcheck) → `backend` → `frontend`.
-7. **Run the initial migration** — the image ships the migration runner and
+6. **Run the initial migration** — the image ships the migration runner and
    files, but doesn't run them automatically on startup (a deliberate choice,
    consistent with [dev-commands.md](dev-commands.md)'s dev workflow — a
    migration is a decision to run, not a side effect of a container
@@ -270,13 +191,10 @@ reachable over Tailscale with Dockge running.
    ```bash
    docker compose -f docker-compose.prod.yml exec backend pnpm migrate up
    ```
-8. **Health check.** `docker compose -f docker-compose.prod.yml ps` should
-   show `backend` and `postgres` as `healthy`. Visit the frontend's address
-   in a browser and confirm the login page loads and signup works. (This
-   deploy had no browser available on the target box — verified the same
-   thing via `curl`: signup → `Set-Cookie` → an authenticated `/auth/me`
-   request using that cookie, which exercises the same CORS/cookie path a
-   browser would.)
+7. **Health check.** `docker compose -f docker-compose.prod.yml ps` should
+   show `backend` and `postgres` as `healthy`. Then run the curls under
+   "Verifying a deploy", and open `https://nosh.itsthomassito.com` in a
+   browser to confirm the login page loads.
 
 ### Update / rollback
 
@@ -289,7 +207,8 @@ container, it doesn't run one-off commands inside it.
 Updates that need more than a routine pull (a migration, a config change)
 get a step-by-step note for whoever runs the box in [handover/](handover/),
 e.g. [2026-09-25: recipe units & translation](handover/2026-09-25-recipe-units-and-translation.md)
-(migration 015).
+(migration 015) and [2026-09-25: Tailscale retired](handover/2026-09-25-tailscale-removal.md)
+(config only).
 
 **A migration that reshapes existing data needs a check, not just a run.**
 The first-deploy step above is against an empty database, so nothing there

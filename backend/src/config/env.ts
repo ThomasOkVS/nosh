@@ -1,6 +1,6 @@
 import path from "node:path";
 import { DEFAULT_GEMINI_MODELS } from "./llmModels";
-import { parseOrigins, parseTrustedProxies } from "./origins";
+import { assertProductionConfig, parseOrigins, parseTrustedProxies } from "./origins";
 
 /** All three VAPID vars or none: a partial set is a misconfiguration worth
  * failing loudly on at boot, not a silently disabled feature. */
@@ -26,22 +26,28 @@ function required(name: string): string {
   return value;
 }
 
+const production = process.env.NODE_ENV === "production";
+const trustedProxies = parseTrustedProxies(process.env.TRUSTED_PROXIES ?? "");
+if (production) {
+  assertProductionConfig({ frontendOriginsRaw: process.env.FRONTEND_ORIGINS, trustedProxies });
+}
+
 export const env = {
   port: Number(process.env.PORT ?? 3001),
   databaseUrl: required("DATABASE_URL"),
   sessionSecret: process.env.SESSION_SECRET ?? "dev-secret-change-me",
   uploadsDir: process.env.UPLOADS_DIR ?? path.resolve(process.cwd(), "uploads"),
-  // Every origin the frontend is served from, as the browser sends it. More
-  // than one during a move between origins (the old tailnet URL and the new
-  // domain). The singular FRONTEND_ORIGIN is the pre-list name, still read so
-  // an existing .env keeps working unchanged.
-  frontendOrigins: parseOrigins(
-    process.env.FRONTEND_ORIGINS || process.env.FRONTEND_ORIGIN || "http://localhost:5173",
-  ),
+  // Every origin the frontend is served from, as the browser sends it — the
+  // allowlist for the origin (CSRF) check. Usually one; a list so a second
+  // host name can be added without a code change.
+  frontendOrigins: parseOrigins(process.env.FRONTEND_ORIGINS || "http://localhost:5173"),
   // The exact IPs of reverse proxies allowed to set X-Forwarded-For/-Proto
   // (i.e. to tell the backend the real client IP and whether it was HTTPS).
   // Empty: trust none. See docs/decisions.md.
-  trustedProxies: parseTrustedProxies(process.env.TRUSTED_PROXIES ?? ""),
+  trustedProxies,
+  // Production is HTTPS-only (behind Caddy), so the session cookie is always
+  // Secure there; see sessionCookieName in app.ts.
+  secureCookie: production,
   // Off unless explicitly enabled: a publicly reachable signup form lets
   // anyone spend the Gemini quota and fill the uploads volume.
   allowSignup: process.env.ALLOW_SIGNUP === "true",

@@ -124,16 +124,11 @@ jobs:
           context: .
           file: frontend/Dockerfile
           push: true
-          # VITE_API_URL is baked into the static bundle at build time (see
-          # frontend/Dockerfile), from a repo variable (Settings → Secrets
-          # and variables → Actions → Variables). Its target value is the
-          # relative `/api` (proxied by the frontend's own nginx); an unset
-          # or empty variable falls back to that too.
-          # VITE_APP_VERSION reuses the same commit SHA this build is tagged
-          # with, so the version shown in the UI always matches a real image
-          # tag.
+          # VITE_APP_VERSION is baked into the static bundle at build time
+          # (see frontend/Dockerfile). It reuses the same commit SHA this
+          # build is tagged with, so the version shown in the UI always
+          # matches a real image tag.
           build-args: |
-            VITE_API_URL=${{ vars.VITE_API_URL || '/api' }}
             VITE_APP_VERSION=${{ github.sha }}
           tags: |
             ghcr.io/${{ env.IMAGE_OWNER }}/nosh-frontend:latest

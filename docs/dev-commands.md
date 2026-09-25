@@ -24,7 +24,10 @@ All three services in Docker:
 docker compose up
 ```
 
-Frontend at `http://localhost:5173`, backend at `http://localhost:3001` —
+Frontend at `http://localhost:5173`, backend at `http://localhost:3001`. The
+frontend calls the API as `/api` on its own origin, and Vite's dev server
+forwards that to the backend (the same job nginx does in production — see
+`frontend/vite.config.ts`). All of this works,
 including on Windows; see
 [decisions.md](decisions.md#2026-08-12-windows-frontend-dev-container-issue--actually-root-caused-and-fixed)
 for why this previously seemed to need a workaround.

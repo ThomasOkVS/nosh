@@ -21,7 +21,7 @@ declare const self: ServiceWorkerGlobalScope;
 precacheAndRoute(self.__WB_MANIFEST);
 cleanupOutdatedCaches();
 // Deliberately no NavigationRoute (SPA fallback) and no runtime caching:
-// once nginx serves the API same-origin under /api, a fallback would answer
+// the API is served same-origin under /api, so a fallback would answer
 // navigations to /api/... (e.g. opening a photo URL) with index.html, and a
 // runtime cache could hand back a stale auth response. If a navigation
 // fallback is ever added, give it `denylist: [/^\/api\//]`.

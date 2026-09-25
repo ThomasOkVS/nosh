@@ -15,7 +15,7 @@ pieces, as currently intended), not just as it was first imagined.
 | File storage | Local disk volume (recipe photos, uploads) |
 | Recipe import | schema.org JSON-LD parsing (`cheerio`), falling back to the Google Gemini API |
 | Deployment | Docker containers, managed via Dockge, on a home server |
-| Network | Public HTTPS at `nosh.itsthomassito.com`; TLS terminated by the homelab's Caddy, frontend nginx proxies `/api` (was Tailscale-only until 2026-09-24) |
+| Network | Public HTTPS at `nosh.itsthomassito.com`; TLS terminated by the homelab's Caddy, frontend nginx proxies `/api` |
 | Repo | Monorepo on GitHub (`/frontend`, `/backend`), pnpm workspaces |
 | Tooling | ESLint + Prettier, Vitest, React Testing Library, Supertest (backend HTTP tests) |
 
@@ -45,9 +45,9 @@ one origin; the homelab's Caddy terminates TLS in front of that at
 internet — its own auth is the only access control. See
 [decisions.md#2026-09-24-public-https-behind-caddy](decisions.md#2026-09-24-public-https-behind-caddy)
 and [deployment.md](deployment.md#networking) for the topology and which hop
-trusts which. Local dev still runs the two on different ports, so the backend
-also allows its configured origins via CORS with credentials — see
-[decisions.md#2026-08-06-cors-added-to-the-backend-for-the-frontends-cross-origin-session-cookie](decisions.md).
+trusts which. Local dev mirrors this: Vite's dev server proxies `/api` to
+the backend, so there's no CORS in either environment — see
+[decisions.md#2026-09-25-tailscale-retired](decisions.md#2026-09-25-tailscale-retired).
 
 ## Repo / folder structure
 
@@ -293,13 +293,14 @@ Passwords are hashed with argon2. Auth uses server-side sessions (`express-sessi
 backed by Postgres via `connect-pg-simple`, httpOnly cookie) rather than JWTs, so
 logout actually revokes access — see
 [decisions.md#2026-08-06-backend-mvp-db-access-auth-mechanism-and-supporting-libraries](decisions.md).
-Since Nosh became publicly reachable (2026-09-24), app-level defenses carry
-the weight Tailscale used to: signup is off unless `ALLOW_SIGNUP=true`; login
+Nosh is publicly reachable, so app-level defenses are the only access
+control: signup is off unless `ALLOW_SIGNUP=true`; login
 is rate-limited per client IP and per account (failures only) with a delay
 on each failure; every POST/PUT/PATCH/DELETE must come from a configured
 origin (`Origin`, else `Sec-Fetch-Site`); the session cookie is `HttpOnly`,
-`SameSite=Lax`, `Path=/`, host-only (no `Domain`) and `Secure` whenever the
-request came over HTTPS. The client IP and scheme come from
+`SameSite=Lax`, `Path=/`, host-only (no `Domain`), and in production always
+`Secure` under the `__Host-nosh.sid` name, which makes the browser enforce
+those attributes. The client IP and scheme come from
 `X-Forwarded-*` only when sent by the exact proxy IPs in `TRUSTED_PROXIES`.
 See [decisions.md#2026-09-24-public-https-behind-caddy](decisions.md#2026-09-24-public-https-behind-caddy).
 
@@ -600,6 +601,5 @@ reasoning behind the choices.
 ## Deployment target
 
 Docker containers on an HP ProDesk 400 G5 (ZimaOS), managed via Dockge, reachable
-at `https://nosh.itsthomassito.com` through the homelab's Caddy (Tailscale-only
-before 2026-09-24). Concrete build/release/CD mechanics live in
+at `https://nosh.itsthomassito.com` through the homelab's Caddy. Concrete build/release/CD mechanics live in
 [deployment.md](deployment.md) (maintained separately by the project owner).

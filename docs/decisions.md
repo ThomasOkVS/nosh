@@ -234,6 +234,8 @@ refresh; the trigger keeps the same effect eagerly and simply); a
 
 ## 2026-08-06: CORS added to the backend for the frontend's cross-origin session cookie {#2026-08-06-cors-added-to-the-backend-for-the-frontends-cross-origin-session-cookie}
 
+> **Superseded 2026-09-25** by [Tailscale retired](#2026-09-25-tailscale-retired): there is no CORS any more. The browser calls `/api` on its own origin, through nginx in production and Vite's proxy in dev.
+
 **Decision:** The backend now runs the `cors` middleware (`credentials: true`,
 `origin` restricted to a single configurable `FRONTEND_ORIGIN`, defaulting to
 `http://localhost:5173`), and the frontend's fetch wrapper always sends
@@ -552,6 +554,8 @@ similarly ruled out `cookie.secure`/`SESSION_SECRET` findings as non-issues
 for this app's actual design rather than changing them reflexively).
 
 ## 2026-08-08: Deployment group finished — production images, Compose file, CI publish, runbook
+
+> **Superseded 2026-09-25** by [Tailscale retired](#2026-09-25-tailscale-retired): the `VITE_API_URL` build arg and its CI repo variable are gone. The frontend always calls `/api`.
 
 **Decision:** Closed out the Deployment backlog group:
 
@@ -1255,6 +1259,8 @@ the same `pnpm exec` pattern for consistency and to close off the same
 failure mode before it has a chance to appear there too.
 
 ## 2026-08-19: Production white-screen fixed — `crypto.randomUUID()` needs a secure-context fallback
+
+> **Superseded 2026-09-25** by [Tailscale retired](#2026-09-25-tailscale-retired): the app is HTTPS-only now, so the `generateId` fallback was removed and the form calls `crypto.randomUUID()` directly.
 
 **Decision:** `frontend/src/pages/RecipeFormPage.tsx` called
 `crypto.randomUUID()` directly to key ingredient/step rows. Reported live:
@@ -2135,6 +2141,8 @@ available in this environment, so the token numbers from a successful
 
 ## 2026-09-24: Public HTTPS behind Caddy — frontend nginx proxies /api; app-level hardening {#2026-09-24-public-https-behind-caddy}
 
+> **Superseded 2026-09-25** by [Tailscale retired](#2026-09-25-tailscale-retired): the tailnet origin is retired. The cookie is `__Host-nosh.sid`, always Secure in production, CORS and the singular `FRONTEND_ORIGIN` are gone, and no host ports are published.
+
 **Context.** Nosh moves from tailnet-only
 (`http://homelab.tail43ff2b.ts.net:8080` plus the API on `:3101`) to
 `https://nosh.itsthomassito.com`. The homelab's Caddy terminates TLS there.
@@ -2788,3 +2796,64 @@ TikTok post:
 
 The schema is unchanged. Existing bad `push_subscriptions` rows, if any,
 are cleaned up the next time their owner's import finishes.
+
+## 2026-09-25: Tailscale retired — HTTPS-only, same-origin in dev and prod {#2026-09-25-tailscale-retired}
+
+**Context.** The public HTTPS cutover is done, and Nosh is no longer used
+over the tailnet. Several pieces of code existed only so the plain-HTTP
+tailnet origin (`:8080` for the page, `:3101` for the API) kept working
+during the move. With that origin gone, they were dead weight, or weaker
+than they needed to be.
+
+**Decision.** Nosh is served only at `https://nosh.itsthomassito.com`, and
+the browser only ever talks to one origin.
+
+- **No CORS.** In production the frontend's nginx proxies `/api`. In dev,
+  Vite's dev server now does the same (`server.proxy` in
+  `frontend/vite.config.ts`; `API_PROXY_TARGET` points it at `backend:3001`
+  inside docker-compose). So the `cors` dependency, the `VITE_API_URL`
+  build arg and its CI repo variable are gone, and `api/client.ts` uses a
+  constant `/api`. The `Origin`/`Sec-Fetch-Site` check stays: that's CSRF
+  protection, not CORS, and dev passes the browser's `Origin` through
+  unchanged so it still applies.
+- **Hardened session cookie.** In production (`NODE_ENV=production`, set by
+  the backend image) the cookie is `__Host-nosh.sid` with `secure: true`,
+  replacing `connect.sid` with `secure: "auto"`. Browsers only accept a
+  `__Host-` cookie that's Secure, `Path=/` and has no `Domain`, so the
+  browser itself guarantees the cookie never goes over plain HTTP and no
+  sibling subdomain can plant or overwrite it. Renaming logged everyone out
+  once. Dev and tests run over plain `http://localhost` and use `nosh.sid`
+  without Secure, because express-session never issues a Secure cookie on a
+  request it doesn't consider HTTPS.
+- **Fail at boot, not at login.** In production the backend refuses to
+  start without `FRONTEND_ORIGINS` (it would otherwise fall back to the dev
+  origin and 403 every POST) or without `TRUSTED_PROXIES` (it would never
+  believe nginx's `X-Forwarded-Proto`, so the Secure-only cookie would never
+  be set and nobody could log in). The singular `FRONTEND_ORIGIN` fallback
+  was removed.
+- **No host ports in production.** Neither the backend nor the frontend is
+  published on the host. Caddy reaches the frontend over its `proxy`
+  network, and the frontend reaches the backend over `edge`.
+- **No secure-context fallbacks.** `frontend/src/lib/id.ts` (a
+  `crypto.getRandomValues()` UUID for plain-HTTP origins) was deleted. The
+  form calls `crypto.randomUUID()` directly, which exists on HTTPS and on
+  `http://localhost`.
+- The SSRF guard still blocks `100.64.0.0/10`. It's a reserved range
+  (CGNAT) whatever runs on the box, so only its comment changed.
+
+**Why.** Every one of these existed to keep a second, insecure origin
+working. Keeping them would mean more code paths than there are ways to
+reach the app, and a cookie weaker than the deployment allows.
+
+**Alternatives considered.** Keeping `secure: "auto"` (still correct behind
+Caddy, but it relies on the proxy chain being configured right, where
+`__Host-` makes the browser enforce it). Keeping CORS for dev only (rejected:
+dev would then differ from production in exactly the area, cookies and
+origins, where differences hide bugs). Keeping the frontend's `8080` on the
+host for quick checks (rejected: health checks work through
+`docker compose exec`, and a published plain-HTTP port is a second way in).
+
+**Verification.** Backend tests cover the dev and production cookie (name,
+Secure, `Path=/`, no `Domain`, never sent over plain HTTP, ignoring
+`X-Forwarded-Proto` from an untrusted peer, cleared under the same name on
+logout), the absence of CORS headers, and the boot checks.

@@ -10,7 +10,7 @@ const DNS: Record<string, string[]> = {
   "loopback.attacker.test": ["127.0.0.1"],
   "docker-host.attacker.test": ["172.28.0.1"],
   "lan-box.attacker.test": ["10.101.0.10"],
-  "tailnet.attacker.test": ["100.64.12.34"],
+  "cgnat.attacker.test": ["100.64.12.34"],
   "mixed.attacker.test": ["93.184.215.14", "172.28.0.1"],
   "cdn.public.test": ["93.184.215.14"],
 };
@@ -89,7 +89,7 @@ describe("egress proxy — refusals (real blocklist)", () => {
     ["loopback.attacker.test", "127.0.0.1"],
     ["docker-host.attacker.test", "172.28.0.1 (the Docker host, where dockge listens)"],
     ["lan-box.attacker.test", "10.101.0.10"],
-    ["tailnet.attacker.test", "100.64.x (the tailnet)"],
+    ["cgnat.attacker.test", "100.64.x (CGNAT)"],
     ["mixed.attacker.test", "one public and one private record"],
   ])("refuses a CONNECT to %s, which resolves to %s", async (hostname) => {
     expect(await connectStatus(proxy, `${hostname}:443`)).toBe("HTTP/1.1 403 Forbidden");
