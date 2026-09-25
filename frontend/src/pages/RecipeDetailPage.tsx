@@ -7,14 +7,18 @@ import {
   PencilSimpleIcon,
   TrashIcon,
 } from "@phosphor-icons/react";
-import { useCallback, useState } from "react";
+import { convertTemperaturesInText, formatQuantity } from "@nosh/units";
+import { useCallback, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { deleteRecipe, getRecipe, recipeImageUrl } from "../api/recipes";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { IngredientList } from "../components/IngredientList";
 import { RecipeCollectionPicker } from "../components/RecipeCollectionPicker";
+import { ServingsStepper } from "../components/ServingsStepper";
 import { Skeleton } from "../components/Skeleton";
 import { TagChip } from "../components/TagChip";
 import { useAsync } from "../hooks/useAsync";
+import { useRecipePreferences } from "../hooks/useRecipePreferences";
 import { libraryPath } from "../lib/collectionTree";
 import { errorBannerClass, sectionHeadingClass } from "../styles";
 import { useToast } from "../toast/ToastContext";
@@ -64,9 +68,25 @@ export function RecipeDetailPage() {
   const navigate = useNavigate();
   const { showToast } = useToast();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  // Scaling is view-only state: just a multiplier (and which ingredient it
+  // was set from, if any). Every displayed amount is derived from it.
+  const [scale, setScale] = useState<{ factor: number; anchorId: number | null }>({
+    factor: 1,
+    anchorId: null,
+  });
+  const preferences = useRecipePreferences();
 
   const fetchRecipe = useCallback(() => getRecipe(recipeId), [recipeId]);
   const { data: recipe, loading, error, reload } = useAsync(fetchRecipe);
+
+  const steps = useMemo(
+    () =>
+      (recipe?.steps ?? []).map((step) => ({
+        ...step,
+        instruction: convertTemperaturesInText(step.instruction, preferences.temperatureUnit),
+      })),
+    [recipe, preferences.temperatureUnit],
+  );
 
   const confirmDelete = useCallback(() => {
     deleteRecipe(recipeId)
@@ -87,7 +107,7 @@ export function RecipeDetailPage() {
   const [heroImage, ...otherImages] = recipe.images;
   const sourceLink = parseSourceLink(recipe.sourceUrl);
   const metaLine = [
-    recipe.servings ? `Serves ${recipe.servings}` : null,
+    recipe.servings ? `Serves ${formatQuantity(recipe.servings * scale.factor)}` : null,
     recipe.prepTimeMinutes ? `Prep ${recipe.prepTimeMinutes} min` : null,
     recipe.cookTimeMinutes ? `Cook ${recipe.cookTimeMinutes} min` : null,
   ]
@@ -115,7 +135,11 @@ export function RecipeDetailPage() {
           long title regardless of layout. */}
       {heroImage ? (
         <div className="aspect-[16/9] w-full overflow-hidden rounded-lg border border-border bg-surface-sunken">
-          <img src={recipeImageUrl(recipe.id, heroImage.id)} alt="" className="h-full w-full object-cover" />
+          <img
+            src={recipeImageUrl(recipe.id, heroImage.id)}
+            alt=""
+            className="h-full w-full object-cover"
+          />
         </div>
       ) : (
         <div className="flex aspect-[16/9] w-full items-center justify-center rounded-lg border border-border bg-sauce-50 text-sauce-500 dark:bg-sauce-500/15 dark:text-sauce-400">
@@ -125,7 +149,9 @@ export function RecipeDetailPage() {
 
       <div className="space-y-3 border-b border-border pb-5">
         <div className="flex items-start justify-between gap-3">
-          <h1 className="font-display text-2xl font-bold italic text-ink sm:text-3xl">{recipe.title}</h1>
+          <h1 className="font-display text-2xl font-bold italic text-ink sm:text-3xl">
+            {recipe.title}
+          </h1>
           <div className="flex flex-shrink-0 gap-2">
             <Link
               to={`/recipes/${recipe.id}/edit`}
@@ -148,7 +174,9 @@ export function RecipeDetailPage() {
         {recipe.description && (
           <p className="font-display text-lg italic text-ink-muted">{recipe.description}</p>
         )}
-        {metaLine && <p className="font-mono text-xs uppercase tracking-wider text-ink-muted">{metaLine}</p>}
+        {metaLine && (
+          <p className="font-mono text-xs uppercase tracking-wider text-ink-muted">{metaLine}</p>
+        )}
         {recipe.tags.length > 0 && (
           <div className="flex flex-wrap gap-3 pt-1">
             {recipe.tags.map((tag) => (
@@ -196,27 +224,28 @@ export function RecipeDetailPage() {
 
       {recipe.ingredients.length > 0 && (
         <section>
-          <h2 className={sectionHeadingClass}>
-            <ListChecksIcon size={20} className="text-sage-500" />
-            Ingredients
-          </h2>
-          {/* An "index" list — mono numerals instead of a bullet dot/checkbox,
-              hairline dividers instead of carded rows — see
-              docs/design-system.md#ingredient--step-display. */}
-          <ul className="mt-3 divide-y divide-border border-y border-border">
-            {recipe.ingredients.map((ingredient, index) => (
-              <li key={ingredient.id} className="flex items-baseline gap-4 py-2.5 text-ink">
-                <span className="w-6 flex-shrink-0 font-mono text-xs text-ink-muted">
-                  {String(index + 1).padStart(2, "0")}
-                </span>
-                {[ingredient.quantity, ingredient.unit, ingredient.name].filter(Boolean).join(" ")}
-              </li>
-            ))}
-          </ul>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className={sectionHeadingClass}>
+              <ListChecksIcon size={20} className="text-sage-500" />
+              Ingredients
+            </h2>
+            <ServingsStepper
+              servings={recipe.servings}
+              factor={scale.factor}
+              onChange={(factor) => setScale({ factor, anchorId: null })}
+            />
+          </div>
+          <IngredientList
+            ingredients={recipe.ingredients}
+            factor={scale.factor}
+            preferences={preferences}
+            anchorId={scale.anchorId}
+            onAnchor={(anchorId, factor) => setScale({ factor, anchorId })}
+          />
         </section>
       )}
 
-      {recipe.steps.length > 0 && (
+      {steps.length > 0 && (
         <section>
           <h2 className={sectionHeadingClass}>
             <ListNumbersIcon size={20} className="text-sauce-500" />
@@ -226,7 +255,7 @@ export function RecipeDetailPage() {
               on the first step's first letter — the "pull-quote" signature
               this direction was picked for, see docs/design-system.md#detail-page-layout. */}
           <ol className="mt-3 space-y-6">
-            {recipe.steps.map((step, index) => (
+            {steps.map((step, index) => (
               <li key={step.id} className="flex gap-4">
                 <span
                   aria-hidden="true"
