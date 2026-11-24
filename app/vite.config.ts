@@ -8,7 +8,12 @@ const api = "http://localhost:3001";
 
 export default defineConfig({
   plugins: [
-    tanstackRouter({ target: "react", autoCodeSplitting: true }),
+    // Route tests live next to their routes; keep them out of the route tree.
+    tanstackRouter({
+      target: "react",
+      autoCodeSplitting: true,
+      routeFileIgnorePattern: String.raw`\.test\.`,
+    }),
     react(),
     tailwindcss(),
   ],
