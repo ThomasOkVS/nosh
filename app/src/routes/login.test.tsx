@@ -1,11 +1,13 @@
 import { screen, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { deferred, owner, server } from "../../test/msw";
 import { renderApp } from "../../test/render";
 
 const login = (resolver: Parameters<typeof http.post>[1]) =>
   server.use(http.post("/api/auth/login", resolver));
+const me = (resolver: Parameters<typeof http.get>[1]) =>
+  server.use(http.get("/api/auth/me", resolver));
 
 async function fillAndSubmit(user: ReturnType<typeof renderApp>["user"]) {
   await user.type(await screen.findByLabelText("Username"), "Thomas");
@@ -14,6 +16,9 @@ async function fillAndSubmit(user: ReturnType<typeof renderApp>["user"]) {
 }
 
 describe("login screen", () => {
+  // The session check after a successful login finds the session it created.
+  beforeEach(() => me(() => HttpResponse.json(owner)));
+
   it("AUTH-07 asks for username and password only and submits them", async () => {
     let body: unknown;
     login(async ({ request }) => {
@@ -60,6 +65,23 @@ describe("login screen", () => {
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("Invalid username or password");
     expect(alert).toHaveFocus();
+    expect(screen.getByRole("button", { name: "Log in" })).toBeEnabled();
+  });
+
+  it("AUTH-07 SEC-09 stays on login when the browser kept no session cookie", async () => {
+    login(() => HttpResponse.json(owner));
+    me(() => HttpResponse.json({ error: "Not authenticated" }, { status: 401 }));
+    const { user, router, visited } = renderApp("/login");
+
+    await fillAndSubmit(user);
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(
+      "Signed in, but this browser didn't keep the session. Check the connection is HTTPS.",
+    );
+    expect(alert).toHaveFocus();
+    expect(router.state.location.pathname).toBe("/login");
+    expect(visited.every((href) => href.startsWith("/login"))).toBe(true);
+    expect(screen.queryByRole("heading", { name: "Library" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Log in" })).toBeEnabled();
   });
 

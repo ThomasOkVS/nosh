@@ -1,11 +1,13 @@
 import { screen } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { deferred, owner, server } from "../../test/msw";
 import { renderApp } from "../../test/render";
 
 const signup = (resolver: Parameters<typeof http.post>[1]) =>
   server.use(http.post("/api/auth/signup", resolver));
+const me = (resolver: Parameters<typeof http.get>[1]) =>
+  server.use(http.get("/api/auth/me", resolver));
 
 async function fillAndSubmit(user: ReturnType<typeof renderApp>["user"]) {
   await user.type(await screen.findByLabelText("Username"), "thomas");
@@ -14,6 +16,9 @@ async function fillAndSubmit(user: ReturnType<typeof renderApp>["user"]) {
 }
 
 describe("sign-up screen", () => {
+  // The session check after a successful sign-up finds the session it created.
+  beforeEach(() => me(() => HttpResponse.json(owner)));
+
   it("AUTH-01 asks for username and password only and lands on home", async () => {
     let body: unknown;
     signup(async ({ request }) => {
@@ -71,6 +76,23 @@ describe("sign-up screen", () => {
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("Sign-ups are disabled on this server");
     expect(alert).toHaveFocus();
+  });
+
+  it("AUTH-01 SEC-09 stays on sign-up when the browser kept no session cookie", async () => {
+    signup(() => HttpResponse.json(owner, { status: 201 }));
+    me(() => HttpResponse.json({ error: "Not authenticated" }, { status: 401 }));
+    const { user, router, visited } = renderApp("/signup");
+
+    await fillAndSubmit(user);
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(
+      "Signed in, but this browser didn't keep the session. Check the connection is HTTPS.",
+    );
+    expect(alert).toHaveFocus();
+    expect(router.state.location.pathname).toBe("/signup");
+    expect(visited.every((href) => href.startsWith("/signup"))).toBe(true);
+    expect(screen.queryByRole("heading", { name: "Library" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create account" })).toBeEnabled();
   });
 
   it("AUTH-18 links to login", async () => {
