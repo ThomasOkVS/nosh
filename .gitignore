@@ -31,3 +31,7 @@ Thumbs.db
 
 uploads/
 !.env.example
+
+# Playwright
+test-results/
+playwright-report/
