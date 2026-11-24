@@ -2,9 +2,10 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "frontend",
-      "url": "http://localhost:5173",
-      "port": 5173
+      "name": "style-spike",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--dir", ".superpowers/style-spike", "dev"],
+      "port": 5199
     }
   ]
 }

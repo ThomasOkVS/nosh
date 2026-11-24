@@ -1,7 +1,5 @@
-# Nosh
+# nosh
 
-Self-hosted, subscription-free recipe manager — and a hands-on project to learn
-a modern web stack.
+A self-hosted, subscription-free recipe manager, being rewritten from scratch.
 
-See [docs/index.md](docs/index.md) for everything else: goals, scope,
-architecture, decisions, backlog, and deployment.
+Start with [CLAUDE.md](CLAUDE.md) and the [restart design](docs/superpowers/specs/2026-11-24-nosh-restart-design.md).

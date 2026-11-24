@@ -1,73 +1,38 @@
-# Claude Instructions
+# nosh
 
-## ⚠️ Restart in progress (since 2026-11-24): read this first
+nosh is a self-hosted, subscription-free recipe manager for one person, used
+mostly on an iPhone as an installed PWA. It is being rewritten from scratch:
+see the [restart design](docs/superpowers/specs/2026-11-24-nosh-restart-design.md).
+The interface is English only; recipe content is Dutch or English.
 
-nosh is being **rewritten from scratch**. This repo currently holds two things:
+## Stack (design §6)
 
-- **NEW: the restart.** It is the source of truth for all new work.
-  - `docs/restart/2026-11-24-task5-handover.md` is where to start.
-  - `docs/superpowers/specs/2026-11-24-nosh-restart-design.md` is the
-    approved design: stack, scope, style, project order.
-  - `docs/superpowers/plans/` holds the plans. The current one is
-    spec extraction.
-  - `docs/superpowers/specs/nosh-v2/` holds the extracted spec, once it
-    exists.
-  - `docs/restart/style-log.md` is the locked visual style.
-- **OLD: the v1 app (legacy).** That's `backend/`, `frontend/`, `packages/`
-  and every other doc under `docs/` (`index.md`, `architecture.md`,
-  `design-system.md`, `decisions.md` entries before 2026-11-24, `backlog.md`
-  outside its "nosh restart" section, `handover/`).
-  - It describes and runs what is in production today.
-  - Treat it as **input to spec extraction**, not as guidance for new work.
-  - Don't add features to it.
-  - It will be tagged `legacy-v1`, kept on a `legacy` branch, and removed
-    from `main` (plan Task 5).
+React + TypeScript SPA (Vite, TanStack Router + Query, Tailwind, shadcn/ui on
+Base UI `base-nova`, Motion) served by a Hono API on Node 22: one container.
+PostgreSQL with Drizzle ORM + migrations, pg-boss for import jobs, Better Auth
+for accounts, Vitest + Playwright for tests. Prefer boring, popular libraries.
 
-The rest of this file is the v1 instructions. Where they conflict with the
-restart design (e.g. the Teaching section, the "Planned (post-MVP)" list, the
-old design system), **the restart design wins**.
+## Sources of truth
 
-## Workflow
+- **Behaviour:** the spec in `docs/superpowers/specs/nosh-v2/`. Every test
+  cites the criterion IDs it covers (e.g. `REC-07`). Never renumber IDs.
+- **UI:** design doc §7 and `docs/restart/style-log.md` are normative. They
+  win over any design plugin or generic shadcn look.
+- **Old app:** the v1 code, tests and ADRs are on the `legacy` branch (tag
+  `legacy-v1`). Read them for lookups only; never port code from them.
+  The spec checker needs it: `node docs/superpowers/specs/nosh-v2/tools/check-spec.mjs --repo <legacy checkout>`.
 
-Before starting significant work, consult docs/index.md.
+## How work happens
 
-Explain trade-offs when proposing major architectural changes.
+- One superpowers cycle per feature group, in design §8 order: brainstorm →
+  plan (`superpowers:writing-plans`) → red-green TDD → review.
+- Always work in a worktree under `.claude/worktrees/<name>`, never in the
+  main checkout.
+- Strict TypeScript; lint- and test-clean before every commit.
+- Any push, PR or production action needs the owner's explicit yes.
 
-Do not implement features from the "Planned (post-MVP)" list in docs/index.md
-unless explicitly asked to — confirm scope before building ahead of it.
+## Docs
 
-## Code standards
-
-Prefer simple, maintainable solutions.
-
-Do not introduce unnecessary dependencies.
-
-Write TypeScript in strict mode (frontend and backend).
-
-Add or update tests (Vitest/Jest, React Testing Library) for new or changed
-logic rather than leaving it uncovered.
-
-Run ESLint/Prettier-clean code; don't leave lint errors for later.
-
-## Teaching
-
-This project is a deliberate learning exercise. Act as a mentor, not just an
-implementer: when introducing a concept or pattern I haven't used before
-(hooks, middleware, migrations, JSX idioms, etc.), explain what it is and why
-it's the idiomatic choice before or while writing it — don't just hand me
-working code silently.
-
-Where relevant, relate new concepts to their closest Angular/Java equivalent,
-since that's my existing frame of reference.
-
-## Documentation
-
-Documentation is part of the project.
-
-Keep architecture, deployment and decision documents synchronized with the implementation.
-
-Record important design decisions in docs/decisions.md.
-
-Keep docs/backlog.md current: add new todo items as they're identified, and
-when an item is finished, move it to Completed with the date and a short note
-on what actually happened.
+- Record decisions in `docs/decisions.md` (short entries, newest last).
+- Keep `docs/backlog.md` current; move finished items to Completed with a date.
+- `docs/deployment.md` arrives with the skeleton deploy.
