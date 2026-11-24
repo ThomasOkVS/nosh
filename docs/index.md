@@ -1,5 +1,12 @@
 # Documentation
 
+> **⚠️ Legacy (v1) docs. nosh is being restarted (2026-11-24).** This file
+> and the docs it lists describe the current v1 app in production. For new
+> work, start at
+> [restart/2026-11-24-execution-handover.md](restart/2026-11-24-execution-handover.md)
+> and the approved
+> [restart design](superpowers/specs/2026-11-24-nosh-restart-design.md).
+
 Nosh is a self-hosted, subscription-free recipe manager — and a hands-on
 project for the maintainer to learn React, Node.js, and PostgreSQL, a
 deliberately different stack from their day job (Angular/Java), chosen for its

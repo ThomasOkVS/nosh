@@ -18,13 +18,18 @@ Suggested opener:
 | Spec-extraction plan | Written and committed, **not started.** [plans/2026-11-24-nosh-spec-extraction.md](../superpowers/plans/2026-11-24-nosh-spec-extraction.md) |
 | Execution method | **Subagent-driven** (owner's choice): `superpowers:subagent-driven-development` |
 | Decision log / backlog | `docs/decisions.md` has the 2026-11-24 restart entry. `docs/backlog.md` has a "nosh restart (2026-11-24)" section. |
-| Branch | `claude/nosh-superpowers-design-97c95b`, in worktree `.claude/worktrees/nosh-superpowers-design-97c95b`. 6 commits ahead of `main`. **Not pushed, no PR.** |
-| SDD workspace | `.superpowers/sdd/2026-11-24-nosh-spec-extraction/` was created in that worktree (git-ignored, empty). There's **no ledger yet.** Start fresh. |
+| Branch | Everything above is **merged into `main`** (2026-11-24), together with "legacy" banners on the old docs and a restart section at the top of `CLAUDE.md`. |
+| SDD workspace | None yet. There's **no ledger.** Start fresh. |
 
-**Where to run it:** carry on in the same worktree/branch, or in a new
-worktree branched from `claude/nosh-superpowers-design-97c95b`. **Not from
-`main`**, which doesn't have the design or the plan yet. Never in the main
-checkout (always use worktrees).
+**Where to run it:** a new worktree branched from `main`
+(`.claude/worktrees/<name>`), never the main checkout.
+
+**Old vs new in this repo:** see the top of `CLAUDE.md`. In short:
+- **New (the restart):** `docs/restart/`, `docs/superpowers/`, the 2026-11-24
+  entry in `docs/decisions.md`, and the "nosh restart" section in
+  `docs/backlog.md`.
+- **Legacy (v1):** everything else. That's the input to spec extraction, not
+  guidance.
 
 ## Settled with the owner (don't reopen)
 
@@ -81,12 +86,10 @@ from the brainstorm session. This branch doesn't touch them:
   (plugins incl. `frontend-design`, `modern-web-guidance`), `.gitignore`
   (`.superpowers/`), `skills-lock.json`, `backend/Dockerfile.dev`,
   `frontend/Dockerfile.dev`.
-- **Untracked:** `.agents/skills/{shadcn,migrate-radix-to-base}/`,
-  `.claude/skills/{shadcn,migrate-radix-to-base}/`, and **`docs/restart/`**,
-  the original copies of the handover and style log. They are now committed
-  on this branch, so delete the untracked originals in the main checkout
-  before pulling the merged branch into it. Otherwise git refuses: "untracked
-  working tree files would be overwritten".
+- **Untracked:** `.agents/skills/{shadcn,migrate-radix-to-base}/` and
+  `.claude/skills/{shadcn,migrate-radix-to-base}/`. (The untracked
+  `docs/restart/` originals were removed when this branch was merged. The
+  tracked copies are identical.)
 - `.superpowers/style-spike/` is the git-ignored style prototype. Reference
   only.
 

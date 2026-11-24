@@ -1,5 +1,8 @@
 # Architecture
 
+> **⚠️ Legacy (v1).** Describes the pre-restart app. Superseded for new work by the
+> [restart design](superpowers/specs/2026-11-24-nosh-restart-design.md).
+
 Status: design for MVP. Update this doc as implementation reveals better answers —
 it should always describe the system as it actually is (or, for not-yet-built
 pieces, as currently intended), not just as it was first imagined.

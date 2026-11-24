@@ -1,5 +1,8 @@
 # Decisions
 
+> Entries before 2026-11-24 are about the v1 app (legacy). The
+> [2026-11-24 restart entry](#2026-11-24-nosh-restart) at the bottom starts the new app.
+
 A running log of notable decisions and the reasoning behind them. Append new
 entries; don't edit history. If a decision is reversed or superseded, add a new
 dated entry that says so and links back to the one it replaces.

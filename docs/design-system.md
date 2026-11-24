@@ -1,5 +1,8 @@
 # Design system
 
+> **⚠️ Legacy (v1).** Describes the pre-restart app. Superseded for new work by the
+> [restart design](superpowers/specs/2026-11-24-nosh-restart-design.md) and [restart/style-log.md](restart/style-log.md).
+
 Nosh's visual language: colors, type, shape, motion, and component rules.
 Listed in [index.md](index.md)'s Contents alongside the other normative docs
 — consult it before any UI work, same as architecture.md or decisions.md. If
