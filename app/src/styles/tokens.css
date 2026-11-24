@@ -1,0 +1,55 @@
+/* P4 palette (design §7, style log round 5). Light under :root, dark follows
+   the system (PWA-32). Names match shadcn's so base-nova components work. */
+@theme {
+  --font-display: "DM Serif Display", Georgia, serif;
+  --font-sans: "DM Sans Variable", system-ui, sans-serif;
+}
+
+:root {
+  --background: oklch(0.985 0.004 90); /* chalk paper */
+  --foreground: oklch(0.2 0.01 260); /* ink */
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.2 0.01 260);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.2 0.01 260);
+  --primary: oklch(0.2 0.01 260);
+  --primary-foreground: oklch(0.985 0.004 90);
+  --secondary: oklch(0.96 0.006 90);
+  --secondary-foreground: oklch(0.2 0.01 260);
+  --muted: oklch(0.96 0.006 90);
+  --muted-foreground: oklch(0.45 0.01 260);
+  --accent: oklch(0.86 0.15 88); /* bright mustard */
+  --accent-foreground: oklch(0.2 0.01 260);
+  --highlight: oklch(0.6 0.13 75); /* mustard */
+  --destructive: oklch(0.55 0.2 27);
+  --border: oklch(0.91 0.006 90);
+  --input: oklch(0.91 0.006 90);
+  --ring: oklch(0.86 0.15 88);
+  --radius: 0.75rem;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: oklch(0.18 0.01 260);
+    --foreground: oklch(0.985 0.004 90); /* chalk */
+    --card: oklch(0.23 0.01 260);
+    --card-foreground: oklch(0.985 0.004 90);
+    --popover: oklch(0.23 0.01 260);
+    --popover-foreground: oklch(0.985 0.004 90);
+    --primary: oklch(0.985 0.004 90);
+    --primary-foreground: oklch(0.2 0.01 260);
+    --secondary: oklch(0.27 0.01 260);
+    --secondary-foreground: oklch(0.985 0.004 90);
+    --muted: oklch(0.27 0.01 260);
+    --muted-foreground: oklch(0.72 0.01 260);
+    --accent: oklch(0.86 0.15 88);
+    --accent-foreground: oklch(0.2 0.01 260);
+    --highlight: oklch(0.6 0.13 75);
+    --destructive: oklch(0.7 0.19 22);
+    --border: oklch(1 0 0 / 12%);
+    --input: oklch(1 0 0 / 16%);
+    --ring: oklch(0.86 0.15 88);
+    color-scheme: dark;
+  }
+}
