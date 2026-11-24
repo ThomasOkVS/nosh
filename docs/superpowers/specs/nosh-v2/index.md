@@ -9,15 +9,15 @@ the stack, scope and project order.
 
 | File | Prefix | Purpose | Status |
 |---|---|---|---|
-| `auth.md` | AUTH | Signup, login, sessions, route protection, user menu | pending |
-| `recipes.md` | REC | Recipe CRUD, ingredients, steps, tags, images, detail and form pages | pending |
-| `collections.md` | COL | Nested collections, breadcrumbs, moving and dragging recipes | pending |
-| `search.md` | SRCH | Full-text library search | pending |
-| `units.md` | UNIT | Scaling, unit conversion, recipe language, ingredient parsing, preferences | pending |
-| `import.md` | IMP | Magic import from URLs and social video, import jobs, LLM use | pending |
-| `settings.md` | SET | Settings page, LLM model choice, usage estimate, recipe preferences | pending |
-| `pwa-push.md` | PWA | Installable PWA, service worker, web push notifications | pending |
-| `security.md` | SEC | Origin check, rate limiting, error handling, SSRF guard, env config | pending |
+| `auth.md` | AUTH | Signup, login, sessions, route protection, user menu | drafted |
+| `recipes.md` | REC | Recipe CRUD, ingredients, steps, tags, images, detail and form pages | drafted |
+| `collections.md` | COL | Nested collections, breadcrumbs, moving and dragging recipes | drafted |
+| `search.md` | SRCH | Full-text library search | drafted |
+| `units.md` | UNIT | Scaling, unit conversion, recipe language, ingredient parsing, preferences | drafted |
+| `import.md` | IMP | Magic import from URLs and social video, import jobs, LLM use | drafted |
+| `settings.md` | SET | Settings page, LLM model choice, usage estimate, recipe preferences | drafted |
+| `pwa-push.md` | PWA | Installable PWA, service worker, web push notifications | drafted |
+| `security.md` | SEC | Origin check, rate limiting, error handling, SSRF guard, env config | drafted |
 
 ## Set aside
 
