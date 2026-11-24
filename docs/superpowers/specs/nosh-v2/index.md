@@ -9,18 +9,17 @@ the stack, scope and project order.
 
 | File | Prefix | Purpose | Status |
 |---|---|---|---|
-| `auth.md` | AUTH | Signup, login, sessions, route protection, app shell, account entries (username, log out, version) | reviewed |
-| `recipes.md` | REC | Recipe CRUD, ingredients, steps, tags, images, detail and form pages | reviewed |
-| `collections.md` | COL | Nested collections, breadcrumbs, moving and dragging recipes | reviewed |
-| `search.md` | SRCH | Full-text library search | reviewed |
-| `units.md` | UNIT | Scaling, unit conversion, recipe language, ingredient parsing, preferences | reviewed |
-| `import.md` | IMP | Magic import from URLs and social video, import jobs, LLM use | reviewed |
-| `settings.md` | SET | Settings page, LLM model choice, usage estimate, recipe preferences | reviewed |
-| `pwa-push.md` | PWA | Installable PWA, service worker, light/dark appearance, web push notifications | reviewed |
-| `security.md` | SEC | Origin check, rate limiting, error handling, SSRF guard, env config | reviewed |
+| `auth.md` | AUTH | Signup, login, sessions, route protection, app shell, account entries (username, log out, version) | approved |
+| `recipes.md` | REC | Recipe CRUD, ingredients, steps, tags, images, detail and form pages | approved |
+| `collections.md` | COL | Nested collections, breadcrumbs, moving and dragging recipes | approved |
+| `search.md` | SRCH | Full-text library search | approved |
+| `units.md` | UNIT | Scaling, unit conversion, recipe language, ingredient parsing, preferences | approved |
+| `import.md` | IMP | Magic import from URLs and social video, import jobs, LLM use | approved |
+| `settings.md` | SET | Settings page, LLM model choice, usage estimate, recipe preferences | approved |
+| `pwa-push.md` | PWA | Installable PWA, service worker, light/dark appearance, web push notifications | approved |
+| `security.md` | SEC | Origin check, rate limiting, error handling, SSRF guard, env config | approved |
 
-"Reviewed" means the consistency pass is done and the owner has answered every
-question (below). The spec still waits for the owner's approval (design §8 gate).
+Approved by the owner on 2026-11-24.
 
 ## Owner decisions (2026-11-24)
 
@@ -31,7 +30,7 @@ line naming what v1 did. Each area's Rationale lists its decisions.
 1. Login accepts any stored non-empty username; the format rules apply to sign-up only. AUTH-10, AUTH-23.
 2. Usernames are case-insensitive for uniqueness and login; the importer stops on a case collision. AUTH-06, AUTH-07, AUTH-23.
 3. Imports stay stored converted to the owner's units (lossy, as today). No change (UNIT-35).
-4. Every photo is migrated and kept; the UI shows one cover (v1's first photo), and a new photo becomes the cover. Replacing the cover asks first, then the new photo becomes the cover and the old one is deleted; the swap is never blocked by the 20-photo cap; other v1 photos stay stored but are never shown or promoted, so removing the cover leaves no photo. Applier choice, owner to confirm: setting a cover on a recipe with none is not blocked by the cap either. REC-14, REC-15, REC-17, REC-18, REC-21, REC-33, REC-34, REC-39.
+4. Every photo is migrated and kept; the UI shows one cover (v1's first photo), and a new photo becomes the cover. Replacing the cover asks first, then the new photo becomes the cover and the old one is deleted; the swap is never refused for the number of stored photos; other v1 photos stay stored but are never shown or promoted, so removing the cover leaves no photo. Setting a cover on a recipe with none is never refused either. REC-14, REC-15, REC-17, REC-18, REC-21, REC-33, REC-34, REC-39.
 5. Tags are case-insensitive, stored lower-case and merged on migration. REC-07, REC-10, REC-35, SRCH-21.
 6. Per-user caps stay; import starts are also capped at 30 per client IP per hour. SEC-16, SEC-59, IMP-06.
 7. Production refuses to start without a session secret. SEC-57.
@@ -39,11 +38,11 @@ line naming what v1 did. Each area's Rationale lists its decisions.
 9. The Settings screen gets an Account section (username, "Log out", version at the bottom) and a Notifications toggle; the "Notify me" prompt stays in the import screen; the dark/light override is dropped; search stays on the library screen. AUTH-21, SET-30 (new), PWA-28 (AUTH-22, SRCH-05, SET-28 stay struck).
 10. Deleting a folder deletes everything inside it, with the count warning, as today. No change (COL-15, COL-16).
 11. Drag and drop stays for desktop; recipe cards in the folder view get a move action that works on touch. COL-25 (new).
-12. Caps: title 200 characters, collection name 100, 100 ingredients, 100 steps, 30 tags, 20 photos per recipe; the tag field stops at 30; an imported draft over a cap opens in the form, which refuses to save until it is within (applier choice). REC-03, REC-14, REC-15, REC-28, REC-35, COL-09, IMP-23.
+12. Caps: title 200 characters, collection name 100, 100 ingredients, 100 steps, 30 tags; the tag field stops at 30; an imported draft over a cap opens in the form, which refuses to save until it is within. The 20-photos-per-recipe cap was dropped at approval: one cover per recipe (Q4) makes it unreachable. REC-03, REC-14, REC-15, REC-28, REC-35, COL-09, IMP-23.
 13. HEIC/HEIF photos are accepted on upload and converted to JPEG. REC-14, REC-33, SEC-25.
 14. Search matching stays as today; accents and partial words go to the backlog. No change (SRCH-16, SRCH-17).
 15. A duplicate sibling folder name gives 409 "A collection with that name already exists here", shown in the form. COL-10.
-16. The create form takes a photo, and saving lands on the recipe page; a photo chosen on the form beats the imported one, which is shown as the form's preview (preview: applier choice, owner to confirm). REC-30, REC-33, REC-36, IMP-45.
+16. The create form takes a photo, and saving lands on the recipe page; a photo chosen on the form beats the imported one, which is shown as the form's preview. REC-30, REC-33, REC-36, IMP-45.
 17. A prep or cook time of 0 is refused (form and API); a stored 0 is carried over as none; import clean-up turns a 0 into none. REC-03, REC-28, REC-29, IMP-21.
 18. Photo upload errors show the server's reason. REC-33.
 19. Sign-up asks for username and password only; email stays an optional stored field for imported accounts. AUTH-01, AUTH-04 (struck), AUTH-06, AUTH-07, AUTH-20, AUTH-23.
@@ -118,7 +117,7 @@ The consistency pass fixed the losing side where two areas disagreed.
 | URL guard on import | IMP, SEC | Blocked literals answer 400 "This URL cannot be imported" before a job exists (IMP-03, SEC-34, SEC-35); a name that resolves inward fails the job with the same message and status 400 (IMP-03, SEC-36); every redirect hop is re-checked (IMP-15, SEC-39); yt-dlp goes through the same guard and fails closed with 503 (IMP-19, SEC-43, SEC-48). Fixed: SEC-48 now cites the yt-dlp guard tests that IMP lists under Tests not carried. |
 | Photo storage and serving | REC, SEC | Photos are checked by content, stored under random names, and served only through an owner-checked route (REC-14, REC-16, SEC-24, SEC-25); deleting a recipe or a folder removes the files too (REC-13, COL-15). A recipe shows one cover; a new photo replaces it as one step after a confirmation, and hidden v1 photos are never shown or promoted (REC-15, REC-33; owner, Q4). |
 | Theme colour | PWA, style log | Chalk paper from the P4 palette is the theme and background colour, the same in the manifest and the page head (PWA-04; owner, Q26). |
-| Length limits | REC, COL | Recipe title at most 200 characters, at most 100 ingredients, 100 steps, 30 tags and 20 photos per recipe (REC-03, REC-14, REC-15, REC-28, REC-35); collection name at most 100 characters (COL-09). Replacing or setting the cover is never refused by the photo cap (REC-15). An imported draft over a cap is not a failed import; the form refuses to save it until it is within (IMP-23, REC-28). Owner, Q12. |
+| Length limits | REC, COL | Recipe title at most 200 characters, at most 100 ingredients, 100 steps and 30 tags (REC-03, REC-28, REC-35); collection name at most 100 characters (COL-09). There is no photo cap: a recipe holds one cover (REC-14, REC-15). An imported draft over a cap is not a failed import; the form refuses to save it until it is within (IMP-23, REC-28). Owner, Q12. |
 
 ## Set aside
 

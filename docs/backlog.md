@@ -16,8 +16,6 @@ choice was made). This is just a todo list.
 ## Backlog
 
 ### nosh restart (2026-11-24)
-- [ ] Extract the testable spec from the current app (plan:
-      [superpowers/plans/2026-11-24-nosh-spec-extraction.md](superpowers/plans/2026-11-24-nosh-spec-extraction.md)).
 - [ ] Owner approves spec → tag `legacy-v1`, keep `legacy` branch, wipe `main`.
 - [ ] Fix the shadcn CLI / pnpm invocation on Windows before scaffolding.
 - [ ] Build feature groups (skeleton + auth → recipes → collections → search
@@ -99,6 +97,10 @@ priority.
 
 ## Completed
 
+- **2026-11-24** — Testable spec extracted from the current app
+  ([spec](superpowers/specs/nosh-v2/index.md),
+  [plan](superpowers/plans/2026-11-24-nosh-spec-extraction.md)): 9 areas,
+  330 criteria; the owner accepted all defaults and approved the spec.
 - **2026-11-24** — Restart design written and approved
   ([spec](superpowers/specs/2026-11-24-nosh-restart-design.md),
   [decision](decisions.md#2026-11-24-nosh-restart)). A builder check added

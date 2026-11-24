@@ -141,8 +141,8 @@ Cites: `backend/src/routes/recipes.test.ts` "updates a recipe, replacing its ing
 Cites: `backend/src/routes/recipes.test.ts` "deletes a recipe", "refuses to delete another user's recipe", `backend/migrations/1700000000002_create-ingredients.js`, `backend/migrations/1700000000005_create-recipe-images.js`
 
 ### REC-14 Photo upload: types, size, checks
-**Given** an owner's recipe **When** they upload a photo (one file per request) **Then** it is accepted only if it is JPEG, PNG, WEBP or HEIC/HEIF, at most 5 MB, and its actual bytes match the declared type (a text or HTML file labelled as an image is refused). A HEIC/HEIF photo is converted and stored as JPEG. It is stored under a generated unguessable name with the extension for its stored type. The answer is 201 with the image, which becomes the recipe's cover or replaces it (REC-15). A wrong type, a mismatched file, a file over 5 MB or a missing file is a 400 with a message saying which, and nothing is stored. The 20-photo cap never refuses an upload (REC-15).
-Decision: owner 2026-11-24, index Q4, Q12 and Q13 (v1 refused HEIC/HEIF, added every upload beside the existing photos, and had no cap on photos per recipe)
+**Given** an owner's recipe **When** they upload a photo (one file per request) **Then** it is accepted only if it is JPEG, PNG, WEBP or HEIC/HEIF, at most 5 MB, and its actual bytes match the declared type (a text or HTML file labelled as an image is refused). A HEIC/HEIF photo is converted and stored as JPEG. It is stored under a generated unguessable name with the extension for its stored type. The answer is 201 with the image, which becomes the recipe's cover or replaces it (REC-15). A wrong type, a mismatched file, a file over 5 MB or a missing file is a 400 with a message saying which, and nothing is stored. There is no cap on photos per recipe; a recipe holds one cover (REC-15).
+Decision: owner 2026-11-24, index Q4 and Q13 (v1 refused HEIC/HEIF and added every upload beside the existing photos)
 Cites: `backend/src/routes/recipes.test.ts` "uploads an image to a recipe", "rejects an unsupported image type", `backend/src/services/imageSniff.ts`, `backend/migrations/1700000000005_create-recipe-images.js`, ADR 2026-08-05
 
 ### REC-15 Photos: one cover, the rest kept hidden
@@ -152,9 +152,9 @@ Cites: `backend/src/routes/recipes.test.ts` "uploads an image to a recipe", "rej
 - adding a photo to a recipe that has a cover replaces it as one step: the new photo becomes the cover and the old cover's record and file are deleted; if the new photo is refused, the old cover stays;
 - removing the cover (REC-17) leaves the recipe with no photo;
 - photos carried over from v1 keep their order; the first one (lowest position) becomes the cover, and every other one stays stored but is never shown and never becomes the cover, also not when the cover is removed or replaced;
-- a recipe never gains a stored photo beside its cover, so the 20-photo cap never refuses a replace or a new cover, however many hidden v1 photos the recipe holds;
+- a recipe never gains a stored photo beside its cover, and there is no cap on photos per recipe, so a replace or a new cover is never refused for the number of hidden v1 photos the recipe holds;
 - there is no way to reorder photos.
-Decision: owner 2026-11-24, index Q4 and Q12 (v1 appended a new photo after the last one, kept every photo, showed the lowest-position photo as the cover so removing it promoted the next one, and had no cap)
+Decision: owner 2026-11-24, index Q4 (v1 appended a new photo after the last one, kept every photo, and showed the lowest-position photo as the cover so removing it promoted the next one)
 Cites: `backend/src/routes/recipes.test.ts` "uploads an image to a recipe", `backend/src/repositories/recipes.ts`, `backend/migrations/1700000000005_create-recipe-images.js`
 
 ### REC-16 Photos are served only to their owner
@@ -234,7 +234,7 @@ Cites: `frontend/src/pages/RecipeFormPage.test.tsx` "remounts (does not carry ov
 ### REC-33 Form: cover photo
 **Given** the create or edit form **Then** a Photo section shows the current cover photo, if any, with a remove control, and lets the owner choose a file or drop one onto the drop area to add or replace it; the accepted types (JPEG, PNG, WEBP, HEIC) are stated; only the first file is taken when several are chosen.
 - On the edit form with no cover, the chosen photo is uploaded at once and becomes the cover.
-- On the edit form with a cover, choosing or dropping a photo first asks "Replace this photo? The current one will be deleted." (a confirmation as in REC-39, confirm label "Replace"); cancelling uploads nothing and keeps the current cover; confirming uploads the new photo, which replaces the cover and deletes the old one (REC-15). The photo cap never blocks this.
+- On the edit form with a cover, choosing or dropping a photo first asks "Replace this photo? The current one will be deleted." (a confirmation as in REC-39, confirm label "Replace"); cancelling uploads nothing and keeps the current cover; confirming uploads the new photo, which replaces the cover and deletes the old one (REC-15).
 - While uploading the area shows "Uploading…" and is disabled. A failed upload keeps the current cover, if any, and shows the server's reason (for example the wrong type or over 5 MB), or "Failed to upload image" when there is none.
 - On the create form nothing is stored yet: the chosen photo is shown as a preview, choosing another replaces the preview without asking, and it is uploaded right after the recipe is created; if that upload fails, the recipe stays saved and the server's reason is shown.
 Decision: owner 2026-11-24, index Q4, Q16 and Q18 (v1 listed every photo as a thumbnail, added photos without removing any, said "Save the recipe first to add photos." on the create form, and showed only "Failed to upload image")
@@ -279,22 +279,23 @@ Cites: `frontend/src/components/Skeleton.tsx`, `frontend/src/components/EmptySta
 - **REC-13:** deletion removes image files on disk as well as rows; files are on a local volume (ADR 2026-08-05), so nothing else would clean them up.
 - **REC-14, REC-16, REC-18:** photos are checked by their bytes, not just the claimed type, because both the browser and a remote server only claim a type (see SEC); they are served only through an owner-checked route, never a static folder (ADR 2026-08-06). Names are random so files cannot be guessed.
 - **REC-18, REC-36:** the photo is attached by a second request after the recipe is saved rather than staged before it, to avoid orphaned uploads for imports that are never saved (ADR 2026-08-13). It is best-effort, so a failed photo never undoes a save.
-- **REC-15:** the multi-image data model predates the editorial redesign; the UI never grew a gallery, so only the cover is really used. The design (§11) requires every image to survive migration regardless. The cover is marked, not derived from position, so removing it never surfaces a hidden v1 photo the owner has not seen in v2. Because a recipe never gains a photo beside its cover, the 20-photo cap (Q12) is never what refuses an upload: it bounds nothing new, and v1 recipes keep all their photos however many.
+- **REC-15:** the multi-image data model predates the editorial redesign; the UI never grew a gallery, so only the cover is really used. The design (§11) requires every image to survive migration regardless. The cover is marked, not derived from position, so removing it never surfaces a hidden v1 photo the owner has not seen in v2. There is no photo cap: with one cover per recipe a cap would be unreachable, so the owner dropped it (2026-11-24), and v1 recipes keep all their photos however many.
 - **REC-36 preview:** showing the discovered photo on the form makes the Q16 precedence a knowing choice (final review, Minor 7). How the preview is loaded (directly or through the server) is the builder's call.
 - **REC-30, REC-33:** v1 landed on the edit form after a create because photos need a saved recipe id. The owner chose to take the photo on the create form and upload it right after the create (index Q16), the same best-effort pattern as the import photo (ADR 2026-08-13).
 
 ### Owner decisions (2026-11-24)
 The owner accepted every default in index.md on 2026-11-24.
-- Q4 several photos per recipe: every photo is migrated and kept; the UI shows and edits one replaceable cover; a new photo becomes the cover. REC-14, REC-15, REC-17, REC-18, REC-21, REC-33, REC-34, REC-39; gallery row dropped. The owner also confirmed these sub-rules on 2026-11-24 (final review, Important 4):
+- Q4 several photos per recipe: every photo is migrated and kept; the UI shows and edits one replaceable cover; a new photo becomes the cover. REC-14, REC-15, REC-17, REC-18, REC-21, REC-33, REC-34, REC-39; gallery row dropped. The owner also decided these sub-rules on 2026-11-24 (final review, Important 4):
   - replacing the cover asks for confirmation first ("Replace this photo? The current one will be deleted."), the same as deleting a photo (REC-33, REC-34, REC-39);
   - after confirmation the new photo becomes the cover and the old cover is deleted (REC-15, REC-33);
   - extra photos migrated from v1 stay stored but are never shown and never promoted, so removing the cover leaves the recipe with no photo (REC-15, REC-17, REC-21, REC-34);
-  - replacing the cover is a swap, so it is never blocked by the 20-photo cap (REC-14, REC-15).
-  - Applier choice beyond the confirmed sub-rules, owner to confirm: setting a cover on a recipe that has none is not blocked by the cap either, so a v1 recipe with 20 or more hidden photos whose cover was removed can still get a new one (REC-15).
+  - replacing the cover is a swap, never refused for the number of stored photos (REC-14, REC-15);
+  - setting a cover on a recipe that has none is never refused either, however many hidden v1 photos it holds (REC-15).
 - Q5 tag case: tags are case-insensitive, stored lower-case, merged on migration. REC-07, REC-10, REC-35 (and SRCH-21).
-- Q12 caps: title 200 characters, 100 ingredients, 100 steps, 30 tags, 20 photos per recipe. The tag field stops at 30; an imported draft over a cap opens in the form, which refuses to save until it is within (applier choice from the final review, Minor 3). REC-03, REC-14, REC-15, REC-28, REC-35 (collection names: COL-09; imports: IMP-23).
+- Q12 caps: title 200 characters, 100 ingredients, 100 steps, 30 tags. The tag field stops at 30; an imported draft over a cap opens in the form, which refuses to save until it is within. REC-03, REC-28, REC-35 (collection names: COL-09; imports: IMP-23).
+- Photo cap dropped (owner, 2026-11-24, at spec approval): the 20-photos-per-recipe cap from Q12 is removed, because one cover per recipe (Q4) makes it unreachable. REC-14, REC-15.
 - Q13 HEIC: accepted on upload and converted to JPEG. REC-14, REC-33 (and SEC-25).
-- Q16 after saving a new recipe: the create form takes a photo and the owner lands on the recipe page; a photo chosen on the form beats the imported one. REC-30, REC-33, REC-36 (and IMP-45). The imported photo is shown as the form's preview so the owner chooses knowingly (applier choice from the final review, Minor 7, owner to confirm).
+- Q16 after saving a new recipe: the create form takes a photo and the owner lands on the recipe page; a photo chosen on the form beats the imported one. REC-30, REC-33, REC-36 (and IMP-45). The imported photo is shown as the form's preview so the owner chooses knowingly.
 - Q17 zero times: 0 minutes is refused in the form and by the API; a stored 0 is carried over as none. REC-03, REC-28, REC-29.
 - Q18 upload errors: the server's reason is shown. REC-33.
 - Q35 duplicating a recipe: out of scope for the first release. No criterion.

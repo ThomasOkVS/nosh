@@ -277,7 +277,7 @@ Cites: `backend/src/llm/geminiClient.test.ts` "reports token usage, counting thi
 The owner accepted every default in index.md on 2026-11-24.
 - Q6 rate-limit key: the per-user cap stays and a per-IP cap of 30 starts per hour is added. IMP-06 (and SEC-59).
 - Q9 notifications: the "Notify me" prompt stays in the import screen; the on/off toggle moves to Settings. No criterion changed here (IMP-44; PWA-28, SET-30).
-- Q12 caps: a draft over a recipe cap is not a failed import; it opens in the review form, which refuses to save until it is within the caps (applier choice from the final review, Minor 3). IMP-23.
+- Q12 caps: a draft over a recipe cap is not a failed import; it opens in the review form, which refuses to save until it is within the caps. IMP-23.
 - Q16 photo on the create form: a photo the owner chose on the form wins over the draft's photo, which is shown as the preview. IMP-45.
 - Q17 zero times: the clean-up treats a prep or cook time of 0 as none, the same as servings. IMP-21.
 - Q21 AI provider wording: one plain message for every AI rejection. IMP-24.
