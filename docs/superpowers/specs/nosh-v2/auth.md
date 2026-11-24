@@ -66,7 +66,7 @@ is not logged in.
 ## Acceptance criteria
 
 ### AUTH-01 Sign up creates an account and logs in
-**Given** the server allows sign-ups and nobody is logged in **When** a visitor submits a username and a password that pass validation **Then** an account is created with no email, the response is 201 with the user's `id`, `email` (null) and `username` (never the password or its hash), and the visitor is logged in immediately, so asking for the current user returns that account. The browser then lands on the home page.
+**Given** the server allows sign-ups and nobody is logged in **When** a visitor submits a username and a password that pass validation **Then** an account is created; the sign-up form asks only for a username and a password, and no email is asked for or shown. The response is 201 and identifies the new account by its id and username; it never contains the password or its hash. The visitor is logged in immediately, so asking for the current user returns that account. The browser then lands on the home page.
 Decision: owner 2026-11-24, index Q19 (v1 required an email on sign-up)
 Cites: `backend/src/routes/auth.test.ts` "signs a new user up and starts a session"
 
@@ -93,7 +93,7 @@ Decision: owner 2026-11-24, index Q2 and Q19 (v1 compared usernames case-sensiti
 Cites: `backend/src/routes/auth.test.ts` "rejects signup with a duplicate username"
 
 ### AUTH-07 Log in with username and password
-**Given** an account exists **When** the owner submits its username, in any letter case, and the correct password **Then** the response is 200 with `id`, `email` (null when the account has none) and `username` as stored, and the browser holds a session, so asking for the current user returns that account. The login form asks for "Username" and "Password" only, never email.
+**Given** an account exists **When** the owner submits its username, in any letter case, and the correct password **Then** the response is 200 and identifies the account by its id and its username as stored (never the password or its hash), and the browser holds a session, so asking for the current user returns that account. The login form asks for "Username" and "Password" only, never email, and no email is shown for an account that has none.
 Decision: owner 2026-11-24, index Q2 (v1 matched the username case-sensitively)
 Cites: `backend/src/routes/auth.test.ts` "logs an existing user in", `frontend/src/pages/LoginPage.test.tsx` "submits the entered credentials", ADR 2026-08-06 (Login switched from email to username)
 
@@ -119,7 +119,7 @@ Cites: `backend/src/routes/auth.ts`; design §9
 Cites: `backend/src/app.ts`; design §9. The full cookie requirements are owned by SEC.
 
 ### AUTH-13 Current-user lookup
-**Given** a logged-in browser **When** it asks for the current user **Then** it gets 200 with `id`, `email` and `username`. **When** there is no session, or the session points at an account that no longer exists **Then** it gets 401 "Not authenticated".
+**Given** a logged-in browser **When** it asks for the current user **Then** it gets 200 identifying the account by its id and username, never containing the password or its hash. **When** there is no session, or the session points at an account that no longer exists **Then** it gets 401 "Not authenticated".
 Cites: `backend/src/routes/auth.test.ts` "rejects /auth/me without a session", `backend/src/routes/auth.ts`
 
 ### AUTH-14 Log out
@@ -153,9 +153,9 @@ Decision: owner 2026-11-24, index Q19 (v1's sign-up form also had an email field
 Cites: `frontend/src/pages/LoginPage.tsx`, `frontend/src/pages/SignupPage.tsx`
 
 ### AUTH-21 The Settings screen shows who is logged in and which build is running
-**Given** a logged-in owner **When** they open the Settings screen **Then** an Account section shows their username (truncated if long on small screens) and a "Log out" action (AUTH-14), and the app version appears at the bottom of the screen: a short commit identifier in production builds, "dev" otherwise, with the full commit available on request (for example on hover). **Given** nobody is logged in **Then** none of this is shown.
+**Given** a logged-in owner **When** they open the Settings screen **Then** an Account section shows their username (truncated if long on small screens) and a "Log out" action (AUTH-14), and the app version appears at the bottom of the screen: a short commit identifier in production builds, "dev" otherwise, with the full commit available on request (for example on hover).
 Decision: owner 2026-11-24, index Q9 (v1 showed these in a menu under the username in the header)
-Cites: `frontend/src/components/UserMenu.test.tsx` "renders nothing while unauthenticated", "shows the username and opens the menu on click, with the version at the bottom", ADR 2026-08-19 (Header consolidated into a `UserMenu` dropdown)
+Cites: `frontend/src/components/UserMenu.test.tsx` "shows the username and opens the menu on click, with the version at the bottom", ADR 2026-08-19 (Header consolidated into a `UserMenu` dropdown)
 
 ### AUTH-22 ~~User menu behaviour~~
 Struck in the consistency pass. The header user menu is replaced by the design §7 navigation, so its open and close behaviour has no successor. Reaching Settings is AUTH-24. The manual dark/light toggle is dropped because dark mode follows the system (PWA-32). Its tests are listed under Tests not carried.
@@ -180,6 +180,8 @@ Cites: `frontend/src/components/Layout.tsx`, `frontend/src/App.tsx`, design §7
 - **AUTH-16:** the sign-up screen is reachable even when sign-ups are off; the server then answers 403. Not worth hiding the page.
 - **AUTH-21:** the owner asked for a visible way to tell which build is deployed. The short commit id is used because every published image is already tagged with it (ADR 2026-08-19).
 - **AUTH-23:** every table that belongs to a user carries its owner from the start, so the app stays multi-user-ready although it is single-user in practice (ADR 2026-08-05, Multi-user-ready schema). The ownership checks in every area (REC-08, COL-02, IMP-32) follow from it.
+- **AUTH-01, AUTH-07, AUTH-13 (no email on the wire):** the criteria pin what the owner and the client see (no email asked for or shown, the account identified by id and username, never a password or hash), not whether an `email` field is present in the response; that shape is the builder's.
+- **Auth-library fit check:** Q19 adds "accounts may have no email" (new accounts have none; imported ones keep theirs, AUTH-23) to the design §6 Better Auth fit check, next to username login, case-insensitive usernames and argon2 verification. The builder weighs it in that check; design §6 names hand-rolled sessions as the fallback.
 - **Login by username, not email (AUTH-07):** ADR 2026-08-06 (Login switched from email to username). Real accounts rather than a shared passphrase: ADR 2026-08-05 (Full login instead of a shared passphrase). Server-side, revocable sessions rather than stateless tokens: ADR 2026-08-06 (Backend MVP).
 
 ### Owner decisions (2026-11-24)
@@ -198,6 +200,7 @@ The owner accepted every default in index.md on 2026-11-24.
 - `frontend/src/components/UserMenu.test.tsx` "closes when clicking outside": open and close mechanics of the header user menu, which design §7 replaces.
 - `frontend/src/components/UserMenu.test.tsx` "closes on Escape": same reason.
 - `frontend/src/components/UserMenu.test.tsx` "opens the settings page and closes the menu": reaching Settings is carried by AUTH-24; closing the menu has no successor.
+- `frontend/src/components/UserMenu.test.tsx` "renders nothing while unauthenticated": the Settings screen is protected (AUTH-16), so there is no logged-out state in which the Account section could appear.
 - `backend/src/routes/auth.test.ts` "rejects signup with a duplicate email": the sign-up form no longer takes an email (owner, index Q19), so there is no duplicate-email case.
 
 ## Open questions for the owner

@@ -23,7 +23,7 @@ const SCAN = [
   'packages/units/src',
   'frontend/vite.config.ts',
 ];
-const BANNED = ['express', 'multer', 'cheerio', 'node-pg-migrate', 'connect-pg-simple', 'express-session', 'nginx'];
+const BANNED = ['express', 'multer', 'cheerio', 'node-pg-migrate', 'connect-pg-simple', 'express-session', 'nginx', 'pg Pool'];
 const VERDICTS = new Set(['keep', 'drop', 'owner?']);
 const RESTART_ADR = '2026-11-24: nosh is restarted from scratch';
 const NON_AREA = new Set(['index.md', '_template.md']);

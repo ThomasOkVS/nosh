@@ -89,4 +89,5 @@ test('restart ADR exempt', () => assert.ok(!checkSpec(ok).some((l) => l.includes
 test('uncited test file', () =>
   assert.match(run(removeCitation('a.test.ts')).join(), /\[uncited-test\] backend\/src\/a\.test\.ts/));
 test('banned word', () => assert.match(run(appendCriterionText('uses Express')).join(), /\[banned-word\] express/i));
+test('banned two-word name', () => assert.match(run(appendCriterionText('uses a pg Pool')).join(), /\[banned-word\] pg Pool/));
 test('planner criterion', () => assert.match(run(appendCriterionText('adds to the meal plan')).join(), /\[planner\]/));

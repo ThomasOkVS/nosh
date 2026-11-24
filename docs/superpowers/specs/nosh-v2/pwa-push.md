@@ -63,7 +63,7 @@ Decision: owner 2026-11-24, index Q24 (v1 used the old-brand Apple touch icon)
 Cites: `frontend/index.html`, `frontend/public/*`
 
 ### PWA-04 Manifest colours
-**Given** the manifest and page head **When** the app is installed or opened **Then** the manifest provides a background colour (shown on the launch splash) and a theme colour (shown in the OS UI), and the page head declares a theme colour too. All come from the locked P4 palette (design §7): the manifest's background and theme colours are both chalk paper, and the page head declares chalk paper as the theme colour, the same value as the manifest. With design §7's dark mode, the page head may add the dark-mode paper as the theme colour for dark appearance.
+**Given** the manifest and page head **When** the app is installed or opened **Then** the manifest provides a background colour (shown on the launch splash) and a theme colour (shown in the OS UI), and the page head declares a theme colour too. All come from the locked P4 palette (design §7): the manifest's background and theme colours are both chalk paper (`oklch(0.985 0.004 90)` in the style log; where a manifest or iOS needs another notation, its equivalent), and the page head declares chalk paper as the theme colour, the same value as the manifest. With design §7's dark mode, the page head may add the dark-mode paper as the theme colour for dark appearance.
 Decision: owner 2026-11-24, index Q26 (v1 had `#f6f1e7` background, `#b23a2e` manifest theme and `#1C1814` page-head theme)
 Cites: `frontend/vite.config.ts`, `frontend/index.html`, design §7, `docs/restart/style-log.md` (Round 5, P4)
 
@@ -96,7 +96,7 @@ Cites: `backend/src/routes/push.test.ts` "answers 503 everywhere when VAPID keys
 Cites: `backend/src/routes/push.test.ts` "rejects requests with no session"
 
 ### PWA-12 Public key served at runtime
-**Given** push keys are configured **When** a signed-in client requests the push public key **Then** the server returns `{ "publicKey": "<key>" }`, so changing the key needs a server config change only, not a rebuilt frontend.
+**Given** push keys are configured **When** a signed-in client requests the push public key **Then** the server returns the public key, so changing the key needs a server config change only, not a rebuilt frontend.
 Cites: `backend/src/routes/push.test.ts` "serves the public key", ADR 2026-09-24 Imports become server-side jobs
 
 ### PWA-13 Subscribe stores or replaces a device subscription
