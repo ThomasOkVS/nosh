@@ -144,7 +144,7 @@ export function checkSpec({ repoDir, specDir }) {
     }
 
     // ADRs
-    for (const h of bullets(area.lines('ADRs'))) claimedAdrs.add(h);
+    for (const h of bullets(area.lines('ADRs'))) claimedAdrs.add(stripAnchor(h));
 
     // features: verdict column
     const rows = area.lines('Features').filter((l) => l.trim().startsWith('|'));

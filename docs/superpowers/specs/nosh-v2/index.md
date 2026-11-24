@@ -25,18 +25,19 @@ Paths and ADR headings claimed by no area, each with a reason. The consistency
 pass may move any of these into an area if it hides behaviour (for example
 `App.tsx` routes, or toast messages users rely on).
 
-- `backend/src/routes/mealPlan.ts` — planner dropped
-- `backend/src/routes/mealPlan.test.ts` — planner dropped
-- `backend/src/validation/mealPlan.ts` — planner dropped
-- `backend/src/repositories/mealPlan.ts` — planner dropped
-- `backend/migrations/1700000000011_create-meal-plan-entries.js` — planner dropped
-- `frontend/src/api/mealPlan.ts` — planner dropped
-- `frontend/src/pages/MealPlanPage.tsx` — planner dropped
-- `frontend/src/pages/MealPlanPage.test.tsx` — planner dropped
-- `frontend/src/components/RecipePickerDialog.tsx` — planner dropped
-- `frontend/src/components/RecipePickerDialog.test.tsx` — planner dropped
-- `frontend/src/lib/week.ts` — planner dropped
-- `frontend/src/lib/week.test.ts` — planner dropped
+- `backend/src/routes/mealPlan.ts` — planner dropped (design §5)
+- `backend/src/routes/mealPlan.test.ts` — planner dropped (design §5)
+- `backend/src/validation/mealPlan.ts` — planner dropped (design §5)
+- `backend/src/repositories/mealPlan.ts` — planner dropped (design §5)
+- `backend/migrations/1700000000011_create-meal-plan-entries.js` — planner dropped (design §5)
+- `frontend/src/api/mealPlan.ts` — planner dropped (design §5)
+- `frontend/src/pages/MealPlanPage.tsx` — planner dropped (design §5)
+- `frontend/src/pages/MealPlanPage.test.tsx` — planner dropped (design §5)
+- `frontend/src/components/RecipePickerDialog.tsx` — planner dropped (design §5)
+- `frontend/src/components/RecipePickerDialog.test.tsx` — planner dropped (design §5)
+- `frontend/src/lib/week.ts` — planner dropped (design §5)
+- `frontend/src/lib/week.test.ts` — planner dropped (design §5)
+- ADR: 2026-08-28: Weekly meal planner — single ongoing calendar, date-keyed entries, CASCADE on recipe delete — planner dropped (design §5)
 - `backend/src/db/pool.ts` — plumbing or superseded by the design doc's style/nav; behaviour captured per area
 - `backend/src/db/transaction.ts` — plumbing or superseded by the design doc's style/nav; behaviour captured per area
 - `backend/src/db/seed.ts` — plumbing or superseded by the design doc's style/nav; behaviour captured per area

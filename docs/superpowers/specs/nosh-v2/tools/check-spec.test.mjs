@@ -83,6 +83,8 @@ test('unclaimed ADR', () =>
   assert.match(run(addAdr('2026-02-02: Beta {#beta}')).join(), /\[unclaimed-adr\] 2026-02-02: Beta$/m));
 test('set-aside ADR is fine, even when its heading contains an em dash', () =>
   assert.deepEqual(run(addAdr('2026-02-02: Beta — with dash'), setAsideAdr('2026-02-02: Beta — with dash')), []));
+test('area ADR bullet with a pasted {#anchor} still matches', () =>
+  assert.deepEqual(run(one((t) => t.replace('- 2026-01-01: Alpha', '- 2026-01-01: Alpha {#alpha}'))), []));
 test('restart ADR exempt', () => assert.ok(!checkSpec(ok).some((l) => l.includes('restarted'))));
 test('uncited test file', () =>
   assert.match(run(removeCitation('a.test.ts')).join(), /\[uncited-test\] backend\/src\/a\.test\.ts/));
