@@ -1,5 +1,6 @@
 import type { Context, ErrorHandler, NotFoundHandler } from "hono";
 import { HTTPException } from "hono/http-exception";
+import { rawPath } from "./requestLog.js";
 
 /** SEC-27: the body-limit middleware answers with this. */
 export function bodyTooLarge(c: Context): Response {
@@ -18,7 +19,16 @@ export const onError: ErrorHandler = (err, c) => {
   // c.req.json() throws a bare SyntaxError on a malformed body.
   if (err instanceof SyntaxError) return c.json({ error: "Invalid request" }, 400);
 
-  console.error(`${c.req.method} ${c.req.path} failed:`, err);
+  // One JSON line: the error text may quote request data, and JSON escapes
+  // any CR/LF in it, so nobody can forge log lines through an error.
+  console.error(
+    JSON.stringify({
+      level: "error",
+      method: c.req.method,
+      path: rawPath(c),
+      error: err instanceof Error ? (err.stack ?? err.message) : String(err),
+    }),
+  );
   return c.json({ error: "Internal server error" }, 500);
 };
 

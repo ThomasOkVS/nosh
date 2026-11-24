@@ -201,4 +201,27 @@ describe("request log", () => {
     expect(line).not.toContain("secret");
     expect(line).not.toContain("\n");
   });
+
+  it("logs the still-encoded path, so CR/LF in a URL cannot forge extra log lines", async () => {
+    await makeApp().request("/x%0AGET%20/health%20200%201.2.3.4%0Dy");
+    expect(logSpy).toHaveBeenCalledTimes(1);
+    const line = String(logSpy.mock.calls[0]?.[0]);
+    expect(line).toContain("/x%0AGET%20/health%20200%201.2.3.4%0Dy 404");
+    expect(line).not.toMatch(/[\r\n]/);
+  });
+
+  it("SEC-29: logs an unexpected error as one line, even when its message holds CR/LF from the request", async () => {
+    const app = makeApp();
+    app.get("/__test/echo/:x", (c) => {
+      throw new Error(c.req.param("x"));
+    });
+    const res = await app.request("/__test/echo/a%0Dforged%0Aline");
+    expect(res.status).toBe(500);
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    const args = errorSpy.mock.calls[0] ?? [];
+    expect(args).toHaveLength(1);
+    const line = String(args[0]);
+    expect(line).not.toMatch(/[\r\n]/);
+    expect(line).toContain("/__test/echo/a%0Dforged%0Aline");
+  });
 });
