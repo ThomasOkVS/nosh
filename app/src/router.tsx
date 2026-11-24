@@ -15,8 +15,9 @@ export function createAppRouter({ queryClient, history }: AppRouterOptions) {
     routeTree,
     history,
     context: { queryClient },
-    // AUTH-17: "Loading" while a route waits (the session check). A short
-    // delay keeps a fast check from flashing it; once shown it stays briefly.
+    // "Loading" while a route waits. Later loaders get a short delay so a
+    // fast one doesn't flash it; the session guard (_app) overrides the delay
+    // to 0 for AUTH-17. Once shown it stays briefly.
     defaultPendingComponent: Loading,
     defaultPendingMs: 150,
     defaultPendingMinMs: 300,

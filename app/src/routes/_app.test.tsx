@@ -17,7 +17,8 @@ describe("protected screens", () => {
     });
     renderApp("/");
 
-    expect(await screen.findByRole("status", { name: "Loading" })).toBeInTheDocument();
+    // Synchronous on purpose: any pending delay would leave a blank page here.
+    expect(screen.getByRole("status", { name: "Loading" })).toBeInTheDocument();
     expect(screen.queryByLabelText("Username")).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Library" })).not.toBeInTheDocument();
 

@@ -15,5 +15,8 @@ export const Route = createFileRoute("/_app")({
     }
     return { user };
   },
+  // AUTH-17: "Loading" from the very start of the check, never a blank page.
+  // The router's pendingMinMs still keeps it from flashing.
+  pendingMs: 0,
   component: Outlet,
 });
