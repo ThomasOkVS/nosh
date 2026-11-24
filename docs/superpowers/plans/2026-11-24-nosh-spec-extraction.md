@@ -202,7 +202,7 @@ test('banned word', () => assert.match(run(appendCriterionText('uses Express')).
 test('planner criterion', () => assert.match(run(appendCriterionText('adds to the meal plan')).join(), /\[planner\]/));
 ```
 
-(`run(...edits)` copies `ok/` to a temp dir, applies each edit, and returns `checkSpec`; `dropSection`, `addRepoFile` etc. are small edit helpers in the test file
+(`run(...edits)` copies `ok/` to a temp dir, applies each edit, and returns `checkSpec`; `dropSection`, `addRepoFile` etc. are small edit helpers in the test file that
 edit the temp copy in place.)
 
 - [ ] **Step 2: Run tests to verify they fail**
