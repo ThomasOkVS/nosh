@@ -4,11 +4,12 @@
       "Read",
       "Glob",
       "Grep",
-      "Bash(git status)",
+      "Bash(git status*)",
       "Bash(git diff*)",
       "Bash(git log*)",
       "Bash(git branch*)",
-      "Bash(npm install*)",
+      "Bash(npm install)",
+      "Bash(npm ci)",
       "Bash(npm run *)",
       "Bash(npm test*)",
       "Bash(npx tsc*)",
@@ -29,9 +30,7 @@
       "Bash(docker ps*)",
       "Bash(cd *)",
       "Bash(git add*)",
-      "Bash(git commit*)",
-      "Bash(git status*)",
-      "Bash(git diff*)"
+      "Bash(git commit*)"
     ],
     "deny": [
       "Bash(npm install *)",
