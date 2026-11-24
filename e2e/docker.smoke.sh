@@ -36,15 +36,18 @@ docker run -d --name "$db" --network "$net" \
   -e POSTGRES_USER=nosh -e POSTGRES_PASSWORD="$pg_pass" -e POSTGRES_DB=nosh \
   postgres:17-alpine >/dev/null
 
-for _ in $(seq 1 60); do
-  docker exec "$db" pg_isready -U nosh -d nosh >/dev/null 2>&1 && break
+# The postgres image first runs a temporary server that listens on the unix
+# socket only, then restarts. Probe over TCP so we only pass once the real
+# server accepts network connections, which is what the app uses.
+db_ready=""
+for _ in $(seq 1 90); do
+  if docker exec "$db" psql -h 127.0.0.1 -U nosh -d nosh -c 'select 1' >/dev/null 2>&1; then
+    db_ready=1
+    break
+  fi
   sleep 1
 done
-# pg_isready can answer during the init-time restart; require a real query.
-for _ in $(seq 1 30); do
-  docker exec "$db" psql -U nosh -d nosh -c 'select 1' >/dev/null 2>&1 && break
-  sleep 1
-done
+[ -n "$db_ready" ] || { docker logs "$db" >&2; fail "postgres did not accept TCP connections in time"; }
 
 prod_env=(
   -e NODE_ENV=production
@@ -79,6 +82,17 @@ pass "GET / -> HTML with nosniff (SEC-60)"
 ytdlp="$(docker exec "$app" yt-dlp --version)"
 [ -n "$ytdlp" ] || fail "yt-dlp --version printed nothing"
 pass "yt-dlp $ytdlp"
+
+# Login depends on argon2's native binding (musl prebuild on alpine).
+# (cd inside sh -c: a bare "-w /app/server" gets path-mangled by Git Bash on Windows.)
+docker exec "$app" sh -c 'cd /app/server && node -e "
+import(\"argon2\").then(async (m) => {
+  const a = m.default ?? m;
+  const h = await a.hash(\"smoke\");
+  if (!(await a.verify(h, \"smoke\"))) throw new Error(\"verify failed\");
+}).then(() => process.exit(0), (e) => { console.error(e); process.exit(1); });
+"' || fail "argon2 does not load or work in the runtime image"
+pass "argon2 hashes and verifies in the runtime image"
 
 uid="$(docker exec "$app" id -u)"
 [ "$uid" != "0" ] || fail "container runs as root"
