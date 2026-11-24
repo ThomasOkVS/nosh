@@ -46,11 +46,11 @@
       "Read(**/*.key)",
       "Bash(curl *)",
       "Bash(wget *)",
-      "Bash(ssh *)",
       "Bash(scp *)"
     ],
     "ask": [
       "Bash(git push*)",
+      "Bash(ssh homelab *)",
       "Edit(.env)",
       "Edit(.env.*)",
       "Edit(.claude/settings.json)",
