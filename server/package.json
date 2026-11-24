@@ -7,6 +7,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "argon2": "^0.45.2",
     "drizzle-orm": "^0.45.4",
     "postgres": "^4.1.1"
   },
