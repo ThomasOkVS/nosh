@@ -42,7 +42,10 @@ export function createApp(deps: AppDeps) {
           peer: getPeer(c),
           headers: c.req.raw.headers,
           trustedProxies: deps.config.trustedProxies,
-          socketIsTls: new URL(c.req.url).protocol === "https:",
+          // SEC-09, SEC-14: this server never terminates TLS; Caddy does. The
+          // request URL is no evidence: an absolute-form request line
+          // (`POST https://… HTTP/1.1`) sets it even on a plain TCP socket.
+          socketIsTls: false,
         }),
       );
       await next();

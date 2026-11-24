@@ -116,6 +116,18 @@ describe("session cookie", () => {
     expect(res.headers.get("set-cookie")).toBeNull();
   });
 
+  it("SEC-09 SEC-14: an untrusted peer with an absolute https:// request line gets no cookie", async () => {
+    // @hono/node-server takes an absolute-form request line as the URL even on
+    // a plain TCP socket; the server never terminates TLS itself.
+    const res = await makeApp(true).request("https://nosh.example.com/api/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-test-peer": "198.51.100.1" },
+      body: JSON.stringify({ username: "alice", password: "secret" }),
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("set-cookie")).toBeNull();
+  });
+
   it("SEC-10: production logout clears __Host-nosh.sid with Secure and Path=/", async () => {
     const auth = fakeAuth();
     const res = await makeApp(true, auth).request("/api/auth/logout", {
