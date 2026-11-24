@@ -1,5 +1,6 @@
+import argon2 from "argon2";
 import { count, eq } from "drizzle-orm";
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { V1_ACCOUNT } from "../../test/fixtures/v1-account.js";
 import { getTestDb, resetDb } from "../../test/db.js";
 import { sessions, users } from "../db/schema.js";
@@ -123,6 +124,24 @@ describe("AuthService contract", () => {
     expect(await auth.logIn({ username: "nobody", password: "pw" })).toBeNull();
     const [row] = await db.select({ n: count() }).from(sessions);
     expect(row?.n).toBe(1); // only the sign-up session
+  });
+
+  it("SEC-19: an unknown username costs one real argon2 verify, as a wrong password does", async () => {
+    issued(await auth.signUp({ username: "alice", password: "pw" }));
+    const verify = vi.spyOn(argon2, "verify");
+    try {
+      for (const username of ["alice", "nobody"]) {
+        verify.mockClear();
+        expect(await auth.logIn({ username, password: "wrong" })).toBeNull();
+        expect(verify).toHaveBeenCalledTimes(1);
+        // A real argon2id hash, and verify ran to a "no" rather than throwing
+        // on a malformed hash (which would cost nothing).
+        expect(String(verify.mock.calls[0]?.[0])).toMatch(/^\$argon2id\$/);
+        expect(await verify.mock.results[0]?.value).toBe(false);
+      }
+    } finally {
+      verify.mockRestore();
+    }
   });
 
   it("AUTH-11 SEC-12: every logIn issues a new token", async () => {
