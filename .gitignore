@@ -28,3 +28,6 @@ Thumbs.db
 
 # Superpowers brainstorming scratch (style spikes, mockups)
 .superpowers/
+
+uploads/
+!.env.example

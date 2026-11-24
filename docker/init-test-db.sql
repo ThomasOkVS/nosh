@@ -1,0 +1,1 @@
+CREATE DATABASE nosh_test;

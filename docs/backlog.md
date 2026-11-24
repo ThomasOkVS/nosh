@@ -2,8 +2,6 @@
 
 ## Restart (in order, design §8 and §11)
 
-- [ ] Fix the `shadcn` CLI / pnpm problem on Windows before scaffolding
-      (design §3).
 - [ ] Skeleton + auth: one-container build, Drizzle first migration, health
       endpoint, Vitest + Playwright in CI, Dockerfile with yt-dlp, style
       tokens, app shell with bottom pill, login end to end (AUTH, SEC).
@@ -46,3 +44,5 @@
 - 2026-11-24: nosh-v2 spec extracted and approved (9 areas, 330 criteria).
 - 2026-11-24: v1 archived as tag `legacy-v1` and branch `legacy`; `main`
   cleared for the restart.
+- 2026-11-24: `shadcn` CLI / pnpm problem on Windows fixed; the CLI route works
+  (`docs/decisions.md`).
