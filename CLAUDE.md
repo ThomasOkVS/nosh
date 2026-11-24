@@ -5,7 +5,7 @@
 nosh is being **rewritten from scratch**. This repo currently holds two things:
 
 - **NEW: the restart.** It is the source of truth for all new work.
-  - `docs/restart/2026-11-24-execution-handover.md` is where to start.
+  - `docs/restart/2026-11-24-task5-handover.md` is where to start.
   - `docs/superpowers/specs/2026-11-24-nosh-restart-design.md` is the
     approved design: stack, scope, style, project order.
   - `docs/superpowers/plans/` holds the plans. The current one is
