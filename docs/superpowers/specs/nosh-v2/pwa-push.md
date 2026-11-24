@@ -41,7 +41,7 @@ nosh is used mostly as an app installed on the owner's iPhone home screen. This 
 | Push off when server has no VAPID keys | keep | Same "feature off, app still works" pattern as a missing Gemini key. |
 | Push endpoint allowlist | keep | SSRF defence (design §9); see SEC. |
 | Push subscriptions kept across cutover | keep | Same origin and VAPID keys so existing devices keep working (design §3, §11). |
-| Theme and background colour from the new palette | keep | Today's colours are the retired red/paper brand. Resolved against the style log (P4, design §7) in the consistency pass; see PWA-04 and Rationale. |
+| Theme and background colour from the new palette | owner? | Today's colours are the retired red/paper brand, and the two theme colours disagree. The style log fixes the P4 palette but names no OS-chrome colour. Recommend chalk paper (PWA-04); the alternative is ink, closest to today's page-head `#1C1814`. Open question 1. |
 | Light and dark appearance follow the device setting | keep | Design §7 (decided): dark mode is derived from P4 and follows the system setting. |
 | Manual dark/light override remembered per device | drop | Today a user-menu toggle overrides the system setting. Design §7 says dark mode follows the system; it can come back if the owner asks (open question 3). |
 | Icons | owner? | Current icons are old-brand art; the restyle probably wants new ones. |
@@ -61,7 +61,7 @@ Cites: `frontend/vite.config.ts`, `frontend/public/*`, ADR 2026-08-08 Design pol
 Cites: `frontend/index.html`, `frontend/public/*`
 
 ### PWA-04 Manifest colours
-**Given** the manifest and page head **When** the app is installed or opened **Then** the manifest provides a background colour (shown on the launch splash) and a theme colour (shown in the OS UI), and the page head declares a theme colour too. Both come from the locked P4 palette (design §7): the manifest's background and theme colours are both chalk paper; the page head declares chalk paper as the theme colour for light appearance (the same value as the manifest) and the dark-mode paper for dark appearance.
+**Given** the manifest and page head **When** the app is installed or opened **Then** the manifest provides a background colour (shown on the launch splash) and a theme colour (shown in the OS UI), and the page head declares a theme colour too. Both come from the locked P4 palette (design §7). Recommended (open question 1; the alternative is ink as the theme colour): the manifest's background and theme colours are both chalk paper, and the page head declares chalk paper as the theme colour, the same value as the manifest. A second, dark-mode page-head value (the dark-mode paper) is a change that comes with design §7's dark mode; today the page head has a single value.
 Cites: `frontend/vite.config.ts`, `frontend/index.html`, design §7, `docs/restart/style-log.md` (Round 5, P4)
 
 ### PWA-05 Manifest, service worker and app page are always fresh
@@ -173,7 +173,7 @@ Cites: `frontend/src/push/pushNotifications.ts`, `frontend/src/push/usePushNotif
 Cites: `backend/migrations/1700000000014_create-import-jobs-and-push-subscriptions.js`, design §3, §11
 
 ### PWA-32 Light and dark follow the device
-**Given** the device is set to light or dark appearance **When** the app opens, or the device setting changes while it is open **Then** the app shows the matching appearance (the P4 palette or its dark derivative, design §7) without any setting in the app. Today a choice stored on the device overrides the system setting; that override is dropped (see Features).
+**Given** the device is set to light or dark appearance **When** the app opens **Then** it shows the matching appearance (the P4 palette or its dark derivative, design §7) without any setting in the app. Today the appearance is read once at load, and a choice stored on the device overrides the system setting; that override is dropped (see Features). Following a device change while the app is open is a change from today that comes with design §7's dark mode, not a requirement carried over.
 Cites: `frontend/index.html` (today: stored choice, else the system setting), design §7
 
 ## Rationale
@@ -184,7 +184,7 @@ Cites: `frontend/index.html` (today: stored choice, else the system setting), de
 - PWA-28: iOS only shows the permission prompt in response to a tap; asking inside the import flow also puts the question where the owner is deciding whether to wait or leave.
 - PWA-12: runtime public key lets keys be rotated with a config change only.
 - PWA-31: the same origin and keys are required because a subscription is bound to the origin and the key it was created with.
-- PWA-04: today the manifest says `#f6f1e7` background and `#b23a2e` theme, and the page head says `#1C1814`; the two theme colours disagree and both belong to the retired brand. The style log fixes the palette but not the OS-chrome colour, so the consistency pass chose the paper colour: it keeps the top of the screen as clean as the page (style log round 3) and gives one value in both places for light appearance. The manifest takes a single theme and a single background colour, so both are chalk paper and the splash is chalk paper in either appearance; only the page head can vary by appearance, so it adds the dark-mode paper for dark. The owner can override this at spec review. Exact dark values are the builder's (design §13).
+- PWA-04: today the manifest says `#f6f1e7` background and `#b23a2e` theme, and the page head says `#1C1814`; the two theme colours disagree and both belong to the retired brand. The style log fixes the palette but not the OS-chrome colour, so PWA-04 recommends the paper colour: it keeps the top of the screen as clean as the page (style log round 3) and gives one value in both places for light appearance. The area's first recommendation was ink, which is closest to today's page-head colour; the owner chooses (open question 1). The manifest takes a single theme and a single background colour, so both are chalk paper and the splash is chalk paper in either appearance; only the page head can vary by appearance, so it adds the dark-mode paper for dark. The owner can override this at spec review. Exact dark values are the builder's (design §13).
 
 ## Tests not carried
 - `backend/src/routes/push.test.ts` "rejects an endpoint that isn't a real push service (the Docker host's dockge port)" and "(an internal URL over plain http)": folded into PWA-15 as "internal addresses"; the specific Docker addresses are deployment detail.
@@ -192,9 +192,9 @@ Cites: `frontend/index.html` (today: stored choice, else the system setting), de
 - No sibling tests exist for `frontend/src/sw.ts`, `frontend/src/push/*` or `frontend/vite.config.ts`; their behaviour above comes from the code and ADRs, so the rewrite needs new tests for PWA-07 to PWA-09 and PWA-24 to PWA-30.
 
 ## Open questions for the owner
-1. Resolved in the consistency pass, no answer needed: theme and background colours come from the P4 palette (PWA-04). The style log does not name an OS-chrome colour, so the paper colour was chosen; say so if you want ink instead.
+1. Theme colour for the OS chrome: the style log fixes the P4 palette but names no OS-chrome colour. Today the manifest says `#b23a2e` and the page head `#1C1814` (dark). Recommendation: chalk paper as theme and background colour, the same value in the manifest and the page head (PWA-04); the alternative is ink.
 2. Icons and splash: the current icons are old-brand art. Recommend new icons (SVG, 192, 512, maskable 512, Apple touch) in the new style at cutover. Note an installed iPhone app only refreshes its home-screen icon on reinstall.
 3. Where do the user menu's entries live once it is gone (design §7: settings is an icon top-right)? It holds the notifications toggle, your username, "Log out", the app version and a dark/light override. Recommend an Account section on the Settings screen with the username, "Log out" and the version at the bottom, a Notifications toggle on the same screen, and keeping the "Notify me" prompt in the import screen. The dark/light override is dropped because dark mode follows the device (design §7, PWA-32); say if you want it back. (Merged with AUTH open question 6 and SET open question 3.)
-4. Notification wording and icon: "Recipe ready" / "Import failed" and the 192 icon. Keep as is?
-5. Should tapping a failed-import notification open the failed job directly (today it opens `/` and the app restores it on launch)?
+4. Notification wording and icon: "Recipe ready" / "Import failed" and the 192 icon. Recommendation: keep as is.
+5. Should tapping a failed-import notification open the failed job directly (today it opens `/` and the app restores it on launch)? Recommendation: keep today's behaviour.
 6. If the job queue changes (design §6), who sends the notification when a job finishes is an implementation detail, but the criteria (PWA-20 to PWA-23) must still hold, including for jobs that finish while the app is closed.

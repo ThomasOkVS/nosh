@@ -130,6 +130,7 @@ Cites: `backend/src/security.test.ts` "refuses signup when disabled, and creates
 | Signup | client IP | 5 attempts | 1 hour |
 | Start an import | logged-in user | 30 starts | 1 hour |
 | Photo from URL | logged-in user | 60 requests | 1 hour |
+| Start an import (recommended, SEC-59) | client IP | 30 starts | 1 hour |
 
 Cites: `backend/src/middleware/rateLimit.test.ts` "allows up to max hits in a window, then reports seconds until it resets", "starts a fresh window once the old one expires", "keeps keys independent", "forgets a key on reset", ADR 2026-09-24: Public HTTPS behind Caddy
 
@@ -238,7 +239,7 @@ Cites: `backend/src/services/recipeExtraction.ts`, `backend/src/services/imageFr
 Cites: `backend/src/services/safeFetch.test.ts` "decodes a gzip-encoded body"
 
 ### SEC-43 Every connection yt-dlp makes goes through the address guard
-**Given** a Reel or TikTok import **When** yt-dlp contacts any host (page, API, redirect target, CDN media) **Then** the destination is checked with the same blocklist and the same rules as SEC-31 to SEC-33, resolving once and connecting to the checked address. A destination that resolves to a blocked address, whether by name, by one blocked record among public ones, or as an IP literal (`172.28.0.1`, `127.0.0.1`, `::1`, `[::ffff:172.28.0.1]`), is refused, and the import fails.
+**Given** a Reel or TikTok import **When** yt-dlp contacts any host (page, API, redirect target, CDN media) **Then** the destination is checked with the same blocklist and the same rules as SEC-31 to SEC-33, resolving once and connecting to the checked address. A destination that resolves to a blocked address, whether by name, by one blocked record among public ones, or as an IP literal (`10.0.0.1`, `127.0.0.1`, `::1`, `[::ffff:10.0.0.1]`), is refused, and the import fails.
 Cites: `backend/src/services/egressProxy.test.ts` "refuses a CONNECT to %s, which resolves to %s", "refuses a CONNECT to the IP literal %s", ADR 2026-09-25: SSRF guard extended to yt-dlp and Web Push
 
 ### SEC-44 yt-dlp may reach only web ports
@@ -301,6 +302,10 @@ Cites: `backend/src/config/env.ts`, ADR 2026-08-06: Recipe images served through
 **Given** the signup setting **When** it is unset, empty, or anything other than the exact value `true` **Then** signup is disabled (SEC-15).
 Cites: `backend/src/config/env.ts`, ADR 2026-09-24: Public HTTPS behind Caddy
 
+### SEC-59 Starting an import is also limited per client IP (recommended)
+**Given** any number of logged-in users behind one client IP (as determined by SEC-13) **When** more than 30 import starts arrive from that IP within an hour **Then** the 31st gets 429 with `Retry-After`, under the same window rules as SEC-16, in addition to the per-user cap of SEC-21. (Not present today; design §9 asks for import limits keyed by client IP. Proposed number, see Open question 1.)
+Cites: design §9, `backend/src/routes/import.ts` (today: per-user cap only)
+
 ## Rationale
 
 ### §9 bullet to criterion IDs
@@ -310,7 +315,7 @@ Cites: `backend/src/config/env.ts`, ADR 2026-09-24: Public HTTPS behind Caddy
 | SSRF guard on every server-side fetch (URL import page and photo fetch, yt-dlp, Web Push), including after redirects and DNS | SEC-31 to SEC-42 (page and photo), SEC-43 to SEC-48 (yt-dlp), SEC-49 and SEC-50 (Web Push) |
 | Session cookie named `__Host-`, Secure, Path=/, no Domain, HttpOnly, SameSite | SEC-07 to SEC-11 (SEC-12 and SEC-14 support it) |
 | Origin check on state-changing requests against the configured allowed origins | SEC-01 to SEC-06, SEC-51 and SEC-52 |
-| Rate limits on login, signup and import, keyed by client IP; client IP from `X-Forwarded-For` only when the peer is the trusted proxy (Caddy) | SEC-13, SEC-16 to SEC-22, SEC-53 (import is keyed per user, see Open question 1) |
+| Rate limits on login, signup and import, keyed by client IP; client IP from `X-Forwarded-For` only when the peer is the trusted proxy (Caddy) | SEC-13, SEC-16 to SEC-22, SEC-53, SEC-59 (import is keyed per user today; SEC-59 adds the per-IP key, see Open question 1) |
 | Signup off by default (env flag) | SEC-15, SEC-58 |
 | Images served through an authenticated route, never a public static mount | SEC-24 (SEC-25 covers what may be stored) |
 
@@ -344,8 +349,8 @@ The app is public, and its containers can reach the Docker host, the LAN and the
 - `backend/src/services/egressProxy.test.ts` "parses %s" for the exact string forms: carried as behaviour in SEC-45; the parser function itself is internal.
 
 ## Open questions for the owner
-1. (Merged in index.md with IMP open question 2 and IMP's `owner?` row.) Design §9 says rate limits on login, signup and import are keyed by client IP. Today import (and photo-from-URL) are keyed by logged-in user (30 and 60 per hour), login and signup by IP. Recommendation (consolidated with IMP): keep the per-user caps, because a user key is more accurate for an authenticated endpoint and the real cost is paid AI calls, and also add the per-IP limit on import that design §9 asks for.
-2. Production currently falls back to a built-in development session secret if none is set (SEC-57). Recommendation: refuse to start in production without one (keep as `owner?`).
+1. (Merged in index.md with IMP open question 2 and IMP's rate-limit Features row.) Design §9 says rate limits on login, signup and import are keyed by client IP. Today import (and photo-from-URL) are keyed by logged-in user (30 and 60 per hour), login and signup by IP. Recommendation (consolidated with IMP): keep the per-user caps, because a user key is more accurate for an authenticated endpoint and the real cost is paid AI calls, and also add the per-IP limit on import that design §9 asks for.
+2. Production currently falls back to a built-in development session secret if none is set (SEC-57). Recommendation: refuse to start in production without one (an owner decision, see the Features row).
 3. The yt-dlp guard is an in-process forward proxy today. In the one-container build, a network-level egress block would also work. Recommendation: keep the guard in the app (testable, no extra infrastructure), and add the network block only if the homelab makes it free.
 4. No response-hardening headers beyond hiding the framework exist today, and CSP is in the backlog. Recommendation: add `X-Content-Type-Options: nosniff` and `Referrer-Policy` now (one line each), leave CSP in the backlog.
 5. Does Caddy overwrite or append to a client-sent `X-Forwarded-For`? SEC-13 assumes the entry Caddy appends is used. Recommendation: confirm in the Caddy config when the skeleton is deployed beside the old app, and pin Caddy by its fixed address.

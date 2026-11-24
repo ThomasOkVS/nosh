@@ -36,7 +36,7 @@ and see, and how those choices are stored.
 | Allowed-model list with optional daily limits comes from server configuration | keep | Model ids go into outbound request addresses, so they cannot be free text. |
 | Recipe preferences: recipe language, units, oven temperature, keep spoons as spoons | keep | Controls live here; their meaning is in UNIT. |
 | Optimistic save with revert and toast on failure, per control | keep | Each control saves on its own, with no Save button. |
-| Push "notify me" toggle on this screen | keep | Owned by PWA (PWA-27 to PWA-30). Today it lives in the user menu, which design §7 removes; PWA open question 3 decides its new home (recommended: this screen). |
+| Push notification toggle (placement: see PWA open question 3) | keep | Owned by PWA (PWA-27 to PWA-30), whose row keeps it. Today it lives in the user menu, which design §7 removes; PWA open question 3 decides where it goes. |
 | Separate text-model and video-model pickers | owner? | Today one choice overrides both import paths. A single picker loses little; separate pickers are a later option (ADR 2026-09-24). |
 
 ## Acceptance criteria

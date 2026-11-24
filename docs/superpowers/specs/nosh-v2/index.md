@@ -30,7 +30,7 @@ context.
 
 ### A. Affects the data import and cutover
 
-1. **Old usernames with a dot.** Accounts that had no username were backfilled as `john.doe_3`, and login refuses dots with a 400, so such an account would be locked out after cutover. Does yours look like that? Default: login accepts any stored username; the format rules apply to sign-up only. [AUTH Q1](auth.md#open-questions-for-the-owner)
+1. **Old usernames that break today's rules.** Accounts that had no username were backfilled from the email's local part, and login applies the sign-up rules (only letters, digits and `_`, at most 32 characters) and answers 400 otherwise. Names that don't pass, for example `john.doe_3`, would be locked out after cutover. Does yours look like that? Default: login accepts any stored username; the format rules apply to sign-up only. [AUTH Q1](auth.md#open-questions-for-the-owner)
 2. **Case-insensitive usernames.** `Alice` and `alice` are two accounts today. Default: case-insensitive for uniqueness and login; the importer checks for collisions first. [AUTH Q2](auth.md#open-questions-for-the-owner)
 3. **Lossy unit conversion on import.** Imports are stored already converted to your units; the source amounts are not kept. Default: keep as today; keeping the source line text is a later option. [UNIT Q1](units.md#open-questions-for-the-owner)
 4. **Several photos per recipe.** Recipes can hold several photos, but the UI only uses the first. Default: migrate every photo, ship one replaceable cover photo, revisit a gallery later. [REC Q1](recipes.md#open-questions-for-the-owner)
@@ -38,13 +38,13 @@ context.
 
 ### B. Security and limits
 
-6. **Rate-limit key for import and photo-from-URL.** Today these are capped per logged-in user (30 imports, 60 photo fetches an hour); design §9 says import is limited per client IP. Default: keep the per-user caps and add the per-IP import limit from design §9. [SEC Q1](security.md#open-questions-for-the-owner), [IMP Q2](import.md#open-questions-for-the-owner)
+6. **Rate-limit key for import and photo-from-URL.** Today these are capped per logged-in user (30 imports, 60 photo fetches an hour); design §9 says import is limited per client IP. Default: keep the per-user caps and add a per-IP import limit of 30 starts per hour, as design §9 asks (SEC-59). [SEC Q1](security.md#open-questions-for-the-owner), [IMP Q2](import.md#open-questions-for-the-owner)
 7. **Session secret in production.** Today a built-in development secret is used if none is set. Default: refuse to start in production without one (SEC-57). [SEC Q2](security.md#open-questions-for-the-owner)
 8. **Response-hardening headers.** Default: add `X-Content-Type-Options: nosniff` and `Referrer-Policy` now; CSP stays in the backlog. [SEC Q4](security.md#open-questions-for-the-owner)
 
 ### C. Behaviour changes or new placement
 
-9. **Where the user menu's entries go.** Design §7 removes the header user menu, which holds your username, "Log out", the app version, the notifications toggle and a dark/light override. Default: an Account section on the Settings screen (username, "Log out", version at the bottom) and a Notifications toggle there too; keep the "Notify me" prompt in the import screen; drop the dark/light override because dark mode follows the device (design §7). [PWA Q3](pwa-push.md#open-questions-for-the-owner), [AUTH Q6](auth.md#open-questions-for-the-owner), [SET Q3](settings.md#open-questions-for-the-owner)
+9. **Where the user menu's entries go.** Design §7 removes the header user menu, which holds your username, "Log out", the app version, the notifications toggle and a dark/light override. Default: an Account section on the Settings screen (username, "Log out", version at the bottom) and a Notifications toggle there too; keep the "Notify me" prompt in the import screen; drop the dark/light override because dark mode follows the device (design §7). Search is on the library screen only (SRCH-01; SRCH-05 is struck); say if you want it elsewhere. [PWA Q3](pwa-push.md#open-questions-for-the-owner), [AUTH Q6](auth.md#open-questions-for-the-owner), [SET Q3](settings.md#open-questions-for-the-owner)
 10. **Deleting a folder deletes everything inside it.** Default: keep, with the count warning. [COL Q1](collections.md#open-questions-for-the-owner)
 11. **Drag and drop on iPhone.** Dragging recipes onto folders works with a mouse only. Default: keep it for desktop and make sure the move control is reachable from the folder view on touch. [COL Q3](collections.md#open-questions-for-the-owner)
 12. **Length and count limits.** Nothing has a cap today. Default: title 200 characters, collection name 100, 100 ingredients, 100 steps, 30 tags and 20 photos per recipe. [REC Q6](recipes.md#open-questions-for-the-owner), [COL Q4](collections.md#open-questions-for-the-owner)
@@ -62,29 +62,30 @@ context.
 24. **App icons.** Today's icons are old-brand art. Default: new icons in the P4 style at cutover (an installed iPhone app only refreshes its icon on reinstall). [PWA Q2](pwa-push.md#open-questions-for-the-owner)
 25. **Dutch range word in ingredient lines.** "2 tot 3 el" is not split as a range. Default: accept "tot" like "to". [UNIT Q2](units.md#open-questions-for-the-owner)
 
+26. **Theme colour for the OS chrome.** The style log fixes the P4 palette but names no OS-chrome colour; today the page head says `#1C1814` (dark) and the manifest `#b23a2e`. Default: chalk paper as theme and background colour, the same in the manifest and the page head; the alternative is ink. [PWA Q1](pwa-push.md#open-questions-for-the-owner)
+
 ### D. Confirm today's behaviour (default: keep as it is)
 
-26. **Session length:** a fixed week from login. Default: keep. [AUTH Q4](auth.md#open-questions-for-the-owner)
-27. **AI usage estimate:** keep it on the Settings screen, shared across users. Default: keep both. [SET Q1, Q4](settings.md#open-questions-for-the-owner)
-28. **Notifications:** keep the wording "Recipe ready" and "Import failed"; a failed-import notification opens the library, which then shows the error. Default: keep both. [PWA Q4, Q5](pwa-push.md#open-questions-for-the-owner)
-29. **Recipe language and scaling on display:** the language setting does not translate stored recipes on display, and a scale is not remembered per recipe. Default: keep both. [UNIT Q3, Q4](units.md#open-questions-for-the-owner)
-30. **Folder screen:** rename and move stay one form; the screen title and nav say "Library" (design §7) while crumbs and captions call the root "Home". Default: keep. [COL Q5, Q6](collections.md#open-questions-for-the-owner)
-31. **Search ties:** equally ranked results have no order. Default: newest first. [SRCH Q4](search.md#open-questions-for-the-owner)
-32. **Imports and restarts:** a server restart may resume a running import or fail it with an "interrupted" message; the same URL may be imported twice. Default: resume if the job queue makes it free, otherwise fail; allow duplicates. [IMP Q3, Q6](import.md#open-questions-for-the-owner)
-33. **yt-dlp guard and login limit:** keep the in-app guard in front of yt-dlp; keep 20 login attempts per IP per 15 minutes. Default: keep both. [SEC Q3, Q6](security.md#open-questions-for-the-owner)
-34. **Duplicate a recipe:** not possible today. Default: out of scope for the first release. [REC Q8](recipes.md#open-questions-for-the-owner)
+27. **Session length:** a fixed week from login. Default: keep. [AUTH Q4](auth.md#open-questions-for-the-owner)
+28. **AI usage estimate:** keep it on the Settings screen, shared across users. Default: keep both. [SET Q1, Q4](settings.md#open-questions-for-the-owner)
+29. **Notifications:** keep the wording "Recipe ready" and "Import failed"; a failed-import notification opens the library, which then shows the error. Default: keep both. [PWA Q4, Q5](pwa-push.md#open-questions-for-the-owner)
+30. **Recipe language and scaling on display:** the language setting does not translate stored recipes on display, and a scale is not remembered per recipe. Default: keep both. [UNIT Q3, Q4](units.md#open-questions-for-the-owner)
+31. **Folder screen:** rename and move stay one form; the screen title and nav say "Library" (design §7) while crumbs, selectors and captions call the root "Home". Default: keep this split; say if you want one name everywhere. [COL Q5, Q6](collections.md#open-questions-for-the-owner)
+32. **Search ties:** equally ranked results have no order. Default: newest first. [SRCH Q4](search.md#open-questions-for-the-owner)
+33. **Imports and restarts:** a server restart may resume a running import or fail it with an "interrupted" message; the same URL may be imported twice. Default: resume if the job queue makes it free, otherwise fail; allow duplicates. [IMP Q3, Q6](import.md#open-questions-for-the-owner)
+34. **yt-dlp guard and login limit:** keep the in-app guard in front of yt-dlp; keep 20 login attempts per IP per 15 minutes. Default: keep both. [SEC Q3, Q6](security.md#open-questions-for-the-owner)
+35. **Duplicate a recipe:** not possible today. Default: out of scope for the first release. [REC Q8](recipes.md#open-questions-for-the-owner)
 
 ### E. No answer needed (notes)
 
 - Import from pasted text, a photo or a screenshot does not exist today; design §2 keeps it in the backlog. [IMP Q1](import.md#open-questions-for-the-owner)
 - Dutch word forms in search stay in the backlog (design §2, §5). [SRCH Q1](search.md#open-questions-for-the-owner)
-- Theme and background colours come from the P4 palette; the paper colour was chosen for the OS chrome because the style log names none (PWA-04). Say so if you want ink. [PWA Q1](pwa-push.md#open-questions-for-the-owner)
 - Who sends the "import done" notification is an implementation detail of the job queue; PWA-20 to PWA-23 must hold either way. [PWA Q6](pwa-push.md#open-questions-for-the-owner)
 - Whether Caddy appends to or overwrites `X-Forwarded-For` is checked by the builder when the skeleton is deployed. [SEC Q5](security.md#open-questions-for-the-owner)
 
-## `owner?` features
+## Features awaiting the owner's verdict
 
-Every Features row whose verdict is `owner?`. Each is covered by a question
+Every Features row whose verdict is still the owner's decision. Each is covered by a question
 above.
 
 | Area | Feature | Recommendation | Question |
@@ -103,6 +104,7 @@ above.
 | IMP | Raw AI provider wording in some failure messages | Replace with one plain message | 21 |
 | SET | Separate text-model and video-model pickers | One picker with Automatic | 23 |
 | PWA | Icons | New icons in the P4 style | 24 |
+| PWA | Theme and background colour from the new palette | Chalk paper (alternative: ink) | 26 |
 | SEC | Session secret required in production | Refuse to start without one | 7 |
 | SEC | Basic response-hardening headers | Add `nosniff` and `Referrer-Policy` | 8 |
 
@@ -122,13 +124,13 @@ The consistency pass fixed the losing side where two areas disagreed.
 | Push "notify me" toggle | PWA, SET, AUTH, IMP | PWA owns the toggle and its states (PWA-26 to PWA-30); the import screen's opt-in is IMP-44 and PWA-28. Its home outside the import screen is question 9. Fixed: SET's `drop` row and SET-28 ("not on this page") became a `keep` row deferring to PWA and a struck criterion; AUTH's row defers to PWA. |
 | User menu entries and app navigation | AUTH, PWA, SET, SRCH, design §7 | Design §7 replaces the header (logo, search box, user menu) with a bottom nav pill (Library + "+") and a settings icon top-right. Kept: one step to Home and Settings from every signed-in screen (AUTH-24), the username, "Log out" and version (AUTH-14, AUTH-21), the notifications toggle (PWA-27 to PWA-30), search on the library screen (SRCH-01). Dropped: the dropdown itself (AUTH-22 struck), search from every page (SRCH-05 struck) and the manual dark/light override (PWA-32: follows the device). Placement is question 9. |
 | Per-user model choice and usage | SET, IMP | The model is a per-user saved choice from a server allowlist, Automatic by default; a saved model that left the list counts as Automatic (SET-02 to SET-07, IMP-07). Every AI request that reached the provider is counted per model, shared by all users, per Pacific day, and counting never fails an import (SET-08 to SET-10, IMP-46). No disagreement found. |
-| Rate limits | SEC, AUTH, IMP | SEC-16 holds the one table: login 20 per IP per 15 min, login failures 10 per account per 15 min, signup 5 per IP per hour, import starts 30 per user per hour, photo from URL 60 per user per hour; fixed windows, 429 with `Retry-After`. AUTH-09 and IMP-06 refer to it. Fixed: IMP-06 said "in the last hour" (a sliding window); it now uses SEC-16's fixed window and notes that an invalid start still counts (SEC-21). The per-user versus per-IP key for import is question 6. |
+| Rate limits | SEC, AUTH, IMP | SEC-16 holds the one table: login 20 per IP per 15 min, login failures 10 per account per 15 min, signup 5 per IP per hour, import starts 30 per user per hour, photo from URL 60 per user per hour, and the recommended import starts 30 per IP per hour (SEC-59); fixed windows, 429 with `Retry-After`. AUTH-09 and IMP-06 refer to it. Fixed: IMP-06 said "in the last hour" (a sliding window); it now uses SEC-16's fixed window and notes that an invalid start still counts (SEC-21). The per-user versus per-IP key for import is question 6. |
 | Sign-up switch | AUTH, SEC | Off unless the setting is exactly `true`; when off, the API answers 403 "Sign-ups are disabled on this server" and creates nothing (AUTH-02, SEC-15, SEC-58). No disagreement found. |
 | Session cookie and fresh session | AUTH, SEC | `__Host-` prefix, Secure, HttpOnly, SameSite=Lax, Path=/, no Domain, one week, never issued over plain HTTP; a new session id on login and sign-up (AUTH-11, AUTH-12, SEC-07 to SEC-12). SEC owns the detail. No disagreement found. |
 | Failed-login delay and enumeration | AUTH, SEC | One 401 "Invalid username or password" for both failures, about a second's delay, equal work for unknown usernames (AUTH-09, SEC-19). No disagreement found. |
 | URL guard on import | IMP, SEC | Blocked literals answer 400 "This URL cannot be imported" before a job exists (IMP-03, SEC-34, SEC-35); a name that resolves inward fails the job with the same message and status 400 (IMP-03, SEC-36); every redirect hop is re-checked (IMP-15, SEC-39); yt-dlp goes through the same guard and fails closed with 503 (IMP-19, SEC-43, SEC-48). Fixed: SEC-48 now cites the yt-dlp guard tests that IMP lists under Tests not carried. |
 | Photo storage and serving | REC, SEC | Photos are checked by content, stored under random names, and served only through an owner-checked route (REC-14, REC-16, SEC-24, SEC-25); deleting a recipe or a folder removes the files too (REC-13, COL-15). |
-| Theme colour | PWA, style log | Resolved against the locked P4 palette: the manifest's background and theme colours are chalk paper; the page head uses chalk paper for light and the dark-mode paper for dark (PWA-04). The style log names no OS-chrome colour, so this is a call made in this pass. |
+| Theme colour | PWA, style log | The style log fixes the P4 palette but names no OS-chrome colour. PWA-04 recommends chalk paper for the manifest's theme and background colours and the page head; the alternative is ink. Question 26. |
 | Length limits | REC, COL | None today in either area; one set of caps is question 12. |
 
 ## Set aside
@@ -160,7 +162,6 @@ Paths and ADR headings claimed by no area, each with a reason.
 - `frontend/src/toast/*` — the generic transient-message mechanism (stacked, dismissable, auto-hiding after a few seconds, with an optional action button). Every message users rely on is a criterion in the area that raises it: COL-08, COL-12, COL-16, COL-18, COL-20, REC-24, REC-33, REC-34, REC-36, SET-17, SET-26, IMP-41, IMP-42. The new UI's notification component (design §7) decides timing and look.
 - `frontend/src/styles.ts` — old design system (Cookbook Editorial), superseded by the restart design §7
 - `frontend/src/index.css` — old design system, superseded by the restart design §7
-- `frontend/src/main.tsx` — plumbing: app start-up; the service worker registration it does is PWA-06
 - `frontend/src/vite-env.d.ts` — type declaration, no behaviour
 - `frontend/src/test/*` — test helpers, no behaviour of their own
 - ADR: 2026-08-05: Tech stack — React/Tailwind + Node.js/TypeScript + PostgreSQL — superseded by the restart design
