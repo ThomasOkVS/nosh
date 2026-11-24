@@ -4,3 +4,6 @@ packages:
   - shared
 allowBuilds:
   argon2: true
+  # esbuild ships prebuilt binaries per platform; its postinstall only
+  # verifies them, so it need not run.
+  esbuild: false
