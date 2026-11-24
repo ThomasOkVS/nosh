@@ -1,5 +1,32 @@
 # Claude Instructions
 
+## ⚠️ Restart in progress (since 2026-11-24): read this first
+
+nosh is being **rewritten from scratch**. This repo currently holds two things:
+
+- **NEW: the restart.** It is the source of truth for all new work.
+  - `docs/restart/2026-11-24-execution-handover.md` is where to start.
+  - `docs/superpowers/specs/2026-11-24-nosh-restart-design.md` is the
+    approved design: stack, scope, style, project order.
+  - `docs/superpowers/plans/` holds the plans. The current one is
+    spec extraction.
+  - `docs/superpowers/specs/nosh-v2/` holds the extracted spec, once it
+    exists.
+  - `docs/restart/style-log.md` is the locked visual style.
+- **OLD: the v1 app (legacy).** That's `backend/`, `frontend/`, `packages/`
+  and every other doc under `docs/` (`index.md`, `architecture.md`,
+  `design-system.md`, `decisions.md` entries before 2026-11-24, `backlog.md`
+  outside its "nosh restart" section, `handover/`).
+  - It describes and runs what is in production today.
+  - Treat it as **input to spec extraction**, not as guidance for new work.
+  - Don't add features to it.
+  - It will be tagged `legacy-v1`, kept on a `legacy` branch, and removed
+    from `main` (plan Task 5).
+
+The rest of this file is the v1 instructions. Where they conflict with the
+restart design (e.g. the Teaching section, the "Planned (post-MVP)" list, the
+old design system), **the restart design wins**.
+
 ## Workflow
 
 Before starting significant work, consult docs/index.md.

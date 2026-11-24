@@ -1,5 +1,8 @@
 # Deployment
 
+> **⚠️ Legacy (v1).** Describes the pre-restart app. Superseded for new work by the
+> [restart design](superpowers/specs/2026-11-24-nosh-restart-design.md) (one-container topology). Still accurate for production until cutover.
+
 Status: **live since 2026-08-19.** This doc reflects the actual first
 deployment, done from a separate Claude Code session running directly on the
 target box (which caught and corrected a few assumptions below that turned

@@ -1,5 +1,8 @@
 # Decisions
 
+> Entries before 2026-11-24 are about the v1 app (legacy). The
+> [2026-11-24 restart entry](#2026-11-24-nosh-restart) at the bottom starts the new app.
+
 A running log of notable decisions and the reasoning behind them. Append new
 entries; don't edit history. If a decision is reversed or superseded, add a new
 dated entry that says so and links back to the one it replaces.
@@ -2857,3 +2860,36 @@ host for quick checks (rejected: health checks work through
 Secure, `Path=/`, no `Domain`, never sent over plain HTTP, ignoring
 `X-Forwarded-Proto` from an untrusted peer, cleared under the same name on
 logout), the absence of CORS headers, and the boot checks.
+
+## 2026-11-24: nosh is restarted from scratch {#2026-11-24-nosh-restart}
+
+**Decision.** nosh gets rewritten from scratch in the same repo. The full design
+is [superpowers/specs/2026-11-24-nosh-restart-design.md](superpowers/specs/2026-11-24-nosh-restart-design.md),
+approved by the owner on 2026-11-24.
+
+- **Stack.** One container: a React + TS SPA (Vite, TanStack Router/Query,
+  Tailwind, shadcn/ui on Base UI, Motion), served by a Hono API.
+  The data layer is Postgres + Drizzle, with pg-boss for jobs. Tests use
+  Vitest + Playwright.
+- **Scope.** Parity minus dead weight. The weekly meal planner is dropped,
+  and its data isn't migrated. The interface is English only.
+- **Style.** Locked in [restart/style-log.md](restart/style-log.md)
+  (magazine cover, DM Serif Display + DM Sans, mustard + ink on chalk).
+- **Order.**
+  1. Extract a testable spec from the current app.
+  2. Tag `legacy-v1` and wipe `main`. This waits for the owner's approval of
+     the spec.
+  3. Build one feature group at a time.
+  4. Import the existing data and switch Caddy over.
+
+**Why.** The current UI "feels clunky and unprofessional". The codebase grew
+as a learning project. Learning React/Node is no longer a goal. The rewrite
+optimises for a better app and for being easy for the owner and AI agents to
+work on.
+
+**Alternatives considered.** The design doc's Approaches section covers them:
+React Router v7 framework mode, Next.js, and a Go/Python backend.
+
+**Supersedes.** This replaces every earlier stack and design entry for the new
+codebase. The entries above stay as history and as the *why* that spec
+extraction draws on.

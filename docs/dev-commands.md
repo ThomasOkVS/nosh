@@ -1,5 +1,8 @@
 # Dev Commands
 
+> **⚠️ Legacy (v1).** Describes the pre-restart app. Superseded for new work by the
+> [restart design](superpowers/specs/2026-11-24-nosh-restart-design.md).
+
 A cheat sheet for running and testing Nosh locally — the commands you reach
 for often enough to forget the exact flags, but not often enough to remember
 them. Not a substitute for [architecture.md](architecture.md) (how it's built)
