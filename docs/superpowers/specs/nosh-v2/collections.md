@@ -121,8 +121,8 @@ Cites: `backend/src/routes/collections.test.ts` "deletes a collection, cascading
 Cites: `frontend/src/pages/CollectionsPage.test.tsx` "deletes a collection, warning about what's inside it, and navigates to its parent"
 
 ### COL-17 Move a recipe between locations (API)
-**Given** a recipe the caller owns **When** the caller moves it to a collection id, or to null **Then** the recipe's single location becomes that collection, or Home, and the updated recipe is returned. A collection id that does not exist or belongs to someone else gives 404 and leaves the recipe where it was. The body must contain the collection field, which is a positive integer or null; an absent or malformed field is rejected with 400 rather than silently moving the recipe to Home. Creating a recipe takes the same optional collection id with the same ownership check. The recipe endpoints themselves are specified in REC.
-Cites: `frontend/src/components/RecipeCollectionPicker.test.tsx` "moves the recipe to a different collection when a new one is selected", "moves the recipe back to Home"
+**Given** a recipe the caller owns **When** the caller moves it to a collection id, or to null **Then** the recipe's single location becomes that collection, or Home, and the updated recipe is returned. A collection id that does not exist or belongs to someone else gives 404 and leaves the recipe where it was. The body must contain the collection field, which is a positive integer or null; an absent or malformed field is rejected with 400 rather than silently moving the recipe to Home. Moving a recipe that does not exist or belongs to someone else gives 404, and a malformed recipe id gives 400. In every one of these failures nothing moves. Creating a recipe takes the same optional collection id with the same ownership check. The recipe endpoints themselves are specified in REC.
+Cites: `frontend/src/components/RecipeCollectionPicker.test.tsx` "moves the recipe to a different collection when a new one is selected", "moves the recipe back to Home"; `backend/src/routes/recipes.test.ts` "moves a recipe to a different collection", "moves a recipe back to Home with a null collectionId", "rejects a move with no collectionId at all", "refuses to move a recipe into another user's collection", "refuses to move another user's recipe"
 
 ### COL-18 Move a recipe from its detail page
 **Given** the recipe detail page **When** it shows the Collection section **Then** it shows the recipe's location as a breadcrumb trail (a recipe at Home shows just "Home", linking to Home) and a selector of all collections, indented, with "Home (top level)" as the first option, preselected to the current location. Choosing a different option moves the recipe and refreshes the page, and the breadcrumb updates. Choosing the current location does nothing. While the move runs, "Moving…" shows. Failure shows a toast "Failed to move recipe".
@@ -163,7 +163,7 @@ Cites: `frontend/src/pages/CollectionsPage.tsx`
 - COL-23: the migration archived the many-to-many membership before collapsing it. The restart's data migration should preserve the same "lowest id wins" outcome (design section 11).
 
 ## Tests not carried
-- None. Every test case in the listed test files is carried by a criterion above. The helper `backend/src/utils/groupBy.ts` and `frontend/src/hooks/useRecipeDropTargets.ts` have no tests of their own and no behaviour beyond COL-20.
+- None. Every test case in the listed test files is carried by a criterion above, and the five recipe-move tests in `backend/src/routes/recipes.test.ts` (a file REC owns) are cited on COL-17. The helper `backend/src/utils/groupBy.ts` and `frontend/src/hooks/useRecipeDropTargets.ts` have no tests of their own and no behaviour beyond COL-20.
 
 ## Open questions for the owner
 1. Keep "deleting a folder deletes everything inside it"? Recommend keep, with the count warning, as decided in 2026-08-28. Optionally add an undo or a recently-deleted bin, but that is a new feature, so post-release.
@@ -171,3 +171,4 @@ Cites: `frontend/src/pages/CollectionsPage.tsx`
 3. Drag and drop works with a mouse only, not on iPhone, which is the main device. Recommend keeping it for desktop, but making sure the dropdown move (COL-18) is also reachable from the folder view's recipe cards on touch devices. This is new UI, so it is the owner's call.
 4. Collection names have no length limit. Recommend a cap (for example 100 characters) in line with recipe titles. Check REC's cap and agree one number.
 5. The rename form combines rename and move. Recommend keeping it, but allowing moving a sub-collection by dragging it onto another folder is a possible later feature, not in scope now.
+6. The library page heading reads "Library" while the root is called "Home" everywhere else (breadcrumb, selectors, captions). Recommend one name in the redesign; I suggest "Home" for the root crumb and page title.

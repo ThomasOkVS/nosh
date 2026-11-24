@@ -68,7 +68,7 @@ Cites: `backend/src/routes/auth.ts`; design §9. Rate limits on sign-up are in S
 Cites: `backend/src/routes/auth.test.ts` "rejects signup with an invalid username", ADR 2026-08-06 (Login switched from email to username)
 
 ### AUTH-04 Email must be well formed
-**Given** a sign-up request **When** the email is missing or not a valid email address **Then** the response is 400 with a validation message and nothing is stored.
+**Given** a sign-up request **When** the email is missing or not a valid email address **Then** the response is 400 with a validation message and nothing is stored. A valid email has no length cap beyond the server's request size limit.
 Cites: `backend/src/validation/auth.ts`
 
 ### AUTH-05 Any non-empty password is accepted
@@ -116,8 +116,8 @@ Cites: `backend/src/routes/auth.test.ts` "logs a user out and ends their session
 Cites: `backend/src/middleware/requireAuth.ts`
 
 ### AUTH-16 Protected screens redirect to login and return afterwards
-**Given** a logged-out visitor **When** they open any screen other than login and sign-up (for example a recipe link) **Then** they are sent to the login page, and after logging in they land on the page they first asked for. If they came to login directly they land on the home page. An unknown address sends a logged-in owner to the home page.
-Cites: `frontend/src/auth/RequireAuth.test.tsx` "redirects to /login when there is no active session", `frontend/src/pages/LoginPage.tsx`
+**Given** a logged-out visitor **When** they open any screen other than login and sign-up (for example a recipe link) **Then** they are sent to the login page, and after logging in they land on the path they first asked for. Only the path is kept: any query string or hash is lost (a logged-out tap on `/recipes/new?importId=5` lands on `/recipes/new`). If they came to login directly they land on the home page. An unknown address sends a logged-in owner to the home page.
+Cites: `frontend/src/auth/RequireAuth.test.tsx` "redirects to /login when there is no active session", `frontend/src/pages/LoginPage.tsx`. See open question 5.
 
 ### AUTH-17 Session check on load
 **Given** the app opens **When** it is still asking the server whether a session exists **Then** a loading indicator labelled "Loading" is shown, not protected content and not the login form. **When** the check says a session exists **Then** the requested protected screen appears. **When** the check fails for any reason, including the network being down **Then** the visitor is treated as logged out and sent to the login page.
@@ -159,10 +159,10 @@ Cites: `backend/migrations/1700000000000_create-users.js`, `backend/migrations/1
 
 ## Tests not carried
 - `backend/src/app.test.ts` "returns ok status": tests the health check, not auth; the health endpoint is plumbing for SEC/ops
-- `frontend/src/components/UserMenu.test.tsx` "shows the username and opens the menu on click, with the version at the bottom": carried (AUTH-21); the push-notification entry of the menu is covered by the PWA area, not here.
 
 ## Open questions for the owner
 1. Old usernames that break the rules: the backfill produced names like `john.doe_3` for rows that had none, and login rejects names with a dot with a 400. Does your account have such a name? Recommendation: in the rewrite, let login accept any stored username (non-empty text) and apply the format rules to sign-up only, so no existing account can be locked out.
 2. Case sensitivity: `Alice` and `alice` are different accounts today. Recommendation: make usernames case-insensitive for both uniqueness and login; check your own import for collisions first.
 3. Should the new sign-up form keep asking for an email, given nothing uses it? Recommendation: keep it as an optional-looking stored field only if the importer needs it; otherwise ask for username and password only. It is currently unique and required.
 4. Remember-me or a longer or sliding session than a fixed week? Recommendation: keep the fixed week, since you log in rarely and it matches today.
+5. Return-to target after login keeps only the path today, dropping query and hash. Recommendation: the rewrite keeps the full path, query and hash.

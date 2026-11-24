@@ -160,7 +160,7 @@ Cites: `backend/src/routes/recipes.test.ts` "attaches an image fetched from a UR
 Cites: `backend/src/routes/recipes.test.ts` "surfaces a from-url fetch failure as a real status, not a 500", `backend/src/services/imageFromUrl.test.ts` "rejects an unsupported content type", "rejects a body whose bytes don't match the declared image type", "rejects an image declared too large via content-length", "rejects an image that exceeds the cap while streaming, despite no content-length", "throws ImageFetchError on a non-2xx status", "throws ImageFetchError when the fetch itself rejects", "throws ImageFetchError after too many redirects"
 
 ### REC-20 Detail page shows the recipe
-**Given** a recipe **When** the owner opens it **Then** the page shows the title, the description if any, a line with "Serves N", "Prep N min" and "Cook N min" for whichever of those are set, the tags, the ingredients as a numbered list (shown only when there are any), and the steps as a numbered list (shown only when there are any). Amounts are shown scaled and in the owner's units (see UNIT) and oven temperatures in steps in the owner's temperature unit. There are edit and delete controls and a link back to the library at the recipe's collection.
+**Given** a recipe **When** the owner opens it **Then** the page shows the title, the description if any, a line with "Serves N", "Prep N min" and "Cook N min", each shown only when its value is set and non-zero (a stored 0 is hidden), the tags, the ingredients as a numbered list (shown only when there are any), and the steps as a numbered list (shown only when there are any). Amounts are shown scaled and in the owner's units (see UNIT) and oven temperatures in steps in the owner's temperature unit. There are edit and delete controls and a link back to the library at the recipe's collection.
 Cites: `frontend/src/pages/RecipeDetailPage.tsx`, `frontend/src/components/IngredientList.tsx`, `frontend/src/pages/RecipeDetailPage.test.tsx` "shows amounts in the user's units and converts oven temperatures"
 
 ### REC-21 Detail page photos
@@ -172,7 +172,7 @@ Cites: `frontend/src/pages/RecipeDetailPage.tsx`, ADR 2026-08-06
 Cites: `frontend/src/pages/RecipeDetailPage.tsx`
 
 ### REC-23 Detail page tags
-**Given** a recipe with tags **When** the owner selects a tag **Then** the library opens filtered by that tag.
+**Given** a recipe with tags **When** the owner selects a tag **Then** the library opens at Home filtered by that tag across the whole library (not limited to the recipe's collection; see SRCH).
 Cites: `frontend/src/pages/RecipeDetailPage.tsx`, `frontend/src/components/TagChip.tsx`
 
 ### REC-24 Delete from the detail page
@@ -196,7 +196,7 @@ Cites: `frontend/src/pages/RecipeFormPage.tsx`, `frontend/src/pages/RecipeFormPa
 Cites: `frontend/src/pages/RecipeFormPage.tsx`, `frontend/src/components/AutoGrowTextarea.tsx`, `frontend/src/pages/RecipeFormPage.test.tsx` "adds and removes ingredient and step rows"
 
 ### REC-29 Form: what is sent on save
-**Given** the form **When** the owner saves **Then** the request carries trimmed values; empty description, quantity and unit become `null`; empty servings, prep and cook become `null` (so "0" minutes cannot be saved through the form today); ingredient rows with a blank name and step rows with a blank instruction are dropped; tags are sent as entered; the source URL (set only by import, kept unchanged when editing) and, when creating, the chosen collection are included.
+**Given** the form **When** the owner saves **Then** the request carries trimmed values; empty description, quantity and unit become `null`; empty servings, prep and cook fields become `null`; a typed "0" is sent as 0 (the API accepts 0 minutes but refuses 0 servings with a 400, which the form shows as the error banner); ingredient rows with a blank name and step rows with a blank instruction are dropped; tags are sent as entered; the source URL (set only by import, kept unchanged when editing) and, when creating, the chosen collection are included.
 Cites: `frontend/src/pages/RecipeFormPage.test.tsx` "submits a trimmed, filtered payload and navigates to the new recipe's edit page", `frontend/src/pages/RecipeFormPage.tsx`
 
 ### REC-30 Form: saving, feedback and navigation
@@ -232,7 +232,7 @@ Cites: `frontend/src/pages/RecipeFormPage.test.tsx` "pre-fills from imported rec
 Cites: `frontend/src/pages/NewRecipePage.tsx`, `frontend/src/pages/NewRecipePage.test.tsx` "is just the blank create form without an importId", "loads the import by id when cold-started from a notification (no router state)", "uses router state when it's already there, without refetching", "explains when the import failed", "explains when the import no longer exists"
 
 ### REC-38 Recipe card
-**Given** a recipe in a list **Then** its card shows the cover photo (or a placeholder when there is none), the title, a line of "Serves N", "Prep N min", "Cook N min" for whichever are set, and its tags; an optional caption (for example the folder path in search results) appears above the title. Selecting the card opens the recipe; selecting a tag on the card filters the library by that tag instead and does not open the recipe. A card can be made draggable, carrying the recipe id, for dropping onto a collection (see COL); by default it is not draggable.
+**Given** a recipe in a list **Then** its card shows the cover photo (or a placeholder when there is none), the title, a line of "Serves N", "Prep N min", "Cook N min", each only when set and non-zero, and its tags; an optional caption (for example the folder path in search results) appears above the title. Selecting the card opens the recipe; selecting a tag on the card filters the library by that tag instead and does not open the recipe. A card can be made draggable, carrying the recipe id, for dropping onto a collection (see COL); by default it is not draggable.
 Cites: `frontend/src/components/RecipeCard.test.tsx` "clicking a tag chip filters the library by that tag, not the recipe detail page", "shows a caption above the title when given one", "clicking the card itself navigates to the recipe detail page", "is not draggable by default", "carries its id in a dedicated MIME type when draggable and dragged", `frontend/src/components/RecipeCard.tsx`
 
 ### REC-39 Confirmation dialog
@@ -252,7 +252,6 @@ Cites: `frontend/src/components/Skeleton.tsx`, `frontend/src/components/EmptySta
 - **REC-18, REC-36:** the photo is attached by a second request after the recipe is saved rather than staged before it, to avoid orphaned uploads for imports that are never saved (ADR 2026-08-13). It is best-effort, so a failed photo never undoes a save.
 - **REC-15:** the multi-image data model predates the editorial redesign; the UI never grew a gallery, so only the cover is really used. The design (§11) requires every image to survive migration regardless.
 - **REC-30:** creating lands on the edit form because photos need a saved recipe id; this is a quirk the new design may remove (see open questions).
-- **REC-29:** "0 minutes" and "0 servings" are treated as empty by the form; servings of 0 is invalid anyway, but a prep time of 0 cannot be saved.
 
 ## Tests not carried
 - `backend/src/routes/recipes.test.ts` "finds a recipe via full-text search on an ingredient name": search ranking and matching belong to SRCH.
@@ -278,7 +277,7 @@ Cites: `frontend/src/components/Skeleton.tsx`, `frontend/src/components/EmptySta
 2. Tag case: should "Soup" and "soup" be the same tag? Recommend lower-casing on save and merging on migration.
 3. iPhone photos (HEIC) are rejected today. Recommend accepting them and converting to JPEG on upload.
 4. After saving a new recipe the owner lands on its edit form (to add photos), not the recipe. Recommend: let the create form take a photo directly and land on the recipe page.
-5. A prep or cook time of 0 cannot be saved through the form. Recommend treating only an empty field as "none".
+5. A prep or cook time of 0 can be saved but is never displayed (the detail page and card hide a zero). Recommend refusing 0 in the form, or showing it.
 6. There are no length or count limits on titles, text, ingredients, steps, tags or photos per recipe. Recommend sane caps (for example 200 characters for a title, 100 ingredients and steps, 30 tags, 20 photos).
 7. Upload failures all show the same "Failed to upload image" message even though the server says why (wrong type, too large). Recommend showing the server's reason.
 8. Recipes cannot be duplicated. Out of scope for the first release unless wanted.

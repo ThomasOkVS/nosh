@@ -82,7 +82,7 @@ Cites: ADR 2026-09-24 (no automated test; `backend/src/repositories/llmUsage.ts`
 Cites: ADR 2026-09-24 (no automated test in this area; `backend/src/repositories/llmUsage.ts`)
 
 ### SET-11 Requests-left estimate
-**Given** a model with a configured daily limit **When** the settings screen shows it **Then** it reads "~N of M requests left today", where N is the limit minus today's requests and never below 0, with a bar showing the fraction left. At 20% left or less, and at 0, the figure is visually flagged as low.
+**Given** a model with a configured daily limit **When** the settings screen shows it **Then** it reads "~N of M requests left today", where N is the limit minus today's requests and never below 0, with a bar showing the fraction left. The screen marks the model as nearly used up (at most 20% left) or fully used up (0 left).
 Cites: `frontend/src/pages/SettingsPage.test.tsx` "shows automatic selected and each model's estimated requests left" ("~17 of 20", "~0 of 500")
 
 ### SET-12 Model with no configured limit
@@ -140,6 +140,10 @@ Cites: `backend/src/routes/settings.test.ts` "keeps each user's preferences sepa
 ### SET-25 Preferences controls on the screen
 **Given** the settings screen **When** the owner opens it **Then** the Language and units section shows the saved values for: recipe language (Keep original, Nederlands, English), units (Metric, US), oven temperature (°C, °F) and a "Keep spoons as spoons" checkbox, each with a short hint, plus notes that imported recipes are translated into the chosen language (which can use one extra AI request) and that recipes are shown, and imports saved, in these units.
 Cites: `frontend/src/pages/SettingsPage.test.tsx` "shows the saved preferences"
+
+### SET-29 Imports use the settings in force when they start
+**Given** a user's saved model choice, recipe language, unit system, temperature unit and keep-spoons setting **When** they start an import **Then** the import uses those values as read at the moment it starts (a saved model no longer on the allowed list counts as Automatic, SET-07); changing a setting afterwards does not affect an import already running. See IMP-07 and UNIT-35.
+Cites: `backend/src/routes/import.ts` (no test in this area)
 
 ### SET-26 Saving a preference from the screen
 **Given** the preferences section **When** the owner changes one control **Then** only that field is sent, the control moves immediately and is disabled while saving, and the server's returned preferences replace the local ones. **If** the save fails, the control snaps back and a toast says "Couldn't save your preference".
