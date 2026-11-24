@@ -264,6 +264,13 @@ over any generic design-plugin suggestion.
    units and scaling → import jobs → PWA and push → settings.
 5. **Data migration and cutover** (§11).
 
+**What gets planned next:** once this design is approved, the first plan
+(`superpowers:writing-plans`) covers **step 2, spec extraction, only**:
+agent briefs per area, the spec layout, the review gate, then the
+archive-and-wipe step. Build plans are written one feature group at a time,
+*after* the spec is approved, so they can cite criterion IDs. Nobody writes
+a whole-project task plan up front.
+
 **Proposed, spec on disk:** one file per area under
 `docs/superpowers/specs/nosh-v2/` (e.g. `auth.md`, `recipes.md`), plus an
 `index.md` that lists the areas and the keep/drop verdicts. Each criterion has
@@ -336,7 +343,8 @@ The items above are the floor, not the ceiling.
 | Old | New | Note |
 |---|---|---|
 | `users` (username, email, argon2 hash, preferences, import model) | users + Better Auth account rows | Owner must log in with their current password (§6) |
-| `recipes`, `ingredients`, `steps`, `tags`, `recipe_tags`, `recipe_images` | equivalents | Order of ingredients and steps preserved |
+| `recipes`, `ingredients`, `steps`, `tags`, `recipe_tags` | equivalents | Order of ingredients and steps preserved |
+| `recipe_images` (several per recipe, ordered by `position`) | equivalent, **all images kept in order** | Today's UI only ever shows the first image. The new UI uses the first as the cover. Whether a gallery is kept is a spec-review keep/drop line. The importer never drops images either way (my call) |
 | `collections` (nested) + recipe placement, including recipes at Home | equivalents | Hierarchy and placement preserved exactly |
 | Photo files under `/DATA/nosh/uploads` | the new app's uploads directory | Copied, not moved, so rollback still works |
 | `push_subscriptions` | equivalent | Same origin and VAPID keys, so they keep working (my call) |
@@ -349,7 +357,7 @@ The items above are the floor, not the ceiling.
 **Verification:** the importer reports counts per table, old vs new, and fails
 loudly on any row it can't map. After import, a scripted check confirms every
 old recipe ID maps to a new recipe with the same title, ingredient count, step
-count, collection path and a readable photo.
+count, collection path and the same number of readable images.
 
 **Search vectors:** regenerated in the new schema, not copied.
 
