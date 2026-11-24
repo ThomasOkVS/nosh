@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "@hono/node-server": "^2.1.11",
+    "@nosh/shared": "workspace:*",
     "argon2": "^0.45.2",
     "drizzle-orm": "^0.45.4",
     "hono": "^4.13.21",

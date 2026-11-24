@@ -49,3 +49,25 @@ rules out. Even with a placeholder, there is no injectable clock for
 Design §6 names hand-rolled sessions as the fallback.
 
 **Details:** [skeleton + auth plan](superpowers/plans/2026-11-24-skeleton-auth.md), Task 1.
+
+## 2026-11-24: Request bodies go through a validator; a SyntaxError is a bug
+
+**Decision:** routes read JSON bodies only through `jsonBody(schema)`
+(`server/src/http/validate.ts`, Hono's `validator("json")` plus zod). Malformed
+JSON becomes `HTTPException(400)` there, so `onError` no longer turns every
+`SyntaxError` into a quiet 400: any other `SyntaxError` answers 500 and is
+logged. Auth answers (401, 403, 409, 429) use `c.json`, never
+`HTTPException`, because `onError` maps every 4xx exception to "Invalid
+request".
+
+**Why:** the blanket `SyntaxError` branch hid real bugs (SEC-26, SEC-29).
+
+## 2026-11-24: esbuild's install script stays off
+
+**Decision:** `pnpm-workspace.yaml` lists `esbuild: false` under
+`allowBuilds`; only `argon2` may run its install script.
+
+**Why:** pnpm 12 fails `pnpm install --frozen-lockfile` with
+`ERR_PNPM_IGNORED_BUILDS` while a build is neither allowed nor denied.
+esbuild ships its platform binary as an optional dependency, so its
+postinstall check is not needed.

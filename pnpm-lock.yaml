@@ -206,6 +206,9 @@ importers:
       '@hono/node-server':
         specifier: ^2.1.11
         version: 2.1.11(hono@4.13.21)
+      '@nosh/shared':
+        specifier: workspace:*
+        version: link:../shared
       argon2:
         specifier: ^0.45.2
         version: 0.45.2

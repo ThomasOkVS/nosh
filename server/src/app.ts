@@ -1,10 +1,12 @@
 import { getConnInfo } from "@hono/node-server/conninfo";
 import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
+import { requireAuth } from "./auth/requireAuth.js";
 import { authRoutes } from "./auth/routes.js";
-import type { AuthService, AuthUser } from "./auth/service.js";
+import type { AuthService } from "./auth/service.js";
 import type { Config } from "./config/env.js";
-import { resolveClient, type ClientInfo } from "./http/clientInfo.js";
+import { resolveClient } from "./http/clientInfo.js";
+import type { AppEnv } from "./http/context.js";
 import { bodyTooLarge, notFound, onError } from "./http/errors.js";
 import { originCheck } from "./http/originCheck.js";
 import { requestLog } from "./http/requestLog.js";
@@ -15,15 +17,11 @@ export interface AppDeps {
   auth: AuthService;
   /** The TCP peer address. Tests inject one: app.request() has no socket. */
   getPeer?: (c: Context) => string;
-  /** Delay before answering a failed login (Task 4). */
+  /** Delay before answering a failed login; 1 s unless a test sets it (SEC-19). */
   failureDelayMs?: number;
   /** Built web app to serve (Task 5). */
   webDistDir?: string;
 }
-
-export type AppEnv = {
-  Variables: { client: ClientInfo; user?: AuthUser; sessionToken?: string };
-};
 
 /** SEC-27 */
 const API_BODY_LIMIT_BYTES = 100 * 1024;
@@ -51,7 +49,13 @@ export function createApp(deps: AppDeps) {
     .use(originCheck(deps.config.allowedOrigins))
     .use("/api/*", bodyLimit({ maxSize: API_BODY_LIMIT_BYTES, onError: bodyTooLarge }))
     .get("/health", (c) => c.json({ status: "ok" })) // SEC-23
-    .route("/api/auth", authRoutes()); // STUB until Task 4, see auth/routes.ts
+    // AUTH-15, SEC-23: the auth routes answer before requireAuth runs; every
+    // other /api path (including an unknown one) needs a session.
+    .route(
+      "/api/auth",
+      authRoutes({ auth: deps.auth, config: deps.config, failureDelayMs: deps.failureDelayMs }),
+    )
+    .use("/api/*", requireAuth({ auth: deps.auth, config: deps.config }));
 
   app.onError(onError);
   app.notFound(notFound);

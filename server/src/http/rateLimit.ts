@@ -1,4 +1,4 @@
-import type { Context } from "hono";
+import type { Context, TypedResponse } from "hono";
 
 interface Window {
   count: number;
@@ -70,8 +70,14 @@ function retryAfter(window: Window, now: number): number {
   return Math.max(1, Math.ceil((window.resetAt - now) / 1000));
 }
 
-/** SEC-16: 429 with the whole seconds until the window ends. */
-export function tooMany(c: Context, retryAfterSec: number): Response {
+/**
+ * SEC-16: 429 with the whole seconds until the window ends. Typed, so a route
+ * that returns it keeps its RPC response types.
+ */
+export function tooMany(
+  c: Context,
+  retryAfterSec: number,
+): Response & TypedResponse<{ error: string }, 429, "json"> {
   c.header("Retry-After", String(retryAfterSec));
   return c.json({ error: "Too many attempts — try again later" }, 429);
 }

@@ -133,6 +133,15 @@ describe("error shape", () => {
     expect(text).not.toContain("not json");
   });
 
+  it("SEC-29: a SyntaxError thrown by a route is a bug: 500, logged, not a quiet 400", async () => {
+    const app = makeApp();
+    app.get("/__test/syntax", (c) => c.json(JSON.parse("{broken") as object));
+    const res = await app.request("/__test/syntax");
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ error: "Internal server error" });
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+  });
+
   it("SEC-27: answers 413 for a body over 100 KB", async () => {
     const body = JSON.stringify({ padding: "x".repeat(101 * 1024) });
     const res = await makeApp().request("/api/auth/login", {
