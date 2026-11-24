@@ -1,0 +1,28 @@
+{
+  "name": "nosh",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.23.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @nosh/shared build && pnpm -r --parallel --if-present dev",
+    "lint": "eslint .",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "build": "pnpm -r --if-present build",
+    "db:generate": "pnpm --filter @nosh/server exec drizzle-kit generate",
+    "db:migrate": "pnpm --filter @nosh/server exec drizzle-kit migrate"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.65.1",
+    "@types/node": "^26.6.6",
+    "eslint": "^10.15.0",
+    "postgres": "^4.1.1",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.74.0",
+    "vitest": "^5.1.1"
+  }
+}

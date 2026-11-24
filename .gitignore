@@ -28,3 +28,10 @@ Thumbs.db
 
 # Superpowers brainstorming scratch (style spikes, mockups)
 .superpowers/
+
+uploads/
+!.env.example
+
+# Playwright
+test-results/
+playwright-report/

@@ -37,6 +37,8 @@ jobs:
           POSTGRES_USER: nosh
           POSTGRES_PASSWORD: nosh
           POSTGRES_DB: nosh_test
+          # Server tests fold Unicode case (İRIS, ΑΣ) and need a UTF-8 ctype.
+          POSTGRES_INITDB_ARGS: "--locale=en_US.utf8"
         ports:
           - 5432:5432
         options: >-
@@ -68,7 +70,7 @@ jobs:
       # needs to run an install itself (and is denied it below).
       - run: pnpm install --frozen-lockfile
 
-      - run: pnpm --filter backend migrate up
+      - run: pnpm db:migrate
 
       - name: Prepare branch
         run: |
@@ -110,7 +112,7 @@ jobs:
           prompt: |
             You are the nosh lead developer, running unattended in CI. Nobody
             can answer questions. Where the issue is ambiguous, pick the
-            simplest reading that fits docs/index.md and say which you picked.
+            simplest reading that fits CLAUDE.md and say which you picked.
 
             The issue (#${{ github.event.issue.number }}) is your request. It
             counts as the owner explicitly asking, including for anything on
@@ -121,7 +123,7 @@ jobs:
             ${{ github.event.issue.body }}
 
             How to work:
-            1. Read CLAUDE.md and docs/index.md, then plan. Split the work into
+            1. Read CLAUDE.md and docs/superpowers/specs/nosh-v2/index.md, then plan. Split the work into
                pieces that touch different files where you can.
             2. Hand each piece to the `nosh-dev` subagent with an exact spec:
                files, behaviour, and the tests it must add. Run independent
@@ -159,8 +161,8 @@ jobs:
             ## Blocked
             "None", or what stopped you.
             ## What's new for you
-            The concepts this change uses, per CLAUDE.md's Teaching section,
-            related to Angular/Java where it helps.
+            The concepts this change uses, related to Angular/Java where it
+            helps.
 
       # Deterministic guards: Claude's deny rules should already prevent
       # these, but a failure here stops the branch from ever being pushed.

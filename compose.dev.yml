@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: nosh
+      POSTGRES_PASSWORD: nosh
+      POSTGRES_DB: nosh
+      # Server tests fold Unicode case (İRIS, ΑΣ) and need a UTF-8 ctype.
+      POSTGRES_INITDB_ARGS: "--locale=en_US.utf8"
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/init-test-db.sql:/docker-entrypoint-initdb.d/init-test-db.sql:ro
+volumes:
+  pgdata:
