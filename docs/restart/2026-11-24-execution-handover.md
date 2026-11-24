@@ -1,5 +1,8 @@
 # nosh restart: handover for executing the spec-extraction plan (2026-11-24)
 
+> **Superseded** by [2026-11-24-task5-handover.md](2026-11-24-task5-handover.md).
+> Tasks 1–4 are done and the spec is approved.
+
 Read this first in the session that executes the plan. It replaces
 [2026-11-24-handover.md](2026-11-24-handover.md) as the starting point. That
 file is the brainstorm record and stays for history.
