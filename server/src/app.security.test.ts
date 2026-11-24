@@ -95,9 +95,11 @@ describe("origin check", () => {
     expect(await res.json()).toEqual(FORBIDDEN);
   });
 
-  it("SEC-05: doesn't apply to safe methods", async () => {
-    const res = await makeApp().request("/health", { headers: { origin: "https://evil.example" } });
-    expect(res.status).toBe(200);
+  it.each(["GET", "HEAD", "OPTIONS"])("SEC-05: doesn't apply to safe method %s", async (method) => {
+    const res = await makeApp().request("/health", { method, headers: { origin: "https://evil.example" } });
+    expect(res.status).not.toBe(403);
+    // OPTIONS has no route here (404); the point is that the origin check let it through.
+    expect(await res.text()).not.toContain(FORBIDDEN.error);
   });
 
   it("SEC-06: sends no CORS headers — the API is only ever called same-origin", async () => {

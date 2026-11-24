@@ -6,6 +6,7 @@ import { createApp, type AppType } from "../app.js";
 import { loadConfig } from "../config/env.js";
 import { users } from "../db/schema.js";
 import { hashPassword } from "./password.js";
+import { DEFAULT_FAILURE_DELAY_MS } from "./routes.js";
 import { createAuthService } from "./service.js";
 
 // Real argon2 runs on every login here; 20+ of them can pass Vitest's 5 s default.
@@ -233,6 +234,19 @@ describe("login", () => {
       expect(res.status).toBe(401);
       expect(performance.now() - started).toBeGreaterThanOrEqual(1000);
     }
+  });
+
+  it("SEC-19: without a failureDelayMs option a failed login waits one second", async () => {
+    expect(DEFAULT_FAILURE_DELAY_MS).toBe(1000);
+    const app = createApp({
+      config: loadConfig({ DATABASE_URL: "postgres://unused", TRUSTED_PROXIES: PROXY }),
+      auth: createAuthService({ db, sessionSecret: SECRET }),
+      getPeer: () => "127.0.0.1",
+    });
+    const started = performance.now();
+    const res = await logIn(app, "nobody", "nope");
+    expect(res.status).toBe(401);
+    expect(performance.now() - started).toBeGreaterThanOrEqual(1000);
   });
 
   it.each([
