@@ -31,3 +31,22 @@ allow-scripts policy had blocked pnpm 12's `install.js`, which builds the
 Windows launcher. Reinstalling with
 `npm install -g --allow-scripts=pnpm pnpm@12.23.0` fixed it; `init` and `add`
 then installed their dependencies without a spawn error.
+
+## 2026-11-24: Auth implementation
+
+**Decision:** hand-rolled sessions instead of Better Auth. `createAuthService`
+stores users and sessions in our own Drizzle tables; passwords are argon2id
+(`argon2`, v1 defaults); the stored session id is HMAC-SHA256 of the cookie
+token with `SESSION_SECRET`.
+
+**Why:** Better Auth 1.7.27 failed the contract tests in
+`server/src/auth/service.contract.test.ts` using public options only. Sign-up
+(`signUpEmail`, also used by the username plugin) rejects a missing email
+(`[body.email] Invalid input`) and its user table makes `email` required, so
+"AUTH-01 AUTH-23" cannot pass without a placeholder email, which the spec
+rules out. Even with a placeholder: the concurrent Alice/alice sign-up
+surfaced a 500 instead of "username taken" (AUTH-06), there is no injectable
+clock for "AUTH-12", and the raw session token is stored in the session table.
+Design §6 names hand-rolled sessions as the fallback.
+
+**Details:** [skeleton + auth plan](superpowers/plans/2026-11-24-skeleton-auth.md), Task 1.

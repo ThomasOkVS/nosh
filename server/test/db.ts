@@ -22,7 +22,7 @@ export async function getTestDb(): Promise<{ db: Db; close(): Promise<void> }> {
 
 /** Truncates every app table, restarting identities. */
 export async function resetDb(db: Db): Promise<void> {
-  const tables = Object.values(schema)
+  const tables = Object.values(schema as Record<string, unknown>)
     .filter((value): value is PgTable => is(value, PgTable))
     .map((table) => sql.identifier(getTableName(table)));
   if (tables.length === 0) return;
