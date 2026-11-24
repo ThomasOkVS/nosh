@@ -144,7 +144,7 @@ Today's features, with their fate:
 
 | Area | What it does today | First release |
 |---|---|---|
-| Accounts | Username/password login; signup gated by an env flag | Keep (Better Auth, *proposed*, §6) |
+| Accounts | Username/password login; signup gated by an env flag | Keep (Better Auth, §6) |
 | Recipes | Title, ingredients (quantity/unit/name), steps, photo, tags, servings, prep/cook time, source URL | Keep |
 | Scaling & units | Scale servings; metric/US and °C/°F conversion; "keep spoons" | Keep |
 | Collections | Nested, mandatory hierarchy; the home page; recipes may live at Home | Keep |
