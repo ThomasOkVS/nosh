@@ -97,12 +97,16 @@ describe("login screen", () => {
     expect(router.state.location.href).toBe("/");
   });
 
-  it("AUTH-16 ignores a redirect to another site", async () => {
-    login(() => HttpResponse.json(owner));
-    const { user, router } = renderApp(`/login?redirect=${encodeURIComponent("//evil.example")}`);
+  it.each(["https://evil.example", "/\t/evil.example"])(
+    "AUTH-16 ignores a redirect to another site (%j)",
+    async (target) => {
+      login(() => HttpResponse.json(owner));
+      const { user, router, visited } = renderApp(`/login?redirect=${encodeURIComponent(target)}`);
 
-    await fillAndSubmit(user);
-    await screen.findByRole("heading", { name: "Library" });
-    expect(router.state.location.href).toBe("/");
-  });
+      await fillAndSubmit(user);
+      await screen.findByRole("heading", { name: "Library" });
+      expect(router.state.location.href).toBe("/");
+      expect(visited.filter((href) => !href.startsWith("/login"))).toEqual(["/"]);
+    },
+  );
 });
