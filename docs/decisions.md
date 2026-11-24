@@ -71,3 +71,22 @@ request".
 `ERR_PNPM_IGNORED_BUILDS` while a build is neither allowed nor denied.
 esbuild ships its platform binary as an optional dependency, so its
 postinstall check is not needed.
+
+## 2026-11-24: How `@nosh/shared` resolves
+
+**Decision:** `shared/package.json` exports a `source` condition
+(`src/index.ts`) and a `default` one (`dist/index.js`, types in `dist`).
+tsc (`customConditions` in `tsconfig.base.json`), Vitest and Vite ask for
+`source`, so they read the TypeScript directly. Plain Node and the Docker
+image use the built `dist`; `server/tsconfig.build.json` clears the
+condition so the server build checks against `dist` too. `pnpm dev` builds
+shared first, and `pnpm build` builds it first as a workspace dependency.
+
+**Why:** no build step in tests and type checks, while the running server
+needs plain JavaScript.
+
+## 2026-11-24: TypeScript stays on ^6
+
+**Decision:** the root `typescript` dependency is pinned to `^6`.
+
+**Why:** typescript-eslint rejects TypeScript 7. Revisit when it supports 7.
