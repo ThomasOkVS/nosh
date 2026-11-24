@@ -68,13 +68,16 @@ export function authRoutes(deps: AuthRouteDeps) {
       const ipHit = loginPerIp.hit(c.var.client.ip); // SEC-17: every attempt
       if (!ipHit.ok) return tooMany(c, ipHit.retryAfterSec);
 
-      const account = username.toLowerCase(); // SEC-18: across all IPs
-      const lockedFor = loginFailuresPerAccount.blocked(account);
-      if (lockedFor !== null) return tooMany(c, lockedFor);
+      // SEC-18: across all IPs. The key is folded by the same SQL lower() as
+      // the lookup, and the slot is reserved before argon2 runs, so parallel
+      // guesses cannot all slip under the limit while verifies are in flight.
+      // A success clears the count, so in effect only failures stay counted.
+      const account = await auth.accountKey(username);
+      const accountHit = loginFailuresPerAccount.hit(account);
+      if (!accountHit.ok) return tooMany(c, accountHit.retryAfterSec);
 
       const session = await auth.logIn({ username, password });
       if (session === null) {
-        loginFailuresPerAccount.hit(account); // only failures count
         await delay(failureDelayMs); // AUTH-09, SEC-19
         return c.json({ error: "Invalid username or password" }, 401);
       }

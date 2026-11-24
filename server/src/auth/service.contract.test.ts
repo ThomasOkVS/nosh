@@ -126,6 +126,15 @@ describe("AuthService contract", () => {
     expect(row?.n).toBe(1); // only the sign-up session
   });
 
+  it("SEC-18: accountKey folds like the lookup, so every spelling that logs in shares a key", async () => {
+    issued(await auth.signUp({ username: "iris", password: "pw" }));
+    for (const spelling of ["iris", "IRIS", "İRIS", "İris"]) {
+      expect(issued(await auth.logIn({ username: spelling, password: "pw" })).user.username).toBe("iris");
+      expect(await auth.accountKey(spelling)).toBe(await auth.accountKey("iris"));
+    }
+    expect(await auth.accountKey("ΑΣ")).toBe(await auth.accountKey("ασ"));
+  });
+
   it("SEC-19: an unknown username costs one real argon2 verify, as a wrong password does", async () => {
     issued(await auth.signUp({ username: "alice", password: "pw" }));
     const verify = vi.spyOn(argon2, "verify");

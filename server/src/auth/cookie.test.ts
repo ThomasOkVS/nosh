@@ -25,6 +25,7 @@ function fakeAuth(): AuthService & { loggedOut: string[] } {
       loggedOut.push(token);
     },
     getSession: async () => null,
+    accountKey: async (username) => username.toLowerCase(),
   };
 }
 

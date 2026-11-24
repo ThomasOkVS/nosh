@@ -25,6 +25,13 @@ export interface AuthService {
   /** An unknown token is a no-op. */
   logOut(token: string): Promise<void>;
   getSession(token: string): Promise<{ user: AuthUser; expiresAt: Date } | null>;
+  /**
+   * SEC-18: the login-failure limiter key for `username`, folded exactly as
+   * logIn's lookup and the unique index fold it (Postgres `lower()`), so any
+   * two inputs that reach the same account share one key. Unknown names get
+   * a key too, so a 429 does not reveal whether a name exists.
+   */
+  accountKey(username: string): Promise<string>;
 }
 
 /** AUTH-12: one week from login, never extended. */
@@ -78,6 +85,12 @@ export function createAuthService(deps: {
 
     async logOut(token) {
       await db.delete(sessions).where(eq(sessions.id, sessionId(token)));
+    },
+
+    async accountKey(username) {
+      const [row] = await db.execute<{ key: string }>(sql`select lower(${username}) as key`);
+      if (!row) throw new Error("select lower() returned no row");
+      return row.key;
     },
 
     async getSession(token) {

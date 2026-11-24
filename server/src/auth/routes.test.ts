@@ -381,6 +381,41 @@ describe("login rate limits", () => {
     expect((await logIn(app, "alice", "secret", { "x-test-peer": "198.51.100.51" })).status).toBe(200);
   });
 
+  it("SEC-18: parallel wrong guesses for one account cannot exceed 10 between them", async () => {
+    await createUser("alice", "secret");
+    const { app } = makeApp();
+    const responses = await Promise.all(
+      Array.from({ length: 15 }, (_, i) => logIn(app, "alice", "wrong", { "x-test-peer": `198.51.100.${i}` })),
+    );
+    const statuses = responses.map((res) => res.status);
+    expect(statuses.filter((status) => status === 401)).toHaveLength(10);
+    expect(statuses.filter((status) => status === 429)).toHaveLength(5);
+  });
+
+  it("SEC-18: spellings that reach the same account share one counter, also outside ASCII", async () => {
+    // Postgres lower('İRIS') is 'iris', but JS 'İRIS'.toLowerCase() is
+    // 'i̇ris' (i + combining dot): a JS-folded key would split the buckets.
+    await createUser("iris", "secret");
+    const { app } = makeApp();
+    expect((await logIn(app, "İRIS", "secret")).status).toBe(200); // the same account
+    for (let i = 0; i < 10; i += 1) {
+      const res = await logIn(app, i % 2 === 0 ? "iris" : "İRIS", "wrong", { "x-test-peer": `198.51.100.${i}` });
+      expect(res.status).toBe(401);
+    }
+    for (const spelling of ["iris", "İRIS"]) {
+      const res = await logIn(app, spelling, "secret", { "x-test-peer": "198.51.100.99" });
+      expect(res.status).toBe(429);
+    }
+  });
+
+  it("SEC-18: unknown usernames are counted too, so a 429 does not reveal whether a name exists", async () => {
+    const { app } = makeApp();
+    for (let i = 0; i < 10; i += 1) {
+      expect((await logIn(app, "ghost", "wrong", { "x-test-peer": `198.51.100.${i}` })).status).toBe(401);
+    }
+    expect((await logIn(app, "GHOST", "wrong", { "x-test-peer": "198.51.100.99" })).status).toBe(429);
+  });
+
   it("SEC-13: behind the trusted proxy each forwarded client has its own bucket", async () => {
     const { app } = makeApp();
     const via = (client: string) => ({ "x-test-peer": PROXY, "x-forwarded-for": client });

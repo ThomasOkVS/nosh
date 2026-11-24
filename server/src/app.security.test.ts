@@ -16,7 +16,13 @@ const config = loadConfig({
 const unused = () => {
   throw new Error("AuthService is not used by these tests");
 };
-const auth: AuthService = { signUp: unused, logIn: unused, logOut: unused, getSession: unused };
+const auth: AuthService = {
+  signUp: unused,
+  logIn: unused,
+  logOut: unused,
+  getSession: unused,
+  accountKey: unused,
+};
 
 function makeApp() {
   return createApp({
