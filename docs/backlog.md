@@ -15,6 +15,15 @@ choice was made). This is just a todo list.
 
 ## Backlog
 
+### nosh restart (2026-11-24)
+- [ ] Extract the testable spec from the current app (plan:
+      [superpowers/plans/2026-11-24-nosh-spec-extraction.md](superpowers/plans/2026-11-24-nosh-spec-extraction.md)).
+- [ ] Owner approves spec → tag `legacy-v1`, keep `legacy` branch, wipe `main`.
+- [ ] Fix the shadcn CLI / pnpm invocation on Windows before scaffolding.
+- [ ] Build feature groups (skeleton + auth → recipes → collections → search
+      → units/scaling → import jobs → PWA/push → settings).
+- [ ] Set up SSH access to the homelab for the builder; dump, import, cutover.
+
 ### Post-MVP features
 Confirm scope with the project owner before starting any of these — per
 [CLAUDE.md](../CLAUDE.md), none should be built ahead of an explicit
@@ -90,6 +99,11 @@ priority.
 
 ## Completed
 
+- **2026-11-24** — Restart design written and approved
+  ([spec](superpowers/specs/2026-11-24-nosh-restart-design.md),
+  [decision](decisions.md#2026-11-24-nosh-restart)). A builder check added
+  two owner answers: the interface is English only, and SSH to the homelab
+  comes later.
 - **2026-09-25** — Tailscale support removed; Nosh is HTTPS-only at
   `https://nosh.itsthomassito.com` (the owner confirmed the cutover was done
   and the tailnet URL unused). See

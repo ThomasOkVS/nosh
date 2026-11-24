@@ -1,6 +1,6 @@
 # nosh restart — design
 
-**Date:** 2026-11-24 · **Status:** draft, awaiting owner approval
+**Date:** 2026-11-24 · **Status:** approved by the owner 2026-11-24
 **Inputs:** [handover](../../restart/2026-11-24-handover.md) ·
 [style log](../../restart/style-log.md) · current code on `main`
 (to become `legacy-v1`)
