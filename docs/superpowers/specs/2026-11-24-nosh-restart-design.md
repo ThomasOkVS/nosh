@@ -14,8 +14,8 @@ wiped.
 How to read the labels:
 
 - **Decided**: the owner confirmed it. Don't reopen.
-- **Proposed**: put to the owner, not yet confirmed. It is the default until the
-  owner says otherwise (see §12).
+  (Everything first put to the owner as a proposal was confirmed on
+  2026-11-24 and is now marked Decided.)
 - **My call**: settled by the author because it doesn't change what gets
   built. The owner can override.
 
@@ -24,7 +24,10 @@ How to read the labels:
 ## 1. Intent
 
 nosh is a self-hosted, subscription-free recipe manager for one person (the
-owner), in Dutch and English, used mostly on an iPhone as an installed PWA.
+owner), used mostly on an iPhone as an installed PWA. Recipe *content* is in
+Dutch or English (per-user recipe language, auto-translated imports). **The
+app's own interface is English only (decided 2026-11-24): no i18n library, no
+message catalogues.**
 It started as a beginner project to learn React, Node and AI-assisted
 development. The owner has since grown as an AI developer, and the models have
 got better.
@@ -193,7 +196,7 @@ keep/drop line in the extracted spec (§8).
 
 ### Auth
 
-**Proposed:** keep accounts (parity) using **Better Auth** with its Drizzle
+**Decided:** keep accounts (parity) using **Better Auth** with its Drizzle
 adapter instead of hand-rolled sessions.
 
 **Constraint the builder must verify before planning auth:** existing users log
@@ -227,12 +230,12 @@ checkout (git-ignored, throwaway, *reference only*, not product code). Run it
 with `pnpm --dir .superpowers/style-spike dev` → `http://localhost:5199`
 (`?round=1..7`; round 7 shows the library).
 
-**Proposed, navigation with the planner gone:** a library-only app. The bottom
+**Decided, navigation with the planner gone:** a library-only app. The bottom
 pill shrinks to **Library + mustard "+"**, settings stays top-right. With a
 single destination the pill could arguably collapse to just the "+". Final
-shape to confirm (§12).
+shape: Library + "+" (confirmed 2026-11-24).
 
-**Proposed, dark mode:** derive it from P4. My proposal: ink becomes the paper
+**Decided, dark mode:** derive it from P4. My proposal: ink becomes the paper
 (a warm near-black around `oklch(0.18 0.01 260)`), cards one step lighter
 (`oklch(0.23 0.01 260)`), chalk becomes the text, the active pill turns
 chalk-on-ink inverted, and both mustards stay as they are (bright mustard
@@ -245,7 +248,7 @@ over any generic design-plugin suggestion.
 
 ## 8. Project order
 
-**Proposed:**
+**Decided:**
 
 1. **This design doc.** Approved by the owner.
 2. **Spec extraction.** Parallel agents, one per area: auth, recipes,
@@ -271,12 +274,12 @@ archive-and-wipe step. Build plans are written one feature group at a time,
 *after* the spec is approved, so they can cite criterion IDs. Nobody writes
 a whole-project task plan up front.
 
-**Proposed, spec on disk:** one file per area under
+**Decided, spec on disk:** one file per area under
 `docs/superpowers/specs/nosh-v2/` (e.g. `auth.md`, `recipes.md`), plus an
 `index.md` that lists the areas and the keep/drop verdicts. Each criterion has
 a stable ID (e.g. `REC-07`) so tests and plans can cite it.
 
-**Proposed, tests:** rewrite tests from the acceptance criteria. Port only the
+**Decided, tests:** rewrite tests from the acceptance criteria. Port only the
 pure-logic tests directly (units conversion, quantity/temperature formatting,
 ingredient-line parsing), since those encode hard-won edge cases and don't
 depend on the old architecture.
@@ -291,7 +294,7 @@ possible is encouraged, so the real topology is exercised before cutover.
 
 ## 9. Security requirements (carried over)
 
-**Proposed as explicit requirements** (each becomes acceptance criteria in the
+**Decided: explicit requirements** (each becomes acceptance criteria in the
 security spec area):
 
 - **SSRF guard** on every server-side fetch of a user-supplied or third-party
@@ -314,7 +317,7 @@ The items above are the floor, not the ceiling.
 
 ## 10. Docs and agent setup in the new repo
 
-**Proposed:** start lean.
+**Decided:** start lean.
 
 - A short `CLAUDE.md`: stack, commands, "the spec is the source of truth,
   tests cite criterion IDs", "the style section of the design doc is
@@ -330,7 +333,7 @@ The items above are the floor, not the ceiling.
 
 ## 11. Data migration and cutover
 
-**Proposed:**
+**Decided:**
 
 - A **one-time importer** (old schema → new), built test-first against a
   **sanitised dump of the real database**.
@@ -354,6 +357,24 @@ The items above are the floor, not the ceiling.
 | sessions | **not migrated** | Owner logs in once after cutover (my call) |
 | `recipe_collections_archive_1700000000010` | **not migrated** | Leftover archive table from an old migration |
 
+**Homelab access (decided 2026-11-24):** the builder can reach the homelab
+over SSH, but not yet. Until access is set up, every production step is
+blocked on the owner. That means the dump, the side-by-side deploy, the Caddy
+route and the switch. Plan those as steps that wait for access. Don't
+script around them. Each production action is still confirmed with the owner
+before it runs.
+
+**The database dump (my call):**
+- **Who makes it:** the builder makes it over SSH (`pg_dump` from the
+  Postgres container).
+- **What's in it:** it is the owner's own data, so it is a copy, not
+  anonymised. **Password hashes stay in**, so a test can prove the owner's
+  real login survives the import.
+- **Where it lives:** outside the repo, or git-ignored. It is never committed
+  and never sent to an external service.
+- **Unit tests:** they use a small hand-made fixture with a known argon2
+  hash, not the dump.
+
 **Verification:** the importer reports counts per table, old vs new, and fails
 loudly on any row it can't map. After import, a scripted check confirms every
 old recipe ID maps to a new recipe with the same title, ingredient count, step
@@ -361,9 +382,9 @@ count, collection path and the same number of readable images.
 
 **Search vectors:** regenerated in the new schema, not copied.
 
-## 12. Awaiting the owner's confirmation
+## 12. Confirmed by the owner (2026-11-24)
 
-These are the defaults in this design. Confirm or change:
+First proposed in the handover, all approved:
 
 1. Project order (§8): design → spec → archive/wipe → build → migrate.
 2. Spec extraction by parallel agents, with the wipe gated on spec approval (§8).
@@ -376,6 +397,9 @@ These are the defaults in this design. Confirm or change:
 9. Dark mode derived from P4 as sketched (§7).
 10. Tests rewritten from criteria; only pure-logic tests ported (§8).
 11. Spec on disk: one file per area with criterion IDs (§8).
+
+Also answered after the builder check: the interface is English only (§1),
+and the builder gets SSH access to the homelab later (§11).
 
 ## 13. Left to the builder
 
