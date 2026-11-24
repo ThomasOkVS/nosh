@@ -285,12 +285,12 @@ Cites: `frontend/src/components/Skeleton.tsx`, `frontend/src/components/EmptySta
 
 ### Owner decisions (2026-11-24)
 The owner accepted every default in index.md on 2026-11-24.
-- Q4 several photos per recipe: every photo is migrated and kept; the UI shows and edits one replaceable cover; a new photo becomes the cover. REC-14, REC-15, REC-17, REC-18, REC-21, REC-33, REC-34, REC-39; gallery row dropped. The following sub-rules are a controller proposal, owner to confirm (final review, Important 4):
+- Q4 several photos per recipe: every photo is migrated and kept; the UI shows and edits one replaceable cover; a new photo becomes the cover. REC-14, REC-15, REC-17, REC-18, REC-21, REC-33, REC-34, REC-39; gallery row dropped. The owner also confirmed these sub-rules on 2026-11-24 (final review, Important 4):
   - replacing the cover asks for confirmation first ("Replace this photo? The current one will be deleted."), the same as deleting a photo (REC-33, REC-34, REC-39);
   - after confirmation the new photo becomes the cover and the old cover is deleted (REC-15, REC-33);
   - extra photos migrated from v1 stay stored but are never shown and never promoted, so removing the cover leaves the recipe with no photo (REC-15, REC-17, REC-21, REC-34);
   - replacing the cover is a swap, so it is never blocked by the 20-photo cap (REC-14, REC-15).
-  - Applier choice beyond the controller proposal, owner to confirm: setting a cover on a recipe that has none is not blocked by the cap either, so a v1 recipe with 20 or more hidden photos whose cover was removed can still get a new one (REC-15).
+  - Applier choice beyond the confirmed sub-rules, owner to confirm: setting a cover on a recipe that has none is not blocked by the cap either, so a v1 recipe with 20 or more hidden photos whose cover was removed can still get a new one (REC-15).
 - Q5 tag case: tags are case-insensitive, stored lower-case, merged on migration. REC-07, REC-10, REC-35 (and SRCH-21).
 - Q12 caps: title 200 characters, 100 ingredients, 100 steps, 30 tags, 20 photos per recipe. The tag field stops at 30; an imported draft over a cap opens in the form, which refuses to save until it is within (applier choice from the final review, Minor 3). REC-03, REC-14, REC-15, REC-28, REC-35 (collection names: COL-09; imports: IMP-23).
 - Q13 HEIC: accepted on upload and converted to JPEG. REC-14, REC-33 (and SEC-25).

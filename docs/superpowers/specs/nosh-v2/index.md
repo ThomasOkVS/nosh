@@ -31,7 +31,7 @@ line naming what v1 did. Each area's Rationale lists its decisions.
 1. Login accepts any stored non-empty username; the format rules apply to sign-up only. AUTH-10, AUTH-23.
 2. Usernames are case-insensitive for uniqueness and login; the importer stops on a case collision. AUTH-06, AUTH-07, AUTH-23.
 3. Imports stay stored converted to the owner's units (lossy, as today). No change (UNIT-35).
-4. Every photo is migrated and kept; the UI shows one cover (v1's first photo), and a new photo becomes the cover. Controller proposal, owner to confirm: replacing the cover asks first, then the new photo becomes the cover and the old one is deleted; the swap is never blocked by the 20-photo cap; other v1 photos stay stored but are never shown or promoted, so removing the cover leaves no photo. Applier choice, owner to confirm: setting a cover on a recipe with none is not blocked by the cap either. REC-14, REC-15, REC-17, REC-18, REC-21, REC-33, REC-34, REC-39.
+4. Every photo is migrated and kept; the UI shows one cover (v1's first photo), and a new photo becomes the cover. Replacing the cover asks first, then the new photo becomes the cover and the old one is deleted; the swap is never blocked by the 20-photo cap; other v1 photos stay stored but are never shown or promoted, so removing the cover leaves no photo. Applier choice, owner to confirm: setting a cover on a recipe with none is not blocked by the cap either. REC-14, REC-15, REC-17, REC-18, REC-21, REC-33, REC-34, REC-39.
 5. Tags are case-insensitive, stored lower-case and merged on migration. REC-07, REC-10, REC-35, SRCH-21.
 6. Per-user caps stay; import starts are also capped at 30 per client IP per hour. SEC-16, SEC-59, IMP-06.
 7. Production refuses to start without a session secret. SEC-57.
