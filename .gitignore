@@ -25,3 +25,6 @@ Thumbs.db
 # pnpm content-addressable store, created by some pnpm configs. Local cache,
 # never a build input.
 .pnpm-store/
+
+# Superpowers brainstorming scratch (style spikes, mockups)
+.superpowers/
