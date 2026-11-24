@@ -44,9 +44,8 @@ token with `SESSION_SECRET`.
 (`signUpEmail`, also used by the username plugin) rejects a missing email
 (`[body.email] Invalid input`) and its user table makes `email` required, so
 "AUTH-01 AUTH-23" cannot pass without a placeholder email, which the spec
-rules out. Even with a placeholder: the concurrent Alice/alice sign-up
-surfaced a 500 instead of "username taken" (AUTH-06), there is no injectable
-clock for "AUTH-12", and the raw session token is stored in the session table.
+rules out. Even with a placeholder, there is no injectable clock for
+"AUTH-12", and the raw session token is stored in the session table.
 Design §6 names hand-rolled sessions as the fallback.
 
 **Details:** [skeleton + auth plan](superpowers/plans/2026-11-24-skeleton-auth.md), Task 1.
