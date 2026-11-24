@@ -90,3 +90,19 @@ needs plain JavaScript.
 **Decision:** the root `typescript` dependency is pinned to `^6`.
 
 **Why:** typescript-eslint rejects TypeScript 7. Revisit when it supports 7.
+
+## 2026-11-24: v2 takes the v1 hostname now; deploy topology
+
+**Decision:** v2 runs as the Dockge stack `/opt/nosh-v2` (one app container
+plus its own Postgres 17) and serves `nosh.itsthomassito.com` from day one.
+v1 is stopped, not removed, so the importer can read its data. Only the app
+joins Caddy's `proxy` network, as `nosh-v2`; `TRUSTED_PROXIES` is Caddy's
+pinned `172.28.255.2`. Data lives under `/opt/nosh-v2/`, not the plan's
+`/DATA` (absent on the box; Kopia backs up `/opt`). The app carries the
+Watchtower label, so merges to `main` deploy and migrate nightly.
+
+**Why:** the owner is the only user and chose the real hostname over a
+side-by-side name (v1's features are gone until the importer runs). Caddy
+already had a pinned IP, so SEC-13 needed no proxy change. Caddy overwrites
+`X-Forwarded-For` (no `trusted_proxies`), confirmed in v2's request log; the
+rightmost-entry rule is right either way. Details: `docs/deployment.md`.
