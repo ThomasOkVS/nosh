@@ -11,6 +11,7 @@ import { bodyTooLarge, notFound, onError } from "./http/errors.js";
 import { originCheck } from "./http/originCheck.js";
 import { requestLog } from "./http/requestLog.js";
 import { securityHeaders } from "./http/securityHeaders.js";
+import { mountSpa } from "./http/spa.js";
 
 export interface AppDeps {
   config: Config;
@@ -19,7 +20,7 @@ export interface AppDeps {
   getPeer?: (c: Context) => string;
   /** Delay before answering a failed login; 1 s unless a test sets it (SEC-19). */
   failureDelayMs?: number;
-  /** Built web app to serve (Task 5). */
+  /** Built web app to serve; absent in API-only tests. */
   webDistDir?: string;
 }
 
@@ -57,6 +58,7 @@ export function createApp(deps: AppDeps) {
     )
     .use("/api/*", requireAuth({ auth: deps.auth, config: deps.config }));
 
+  if (deps.webDistDir) mountSpa(app, deps.webDistDir);
   app.onError(onError);
   app.notFound(notFound);
   return app;
