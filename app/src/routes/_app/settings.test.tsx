@@ -76,6 +76,8 @@ describe("Settings", () => {
   });
 
   it("AUTH-21 shows dev when the build has no commit", async () => {
+    // Hermetic: vite.config.ts bakes process.env.COMMIT_SHA at test time.
+    vi.stubEnv("VITE_COMMIT_SHA", "dev");
     loggedIn();
     renderApp("/settings");
     expect(await screen.findByText("dev")).toHaveAttribute("title", "dev");
