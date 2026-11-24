@@ -52,14 +52,14 @@ Recipes are the heart of nosh: the owner creates, views, edits and deletes recip
 | Ordered steps | keep | Parity. |
 | Free-form tags on a recipe | keep | Parity; tag browsing lives in the library. |
 | Source URL link ("Imported from …") | keep | Parity; shown on imported recipes. |
-| Photo upload (JPEG, PNG, WEBP, up to 5 MB) | keep | Parity. |
+| Photo upload (JPEG, PNG, WEBP, HEIC/HEIF, up to 5 MB) | keep | Parity, plus HEIC/HEIF (owner, index Q13). |
 | Photo attach from a URL (used by import) | keep | Import fetches the photo after save (ADR 2026-08-13). |
-| Image gallery (multiple images per recipe) | owner? | Stored and uploadable today, but the UI only uses the first as the cover and shows the rest as small unclickable thumbnails with no reorder. The design (§11) says to keep every image on migration; whether the owner wants a real gallery, or a single photo per recipe, is their call. Recommend: keep migrating all images, ship the new UI with a single cover photo plus the ability to replace it, and revisit a gallery later. |
-| Drag-and-drop photo upload on the edit form | keep | Cheap on desktop; harmless on phone. |
+| Image gallery (multiple images per recipe) | drop | Decided by the owner (index Q4): every stored photo is migrated and kept, but the UI shows and edits one cover photo, which can be replaced. A gallery may come back later. |
+| Drag-and-drop photo upload on the recipe form | keep | Cheap on desktop; harmless on phone. |
 | Confirm before deleting a recipe or photo | keep | Destructive actions are irreversible. |
 | New-recipe form seeded from a finished import, opened from the dialog, a toast or a notification tap | keep | The owner always reviews an import before anything is saved (REC-36, REC-37; the import side is IMP-41 to IMP-45). |
-| Tag names normalised to one case | owner? | Today "Soup" and "soup" are two different tags. Recommend lower-casing on save. |
-| HEIC/HEIF photos (iPhone default) | owner? | Rejected today. Recommend accepting and converting, since the owner uses an iPhone. |
+| Tag names normalised to one case | keep | Decided by the owner (index Q5): tags are case-insensitive, stored lower-case, and merged on migration (REC-07, REC-35, SRCH-21). |
+| HEIC/HEIF photos (iPhone default) | keep | Decided by the owner (index Q13): accepted on upload and converted to JPEG (REC-14). |
 
 ## Acceptance criteria
 
@@ -73,14 +73,15 @@ Cites: `backend/src/routes/recipes.test.ts` "creates a recipe with nested ingred
 
 ### REC-03 Recipe input rules
 **Given** a create or update request **When** it is validated **Then** these rules hold, and a violation is a 400 whose body is `{ "error": <message> }`:
-- `title` is required; leading and trailing whitespace is trimmed and a blank title is refused.
+- `title` is required; leading and trailing whitespace is trimmed and a blank title is refused; at most 200 characters.
 - `description`, if given, is non-blank after trimming (an empty string is refused; use `null` or omit it for none). Omitted means `null`.
 - `servings` is a positive whole number or `null`.
-- `prepTimeMinutes` and `cookTimeMinutes` are whole numbers of zero or more, or `null`.
-- `ingredients` and `steps` default to an empty list. Each ingredient needs a non-blank `name`; `quantity` and `unit`, if given, are non-blank text or `null`. Each step needs a non-blank `instruction`.
-- `tags` defaults to an empty list; each tag is non-blank text after trimming.
+- `prepTimeMinutes` and `cookTimeMinutes` are positive whole numbers or `null`; 0 is refused. A 0 stored by v1 is carried over as `null`.
+- `ingredients` and `steps` default to an empty list, with at most 100 ingredients and at most 100 steps. Each ingredient needs a non-blank `name`; `quantity` and `unit`, if given, are non-blank text or `null`. Each step needs a non-blank `instruction`.
+- `tags` defaults to an empty list, with at most 30 tags; each tag is non-blank text after trimming.
 - All text values are stored trimmed.
-- There are no maximum lengths and no cap on the number of ingredients, steps or tags.
+- There are no other maximum lengths.
+Decision: owner 2026-11-24, index Q12 and Q17 (v1 had no caps, and accepted 0 minutes, which it then never displayed)
 Cites: `backend/src/routes/recipes.test.ts` "rejects a recipe with no title", `backend/src/validation/recipes.ts`
 
 ### REC-04 Source URL
@@ -97,11 +98,13 @@ Cites: `backend/src/validation/recipes.ts`, `backend/migrations/1700000000002_cr
 
 ### REC-07 Tags
 **Given** recipes with tags **When** they are saved and read **Then**:
-- a tag name is created the first time any recipe uses it and reused afterwards (one tag per exact name, shared across all users' recipes in the tags table);
-- repeating the same name within one recipe stores it once;
-- names are case-sensitive and stored as typed (trimmed);
+- a tag is stored trimmed and lower-cased ("Soup" is stored as "soup");
+- a tag name is created the first time any recipe uses it and reused afterwards (one tag per lower-cased name, shared across all users' recipes in the tags table);
+- repeating the same name within one recipe, in any letter case, stores it once;
 - a recipe's tags come back sorted alphabetically by name, not in the order sent;
-- saving a recipe replaces its tag set; removing a recipe, or a tag from a recipe, leaves the tag name in the tags table.
+- saving a recipe replaces its tag set; removing a recipe, or a tag from a recipe, leaves the tag name in the tags table;
+- v1 tags that differ only in letter case are merged into one lower-cased tag when data is carried over, and a recipe linked to several of them keeps one link.
+Decision: owner 2026-11-24, index Q5 (v1 stored tags as typed, case-sensitive: "Soup" and "soup" were two tags)
 Cites: `backend/src/routes/recipes.test.ts` "creates a recipe with nested ingredients, steps, and tags", `backend/migrations/1700000000004_create-tags.js`, `backend/src/repositories/recipes.ts`
 
 ### REC-08 Read one recipe
@@ -114,7 +117,7 @@ Cites: `backend/src/routes/recipes.test.ts` "lists only the current user's recip
 
 ### REC-10 List filters
 **Given** a library with recipes at Home and in nested collections **When** the owner lists recipes with filters **Then**:
-- `tag=<name>` returns only recipes carrying exactly that tag (a recipe with several tags still appears once);
+- `tag=<name>` returns only recipes carrying that tag, compared ignoring letter case (a recipe with several tags still appears once);
 - `collection=root` returns only recipes directly at Home;
 - `collection=<id>` returns only recipes directly in that collection;
 - `within=<id>` returns recipes in that collection and every collection nested beneath it;
@@ -122,6 +125,7 @@ Cites: `backend/src/routes/recipes.test.ts` "lists only the current user's recip
 - a collection id that is not the owner's yields an empty list, never another user's recipes;
 - a malformed `collection` (not `root` or a positive whole number) or `within` is a 400; an unusable `tag` is ignored.
 The same filters apply to search (see SRCH); collection semantics are in COL.
+Decision: owner 2026-11-24, index Q5 (v1 matched the exact tag name, case-sensitively)
 Cites: `backend/src/routes/recipes.test.ts` "filters the recipe list by tag", "lists only the recipes directly at Home with collection=root", "lists only the recipes directly in one collection", "includes every nested sub-collection with within", "never returns another user's recipes through within", "rejects a malformed folder filter", `frontend/src/api/recipes.ts`
 
 ### REC-11 Where a new recipe goes
@@ -137,11 +141,13 @@ Cites: `backend/src/routes/recipes.test.ts` "updates a recipe, replacing its ing
 Cites: `backend/src/routes/recipes.test.ts` "deletes a recipe", "refuses to delete another user's recipe", `backend/migrations/1700000000002_create-ingredients.js`, `backend/migrations/1700000000005_create-recipe-images.js`
 
 ### REC-14 Photo upload: types, size, checks
-**Given** an owner's recipe **When** they upload a photo (one file per request, form field `image`) **Then** it is accepted only if it is JPEG, PNG or WEBP, at most 5 MB, and its actual bytes match the declared type (a text or HTML file labelled as an image is refused). It is stored under a generated unguessable name with the extension for its type. The answer is 201 with the image (id, position). A wrong type, a mismatched file, a file over 5 MB or a missing file is a 400 with a message and nothing is stored.
+**Given** an owner's recipe **When** they upload a photo (one file per request, form field `image`) **Then** it is accepted only if it is JPEG, PNG, WEBP or HEIC/HEIF, at most 5 MB, and its actual bytes match the declared type (a text or HTML file labelled as an image is refused). A HEIC/HEIF photo is converted and stored as JPEG. It is stored under a generated unguessable name with the extension for its stored type. The answer is 201 with the image (id, position). A wrong type, a mismatched file, a file over 5 MB, a missing file, or a recipe that already has 20 photos is a 400 with a message saying which, and nothing is stored.
+Decision: owner 2026-11-24, index Q12 and Q13 (v1 refused HEIC/HEIF and had no cap on photos per recipe)
 Cites: `backend/src/routes/recipes.test.ts` "uploads an image to a recipe", "rejects an unsupported image type", `backend/src/services/imageSniff.ts`, `backend/migrations/1700000000005_create-recipe-images.js`, ADR 2026-08-05
 
-### REC-15 Several photos, order and cover
-**Given** a recipe **When** photos are added **Then** there is no cap on how many; each new photo gets the next position after the highest existing one (the first gets 0); a recipe's images always come back ordered by position; the lowest-position image is the cover shown on the library card and the detail page; there is no way to reorder, and removing a photo leaves a gap in the numbers but never reorders the rest (so removing the cover promotes the next one).
+### REC-15 Photos: order and cover
+**Given** a recipe **When** photos are added **Then** there are at most 20 per recipe (REC-14); a newly added photo becomes the cover, placed before every existing photo, and the others keep their relative order; a recipe's images always come back ordered by position; the lowest-position image is the cover shown on the library card and the detail page; there is no way to reorder, and removing a photo never reorders the rest (so removing the cover promotes the next one). Photos carried over from v1 keep their order, so their first photo stays the cover.
+Decision: owner 2026-11-24, index Q4 and Q12 (v1 appended a new photo after the last one, so a later photo never became the cover, and had no cap)
 Cites: `backend/src/routes/recipes.test.ts` "uploads an image to a recipe", `backend/src/repositories/recipes.ts`, `backend/migrations/1700000000005_create-recipe-images.js`
 
 ### REC-16 Photos are served only to their owner
@@ -153,7 +159,8 @@ Cites: `backend/src/routes/recipes.test.ts` "serves an uploaded image back to it
 Cites: `backend/src/routes/recipes.test.ts` "deletes an image from a recipe"
 
 ### REC-18 Attach a photo from a URL
-**Given** an owner's recipe and an `http(s)` image URL **When** they ask nosh to attach it **Then** the server fetches the image itself and stores it as a new photo exactly as an upload would be (201 with the image, next position). Ownership is checked before anything is fetched. The URL is checked against the SSRF rules (see SEC) before every request and on every redirect (up to 5 redirects are followed); a blocked address, such as a metadata or private address, is a 400 and nothing is fetched. The fetch has a 10 second timeout. The same limits as upload apply: JPEG, PNG or WEBP by the response type, bytes that match that type, and 5 MB, checked both from the declared length and while reading. A user may make at most 60 such requests per hour (see SEC).
+**Given** an owner's recipe and an `http(s)` image URL **When** they ask nosh to attach it **Then** the server fetches the image itself and stores it as a new photo exactly as an upload would be (201 with the image, which becomes the cover, REC-15). Ownership is checked before anything is fetched. The URL is checked against the SSRF rules (see SEC) before every request and on every redirect (up to 5 redirects are followed); a blocked address, such as a metadata or private address, is a 400 and nothing is fetched. The fetch has a 10 second timeout. The same limits as upload apply: JPEG, PNG or WEBP by the response type, bytes that match that type, and 5 MB, checked both from the declared length and while reading. A user may make at most 60 such requests per hour (see SEC).
+Decision: owner 2026-11-24, index Q4 (v1 gave the fetched photo the next position after the last one)
 Cites: `backend/src/routes/recipes.test.ts` "attaches an image fetched from a URL", "requires ownership to attach an image from a URL", "rejects a from-url attach pointed at a blocked host", `backend/src/services/imageFromUrl.test.ts` "fetches an allowed image URL and reports its extension", "maps %s to %s", "rejects a blocked host before making any request", "rejects a redirect into a blocked host", "follows a redirect to an allowed host", ADR 2026-08-13
 
 ### REC-19 Photo-from-URL failures
@@ -164,8 +171,9 @@ Cites: `backend/src/routes/recipes.test.ts` "surfaces a from-url fetch failure a
 **Given** a recipe **When** the owner opens it **Then** the page shows the title, the description if any, a line with "Serves N", "Prep N min" and "Cook N min", each shown only when its value is set and non-zero (a stored 0 is hidden), the tags, the ingredients as a numbered list (shown only when there are any), and the steps as a numbered list (shown only when there are any). Amounts are shown scaled and in the owner's units (see UNIT) and oven temperatures in steps in the owner's temperature unit. There are edit and delete controls and a link back to the library at the recipe's collection.
 Cites: `frontend/src/pages/RecipeDetailPage.tsx`, `frontend/src/components/IngredientList.tsx`, `frontend/src/pages/RecipeDetailPage.test.tsx` "shows amounts in the user's units and converts oven temperatures"
 
-### REC-21 Detail page photos
-**Given** a recipe **When** its detail page is shown **Then** the cover photo (lowest position) is shown large; with no photo a placeholder is shown instead; any further photos appear as a row of small thumbnails (not clickable, not enlargeable).
+### REC-21 Detail page photo
+**Given** a recipe **When** its detail page is shown **Then** the cover photo (lowest position) is shown large; with no photo a placeholder is shown instead. Further stored photos (carried over from v1) are not shown.
+Decision: owner 2026-11-24, index Q4 (v1 showed further photos as a row of small, unclickable thumbnails)
 Cites: `frontend/src/pages/RecipeDetailPage.tsx`, ADR 2026-08-06
 
 ### REC-22 Detail page source link
@@ -193,15 +201,18 @@ Cites: `frontend/src/pages/RecipeDetailPage.tsx`, `frontend/src/components/Ingre
 Cites: `frontend/src/pages/RecipeFormPage.tsx`, `frontend/src/pages/RecipeFormPage.test.tsx` "adds and removes ingredient and step rows"
 
 ### REC-28 Form: fields and rows
-**Given** the form **Then** the owner can set title (required), description, servings (whole number, minimum 1), prep and cook minutes (whole numbers, minimum 0); add any number of ingredient rows (quantity, unit, name) and step rows (instructions); and remove any row, including the last one. Step numbers shown beside the rows follow their order. Long descriptions and steps are shown in full, in a text area that grows with its content rather than scrolling or clipping.
+**Given** the form **Then** the owner can set title (required, at most 200 characters), description, servings (whole number, minimum 1), prep and cook minutes (whole numbers, minimum 1, or empty); add ingredient rows (quantity, unit, name) and step rows (instructions), up to 100 of each; and remove any row, including the last one. A prep or cook time of 0 is refused in the form with a message before anything is sent. Step numbers shown beside the rows follow their order. Long descriptions and steps are shown in full, in a text area that grows with its content rather than scrolling or clipping.
+Decision: owner 2026-11-24, index Q12 and Q17 (v1 had no caps and accepted 0 minutes)
 Cites: `frontend/src/pages/RecipeFormPage.tsx`, `frontend/src/components/AutoGrowTextarea.tsx`, `frontend/src/pages/RecipeFormPage.test.tsx` "adds and removes ingredient and step rows"
 
 ### REC-29 Form: what is sent on save
-**Given** the form **When** the owner saves **Then** the request carries trimmed values; empty description, quantity and unit become `null`; empty servings, prep and cook fields become `null`; a typed "0" is sent as 0 (the API accepts 0 minutes but refuses 0 servings with a 400, which the form shows as the error banner); ingredient rows with a blank name and step rows with a blank instruction are dropped; tags are sent as entered; the source URL (set only by import, kept unchanged when editing) and, when creating, the chosen collection are included.
+**Given** the form **When** the owner saves **Then** the request carries trimmed values; empty description, quantity and unit become `null`; empty servings, prep and cook fields become `null`; a typed "0" for servings, prep or cook time never reaches the API (REC-28); ingredient rows with a blank name and step rows with a blank instruction are dropped; tags are sent as entered; the source URL (set only by import, kept unchanged when editing) and, when creating, the chosen collection are included.
+Decision: owner 2026-11-24, index Q17 (v1 sent a typed 0 as 0; the API accepted 0 minutes and refused 0 servings)
 Cites: `frontend/src/pages/RecipeFormPage.test.tsx` "submits a trimmed, filtered payload and navigates to the new recipe's edit page", `frontend/src/pages/RecipeFormPage.tsx`
 
 ### REC-30 Form: saving, feedback and navigation
-**Given** the form **When** the owner presses save **Then** the button shows "Saving…" and is disabled until done. On failure a visible error banner shows the server's message (or "Something went wrong"), keyboard focus moves to it, and the entered data is kept. On success of an edit the owner lands on the recipe's detail page; on success of a create the owner lands on that new recipe's edit form (replacing the create form in history, so Back never returns to a form that would create a duplicate), where photos can now be added.
+**Given** the form **When** the owner presses save **Then** the button shows "Saving…" and is disabled until done. On failure a visible error banner shows the server's message (or "Something went wrong"), keyboard focus moves to it, and the entered data is kept. On success, of an edit or of a create, the owner lands on the recipe's detail page; after a create, the create form is replaced in history, so Back never returns to a form that would create a duplicate.
+Decision: owner 2026-11-24, index Q16 (v1 landed on the new recipe's edit form after a create, so photos could be added)
 Cites: `frontend/src/pages/RecipeFormPage.tsx`, `frontend/src/pages/RecipeFormPage.test.tsx` "submits a trimmed, filtered payload and navigates to the new recipe's edit page"
 
 ### REC-31 Form: collection for a new recipe
@@ -212,8 +223,9 @@ Cites: `frontend/src/pages/RecipeFormPage.test.tsx` "defaults to Home", "starts 
 **Given** the owner has typed into the create form **When** they navigate to an edit form (or any other form instance) **Then** the fields start fresh; nothing typed earlier is carried over.
 Cites: `frontend/src/pages/RecipeFormPage.test.tsx` "remounts (does not carry over state) when routing from the create form to an edit form"
 
-### REC-33 Form: photos
-**Given** the edit form **Then** a Photos section lists current photos as thumbnails each with a remove control, and lets the owner add a photo by choosing a file or dropping one onto the drop area; the accepted types (JPEG, PNG, WEBP) are stated; only the first file is taken when several are chosen; while uploading the area shows "Uploading…" and is disabled; a failed upload shows a "Failed to upload image" message. **Given** the create form **Then** the section only says "Save the recipe first to add photos."
+### REC-33 Form: cover photo
+**Given** the create or edit form **Then** a Photo section shows the current cover photo, if any, with a remove control, and lets the owner choose a file or drop one onto the drop area to add or replace it; the accepted types (JPEG, PNG, WEBP, HEIC) are stated; only the first file is taken when several are chosen. On the edit form the photo is uploaded at once: while uploading the area shows "Uploading…" and is disabled; a new photo becomes the cover (REC-15) and the previous cover is removed; a failed upload shows the server's reason (for example the wrong type or over 5 MB), or "Failed to upload image" when there is none. On the create form the chosen photo is shown as a preview and uploaded right after the recipe is created; if that upload fails, the recipe stays saved and the server's reason is shown.
+Decision: owner 2026-11-24, index Q4, Q16 and Q18 (v1 listed every photo as a thumbnail, added photos without removing any, said "Save the recipe first to add photos." on the create form, and showed only "Failed to upload image")
 Cites: `frontend/src/pages/RecipeFormPage.tsx`, `frontend/src/api/recipes.ts`
 
 ### REC-34 Form: removing a photo asks first
@@ -221,11 +233,13 @@ Cites: `frontend/src/pages/RecipeFormPage.tsx`, `frontend/src/api/recipes.ts`
 Cites: `frontend/src/pages/RecipeFormPage.test.tsx` "asks for confirmation before deleting a photo, and only deletes once confirmed"
 
 ### REC-35 Tag entry
-**Given** the tag field on the form **When** the owner types a tag and presses Enter or comma, or leaves the field **Then** the tag (trimmed) is added as a removable chip and the field clears; an empty entry or a tag already on the recipe (exact match) is ignored; Backspace in an empty field removes the last tag; each chip has its own remove control. A hint says "Press Enter or comma to add a tag."
+**Given** the tag field on the form **When** the owner types a tag and presses Enter or comma, or leaves the field **Then** the tag (trimmed and lower-cased) is added as a removable chip and the field clears; an empty entry or a tag already on the recipe (ignoring letter case) is ignored; Backspace in an empty field removes the last tag; each chip has its own remove control. A hint says "Press Enter or comma to add a tag."
+Decision: owner 2026-11-24, index Q5 (v1 kept the typed case and only ignored an exact duplicate)
 Cites: `frontend/src/components/TagInput.test.tsx` "commits a tag on Enter and clears the draft", "commits a tag on comma", "does not add a duplicate tag", "removes the last tag on backspace when the draft is empty", "removes a specific tag when its remove button is clicked"
 
 ### REC-36 Form: seeded from an import
-**Given** the owner arrives at the create form from a finished import **Then** every field (title, description, servings, times, ingredients, steps, tags, source URL) is pre-filled for review and edit, nothing is saved until the owner presses save, and saving uses the normal create path with the source URL attached. If the import could not be translated, a notice "Couldn't translate this recipe — it's in its original language." is shown. After a successful create the discovered photo URL, if any, is attached to the new recipe (see REC-18); if that fails the recipe is still saved and a "Couldn't import the photo — add one manually" message is shown.
+**Given** the owner arrives at the create form from a finished import **Then** every field (title, description, servings, times, ingredients, steps, tags, source URL) is pre-filled for review and edit, nothing is saved until the owner presses save, and saving uses the normal create path with the source URL attached. If the import could not be translated, a notice "Couldn't translate this recipe — it's in its original language." is shown. After a successful create, a photo the owner chose on the form is uploaded (REC-33); otherwise the discovered photo URL, if any, is attached to the new recipe (see REC-18). If that fails the recipe is still saved and a "Couldn't import the photo — add one manually" message is shown. The owner then lands on the recipe page (REC-30).
+Decision: owner 2026-11-24, index Q16 (v1 landed on the edit form and had no photo choice on the create form)
 Cites: `frontend/src/pages/RecipeFormPage.test.tsx` "pre-fills from imported recipe data passed via router state", "saves an imported recipe through the normal create path, carrying sourceUrl", "attaches the imported photo once the recipe is saved", "toasts but still saves when the imported photo fails to attach", `frontend/src/pages/NewRecipePage.test.tsx` "says when an import couldn't be translated", "shows no translation notice for a normal import", ADR 2026-08-13
 
 ### REC-37 New-recipe page opened from a finished import
@@ -252,7 +266,18 @@ Cites: `frontend/src/components/Skeleton.tsx`, `frontend/src/components/EmptySta
 - **REC-14, REC-16, REC-18:** photos are checked by their bytes, not just the claimed type, because both the browser and a remote server only claim a type (see SEC); they are served only through an owner-checked route, never a static folder (ADR 2026-08-06). Names are random so files cannot be guessed.
 - **REC-18, REC-36:** the photo is attached by a second request after the recipe is saved rather than staged before it, to avoid orphaned uploads for imports that are never saved (ADR 2026-08-13). It is best-effort, so a failed photo never undoes a save.
 - **REC-15:** the multi-image data model predates the editorial redesign; the UI never grew a gallery, so only the cover is really used. The design (§11) requires every image to survive migration regardless.
-- **REC-30:** creating lands on the edit form because photos need a saved recipe id; this is a quirk the new design may remove (see open questions).
+- **REC-30, REC-33:** v1 landed on the edit form after a create because photos need a saved recipe id. The owner chose to take the photo on the create form and upload it right after the create (index Q16), the same best-effort pattern as the import photo (ADR 2026-08-13).
+
+### Owner decisions (2026-11-24)
+The owner accepted every default in index.md on 2026-11-24.
+- Q4 several photos per recipe: every photo is migrated and kept; the UI shows and edits one replaceable cover; a new photo becomes the cover. REC-15, REC-18, REC-21, REC-33; gallery row dropped.
+- Q5 tag case: tags are case-insensitive, stored lower-case, merged on migration. REC-07, REC-10, REC-35 (and SRCH-21).
+- Q12 caps: title 200 characters, 100 ingredients, 100 steps, 30 tags, 20 photos per recipe. REC-03, REC-14, REC-15, REC-28 (collection names: COL-09).
+- Q13 HEIC: accepted on upload and converted to JPEG. REC-14, REC-33 (and SEC-25).
+- Q16 after saving a new recipe: the create form takes a photo and the owner lands on the recipe page. REC-30, REC-33, REC-36.
+- Q17 zero times: 0 minutes is refused in the form and by the API; a stored 0 is carried over as none. REC-03, REC-28, REC-29.
+- Q18 upload errors: the server's reason is shown. REC-33.
+- Q35 duplicating a recipe: out of scope for the first release. No criterion.
 
 ## Tests not carried
 - `backend/src/routes/recipes.test.ts` "finds a recipe via full-text search on an ingredient name": search ranking and matching belong to SRCH.
@@ -274,11 +299,4 @@ Cites: `frontend/src/components/Skeleton.tsx`, `frontend/src/components/EmptySta
 - `frontend/src/components/TagChip.test.tsx` "renders the editorial variant as an uppercase label, not a pill": tests visual variant classes; styling is being redesigned.
 
 ## Open questions for the owner
-1. Image gallery: keep several photos per recipe, or one cover photo? Recommend: migrate all images, ship with one cover photo (replaceable) and revisit a gallery later.
-2. Tag case: should "Soup" and "soup" be the same tag? Recommend lower-casing on save and merging on migration. (Merged in index.md with SRCH open question 3.)
-3. iPhone photos (HEIC) are rejected today. Recommend accepting them and converting to JPEG on upload.
-4. After saving a new recipe the owner lands on its edit form (to add photos), not the recipe. Recommend: let the create form take a photo directly and land on the recipe page.
-5. A prep or cook time of 0 can be saved but is never displayed (the detail page and card hide a zero). Recommend refusing 0 in the form, or showing it.
-6. There are no length or count limits on titles, text, ingredients, steps, tags or photos per recipe. Recommend sane caps (for example 200 characters for a title, 100 ingredients and steps, 30 tags, 20 photos). (Merged in index.md with COL open question 4.)
-7. Upload failures all show the same "Failed to upload image" message even though the server says why (wrong type, too large). Recommend showing the server's reason.
-8. Recipes cannot be duplicated. Out of scope for the first release unless wanted.
+All answered by the owner on 2026-11-24 (accepted defaults); see Rationale, Owner decisions.

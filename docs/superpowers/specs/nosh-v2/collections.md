@@ -38,9 +38,9 @@ Collections are the owner's folders for recipes: an unlimited-depth tree, with t
 | One location per recipe (a recipe is in exactly one collection or at Home) | keep | The file-system mental model the owner asked for (ADR 2026-08-28). |
 | Folder view shows only direct contents | keep | Keeps Home from being a second "all recipes" list. |
 | Create, rename, move (reparent) collection | keep | Rename and reparent are one "edit" action. |
-| Delete collection deletes everything inside it | owner? | Deliberate (ADR 2026-08-28) and I recommend keeping it, with the count warning. See open question 1. |
+| Delete collection deletes everything inside it | keep | Decided by the owner (index Q10): keep, with the count warning (COL-15, COL-16), as chosen in ADR 2026-08-28. |
 | Breadcrumb navigation (Home / A / B) | keep | Also a drop target. |
-| Drag a recipe card onto a sub-collection or breadcrumb crumb to move it | owner? | Fast way to file recipes, but mouse-only and nosh is mainly used on iPhone. See open question 3. |
+| Drag a recipe card onto a sub-collection or breadcrumb crumb to move it | keep | Decided by the owner (index Q11): kept for desktop (COL-20), and a recipe can also be moved from the folder view without dragging, for touch (COL-25). |
 | Move-recipe dropdown on recipe detail page | keep | Non-drag alternative; works on touch. |
 | Sibling-name uniqueness | keep | Two siblings may not share a name; non-siblings may. |
 | Collection-scoped search and tag filtering on the library page | keep | Behaviour belongs to SRCH. This file only fixes the scope rule (COL-04). |
@@ -89,11 +89,13 @@ Cites: `backend/src/routes/collections.test.ts` "creates and lists a root-level 
 Cites: `backend/src/routes/collections.test.ts` "creates and lists a root-level collection with a recipe count", "creates a nested collection under a parent"; `frontend/src/pages/CollectionsPage.test.tsx` "creates a root-level collection and reloads the list", "creates a sub-collection inside the currently viewed collection"
 
 ### COL-09 Name validation
-**Given** a create or rename request **When** the name is empty or only whitespace, or missing **Then** it is rejected with 400. Otherwise the name is stored trimmed of surrounding whitespace. There is no maximum length today (see open question 4). The parent id, when given, must be a positive integer or null, and null or absent means top level.
+**Given** a create or rename request **When** the name is empty or only whitespace, missing, or longer than 100 characters after trimming **Then** it is rejected with 400. Otherwise the name is stored trimmed of surrounding whitespace. The parent id, when given, must be a positive integer or null, and null or absent means top level. The name fields on the screen also stop at 100 characters.
+Decision: owner 2026-11-24, index Q12 (v1 had no maximum length)
 Cites: `backend/src/routes/collections.test.ts` "rejects a collection with no name"
 
 ### COL-10 Sibling names are unique, other names may repeat
-**Given** two collections with the same parent (or two at the top level) of the same owner **When** a create, rename or move would give them the same name **Then** it is refused and nothing is saved. Names are compared exactly (case-sensitive). **Given** collections that are not siblings **When** they share a name (for example "Desserts" under both "Baking" and "Dinners") **Then** that is allowed. Today a refused duplicate surfaces as a generic server error (500) and the UI shows "Failed to create collection" or "Failed to save changes". See open question 2.
+**Given** two collections with the same parent (or two at the top level) of the same owner **When** a create, rename or move would give them the same name **Then** it is refused with 409 "A collection with that name already exists here", nothing is saved, and the create or rename form shows that message and keeps what was typed. Names are compared exactly (case-sensitive). **Given** collections that are not siblings **When** they share a name (for example "Desserts" under both "Baking" and "Dinners") **Then** that is allowed.
+Decision: owner 2026-11-24, index Q15 (v1 answered a duplicate with a generic 500, and the screen showed only the "Failed to create collection" or "Failed to save changes" toast)
 Cites: `backend/src/routes/collections.test.ts` "allows the same name for collections that are not siblings", ADR 2026-08-28
 
 ### COL-11 Nesting depth
@@ -152,6 +154,11 @@ Cites: `backend/migrations/1700000000010_nest-collections.js`, `backend/migratio
 **Given** the library page loads **When** recipes are still loading for the first time **Then** placeholder cards are shown. When the owner changes search term or tag, the previous results stay on screen with a small "Searching" indicator instead of being replaced by placeholders. A failure to load collections or recipes shows an error message on the page.
 Cites: `frontend/src/pages/CollectionsPage.tsx`
 
+### COL-25 Move a recipe from the folder view without dragging
+**Given** the owner is browsing Home or a folder, on a touch device or with a mouse **When** they choose the move action on a recipe card **Then** the same location selector as COL-18 opens (all collections, indented, "Home (top level)" first, the current location preselected); choosing a different location moves the recipe (COL-17) and the folder view reloads, so the recipe leaves the current folder's list. Choosing the current location does nothing. A failed move shows a toast "Failed to move recipe". The move action does not open the recipe.
+Decision: owner 2026-11-24, index Q11 (v1 offered drag and drop on the folder view, which works with a mouse only; the selector existed only on the recipe page)
+Cites: `frontend/src/components/RecipeCollectionPicker.tsx`, `frontend/src/pages/CollectionsPage.tsx`
+
 ## Rationale
 - COL-03, COL-04: ADR 2026-09-23 chose "a folder shows only what is directly in it" (rejected: showing nested recipes, which would make Home a second "all recipes" list) and "search covers the folder and everything beneath" (rejected: always searching everything). At Home the search scope is the whole library, which replaced the old separate all-recipes page. SRCH and REC should refer to COL-03 rather than restate it.
 - COL-03 rule 1: the legacy store used a nullable collection reference. In the rewrite it can be modelled differently, as long as the observable rules hold.
@@ -162,13 +169,16 @@ Cites: `frontend/src/pages/CollectionsPage.tsx`
 - COL-20: the drag payload is a dedicated type so that an ordinary link drag is never mistaken for a recipe, and drops outside targets are swallowed, because a recipe card is itself a link and the browser would otherwise navigate to it.
 - COL-23: the migration archived the many-to-many membership before collapsing it. The restart's data migration should preserve the same "lowest id wins" outcome (design section 11).
 
+### Owner decisions (2026-11-24)
+The owner accepted every default in index.md on 2026-11-24.
+- Q10 deleting a folder deletes everything inside it: kept, with the count warning. No criterion changed (COL-15, COL-16).
+- Q11 drag and drop on iPhone: drag stays for desktop (COL-20); a move action on recipe cards in the folder view works on touch. COL-25 (new).
+- Q12 length limits: collection names are at most 100 characters. COL-09.
+- Q15 duplicate sibling name: 409 "A collection with that name already exists here", shown in the form. COL-10.
+- Q31 folder screen: rename and move stay one form; the screen title and nav say "Library", crumbs, selectors and captions say "Home". No criterion changed.
+
 ## Tests not carried
 - None. Every test case in the listed test files is carried by a criterion above, and the five recipe-move tests in `backend/src/routes/recipes.test.ts` (a file REC owns) are cited on COL-17. The helper `backend/src/utils/groupBy.ts` and `frontend/src/hooks/useRecipeDropTargets.ts` have no tests of their own and no behaviour beyond COL-20.
 
 ## Open questions for the owner
-1. Keep "deleting a folder deletes everything inside it"? Recommend keep, with the count warning, as decided in 2026-08-28. Optionally add an undo or a recently-deleted bin, but that is a new feature, so post-release.
-2. A duplicate sibling name currently produces a generic 500. Recommend the rewrite returns 409 with a clear message ("A collection with that name already exists here") and shows it in the form (an owner decision only if you would rather keep today's behaviour exactly).
-3. Drag and drop works with a mouse only, not on iPhone, which is the main device. Recommend keeping it for desktop, but making sure the dropdown move (COL-18) is also reachable from the folder view's recipe cards on touch devices. This is new UI, so it is the owner's call.
-4. Collection names have no length limit. Recommend a cap (for example 100 characters) in line with recipe titles. Check REC's cap and agree one number. (Merged in index.md with REC open question 6.)
-5. The rename form combines rename and move. Recommend keeping it, but allowing moving a sub-collection by dragging it onto another folder is a possible later feature, not in scope now.
-6. The library page heading reads "Library" while the root is called "Home" everywhere else (breadcrumb, selectors, captions). Recommendation (aligned with index.md): keep today's split, since design §7 names the nav and the screen "Library": the screen title and nav say "Library", and the root crumb, selectors and captions say "Home". Say if you want one name everywhere.
+All answered by the owner on 2026-11-24 (accepted defaults); see Rationale, Owner decisions.

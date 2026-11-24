@@ -39,7 +39,7 @@ The app-wide guards that let a private, single-owner app sit on the public inter
 | Fresh session id on login and signup | keep | Session-fixation defence, cheap (ADR 2026-08-06). |
 | Client IP and HTTPS taken from forwarded headers only when the peer is the trusted proxy (Caddy) | keep | Design §3 and §9. Changed from today: the trusted proxy is Caddy, not nginx. |
 | Rate limits: login per IP, login failures per account, signup per IP | keep | Design §9; ADR 2026-09-24. |
-| Rate limits: import start and photo-from-URL, per user | keep | Both spend quota or make the server fetch a URL. Per user as today, plus the per-IP import limit of design §9 (see Open question 1). |
+| Rate limits: import start and photo-from-URL, per user | keep | Both spend quota or make the server fetch a URL. Per user as today, plus a per-IP import cap of 30 starts per hour (SEC-59), decided by the owner (index Q6) as design §9 asks. |
 | Failed-login delay and equal timing for unknown usernames | keep | Stops username enumeration by timing. |
 | In-memory rate-limit counters (reset on restart) | keep | Fine for one process; one fresh window per deploy is the accepted worst case. |
 | Signup off by default (`ALLOW_SIGNUP`) | keep | Design §9. A reachable signup form lets anyone spend the Gemini quota and fill the uploads directory. |
@@ -49,11 +49,11 @@ The app-wide guards that let a private, single-owner app sit on the public inter
 | JSON error shape; 400/413 for bad bodies; 404 JSON; 500 without details | keep | Nothing about the stack leaks. |
 | No framework advertisement header | keep | Cheap, no downside. |
 | Page and photo fetch guard (blocked addresses, checked at connect time, redirects re-validated) | keep | Design §9. |
-| yt-dlp egress guard | keep | Design §9. The mechanism is free to change (Open question 3); the refusals are the requirement. |
+| yt-dlp egress guard | keep | Design §9. The owner kept the guard inside the app (index Q34); its exact mechanism is the builder's, and the refusals are the requirement. |
 | Web Push endpoint allowlist and guarded send | keep | Design §9. |
 | Boot-time config validation (origins, trusted proxy, VAPID set, database URL) | keep | Misconfiguration must stop the server at boot, not fail silently at login. |
-| Session secret required in production | owner? | Today a dev default is used even in production. Recommended, but a change (Open question 2). |
-| Basic response-hardening headers (`X-Content-Type-Options`, `Referrer-Policy`) | owner? | Not present today. Cheap; owner's call (Open question 4). |
+| Session secret required in production | keep | Decided by the owner (index Q7): production refuses to start without one (SEC-57). |
+| Basic response-hardening headers (`X-Content-Type-Options`, `Referrer-Policy`) | keep | Decided by the owner (index Q8): added now (SEC-60); CSP stays in the backlog. |
 | Content-Security-Policy header | drop | Design §2 keeps CSP in the backlog, not the first release. |
 | Demo-data seeding flag (`SEED_DEMO_DATA`) | drop | Dev convenience, not security; no demo seeding is part of the new build. |
 | Gemini model settings in the environment | keep | Not a security matter; specified under the settings and import areas. |
@@ -130,7 +130,7 @@ Cites: `backend/src/security.test.ts` "refuses signup when disabled, and creates
 | Signup | client IP | 5 attempts | 1 hour |
 | Start an import | logged-in user | 30 starts | 1 hour |
 | Photo from URL | logged-in user | 60 requests | 1 hour |
-| Start an import (recommended, SEC-59) | client IP | 30 starts | 1 hour |
+| Start an import (SEC-59) | client IP | 30 starts | 1 hour |
 
 Cites: `backend/src/middleware/rateLimit.test.ts` "allows up to max hits in a window, then reports seconds until it resets", "starts a fresh window once the old one expires", "keeps keys independent", "forgets a key on reset", ADR 2026-09-24: Public HTTPS behind Caddy
 
@@ -167,7 +167,8 @@ Cites: `backend/src/app.test.ts` "returns ok status", `backend/src/security.test
 Cites: `backend/src/routes/recipes.ts`, `backend/src/routes/recipes.test.ts` "refuses to serve an image without a session", "refuses to serve another user's image", ADR 2026-08-06: Recipe images served through an authenticated route, not a static mount
 
 ### SEC-25 A photo's type is decided by its content, not its declared type
-**Given** a photo upload, or a photo fetched from a URL **When** its first bytes are not a JPEG, PNG or WebP, or they do not match the declared type (HTML sent as `image/png`; a PNG sent as `image/jpeg`) **Then** it is refused and nothing is stored: an upload answers 400, a photo fetched from a URL answers 422 (REC-19). A PNG uploaded as `image/png` is accepted (201). (The 5 MB size cap and the rest of upload behaviour belong to the recipes area.)
+**Given** a photo upload, or a photo fetched from a URL **When** its first bytes are not an accepted image type (JPEG, PNG or WebP; for uploads also HEIC/HEIF, which is converted to JPEG, REC-14), or they do not match the declared type (HTML sent as `image/png`; a PNG sent as `image/jpeg`) **Then** it is refused and nothing is stored: an upload answers 400, a photo fetched from a URL answers 422 (REC-19). A PNG uploaded as `image/png` is accepted (201). (The 5 MB size cap and the rest of upload behaviour belong to the recipes area.)
+Decision: owner 2026-11-24, index Q13 (v1 accepted only JPEG, PNG and WebP uploads)
 Cites: `backend/src/security.test.ts` "rejects HTML declared as image/png", "rejects a PNG declared as image/jpeg", "accepts a PNG declared as image/png", `backend/src/routes/recipes.ts` (422 for a fetched photo), ADR 2026-09-24: Public HTTPS behind Caddy
 
 ### SEC-26 A malformed request body gets 400, not 500, and is not echoed
@@ -247,11 +248,11 @@ Cites: `backend/src/services/egressProxy.test.ts` "refuses a CONNECT to %s, whic
 Cites: `backend/src/services/egressProxy.test.ts` "refuses a CONNECT to a non-web port, even on a public IP"
 
 ### SEC-45 Unresolvable names and malformed requests are refused
-**Given** yt-dlp traffic, mediated by a forward proxy as today (the mechanism may change, Open question 3; then the equivalent refusals apply) **When** the destination name does not resolve **Then** it is refused (403). **When** a tunnel request has no port, a scheme, or a path (`example.com`, `http://example.com:443`, `example.com:443/path`) **Then** it is refused as malformed (400). **When** a plain request is not in proxy form (a relative path) **Then** it is refused (400). Bracketed IPv6 destinations with a port (`[2606:4700::1111]:443`) are understood.
+**Given** yt-dlp traffic, mediated by a forward proxy as today (the mechanism may change; the guard stays inside the app, index Q34; then the equivalent refusals apply) **When** the destination name does not resolve **Then** it is refused (403). **When** a tunnel request has no port, a scheme, or a path (`example.com`, `http://example.com:443`, `example.com:443/path`) **Then** it is refused as malformed (400). **When** a plain request is not in proxy form (a relative path) **Then** it is refused (400). Bracketed IPv6 destinations with a port (`[2606:4700::1111]:443`) are understood.
 Cites: `backend/src/services/egressProxy.test.ts` "refuses a name that doesn't resolve", "refuses a request that isn't in proxy (absolute) form", "parses %s", "rejects %s"
 
 ### SEC-46 Allowed yt-dlp traffic passes through intact
-**Given** a destination that passes the guard, with today's forward-proxy mechanism (Open question 3) **When** yt-dlp opens an HTTPS tunnel or makes a plain HTTP request **Then** the tunnel opens and carries traffic end to end, and a plain request is forwarded with its original `Host` header and path and query, one fresh upstream connection per request, each checked separately. An upstream that fails before connecting answers 502; idle connections are dropped after 60 seconds.
+**Given** a destination that passes the guard, with today's forward-proxy mechanism (the mechanism may change; the guard stays inside the app, index Q34) **When** yt-dlp opens an HTTPS tunnel or makes a plain HTTP request **Then** the tunnel opens and carries traffic end to end, and a plain request is forwarded with its original `Host` header and path and query, one fresh upstream connection per request, each checked separately. An upstream that fails before connecting answers 502; idle connections are dropped after 60 seconds.
 Cites: `backend/src/services/egressProxy.test.ts` "tunnels a CONNECT to a public host", "forwards a plain-HTTP request with the original Host header"
 
 ### SEC-47 The yt-dlp guard is reachable from inside the server only and logs no secrets
@@ -294,17 +295,24 @@ Cites: `backend/src/config/env.ts`, `backend/src/app.ts`
 **Given** the server is started **When** the database connection setting is missing **Then** it stops at boot with an error naming the missing setting (today "Missing required environment variable: DATABASE_URL").
 Cites: `backend/src/config/env.ts`
 
-### SEC-57 Production refuses to start without a session secret (recommended)
-**Given** the server is started in production **When** no session secret is configured **Then** it stops at boot. (Today a built-in development secret is silently used.)
+### SEC-57 Production refuses to start without a session secret
+**Given** the server is started in production **When** no session secret is configured **Then** it stops at boot with an error naming the missing setting.
+Decision: owner 2026-11-24, index Q7 (v1 silently used a built-in development secret)
 Cites: `backend/src/config/env.ts`, ADR 2026-08-06: Recipe images served through an authenticated route, not a static mount
 
 ### SEC-58 Signup is enabled only by an explicit "true"
 **Given** the signup setting **When** it is unset, empty, or anything other than the exact value `true` **Then** signup is disabled (SEC-15).
 Cites: `backend/src/config/env.ts`, ADR 2026-09-24: Public HTTPS behind Caddy
 
-### SEC-59 Starting an import is also limited per client IP (recommended)
-**Given** any number of logged-in users behind one client IP (as determined by SEC-13) **When** more than 30 import starts arrive from that IP within an hour **Then** the 31st gets 429 with `Retry-After`, under the same window rules as SEC-16, in addition to the per-user cap of SEC-21. (Not present today; design §9 asks for import limits keyed by client IP. Proposed number, see Open question 1.)
+### SEC-59 Starting an import is also limited per client IP
+**Given** any number of logged-in users behind one client IP (as determined by SEC-13) **When** more than 30 import starts arrive from that IP within an hour **Then** the 31st gets 429 with `Retry-After`, under the same window rules as SEC-16, in addition to the per-user cap of SEC-21.
+Decision: owner 2026-11-24, index Q6 (v1 capped import starts per user only; design §9 asks for a client-IP key)
 Cites: design §9, `backend/src/routes/import.ts` (today: per-user cap only)
+
+### SEC-60 Responses carry basic hardening headers
+**Given** any response from the app (API answers, the app page, static files and photos) **When** its headers are inspected **Then** it carries `X-Content-Type-Options: nosniff` and `Referrer-Policy: same-origin`. There is no Content-Security-Policy header in the first release (backlog, design §2).
+Decision: owner 2026-11-24, index Q8 (v1 sent neither header)
+Cites: `backend/src/app.ts`, design §2
 
 ## Rationale
 
@@ -315,7 +323,7 @@ Cites: design §9, `backend/src/routes/import.ts` (today: per-user cap only)
 | SSRF guard on every server-side fetch (URL import page and photo fetch, yt-dlp, Web Push), including after redirects and DNS | SEC-31 to SEC-42 (page and photo), SEC-43 to SEC-48 (yt-dlp), SEC-49 and SEC-50 (Web Push) |
 | Session cookie named `__Host-`, Secure, Path=/, no Domain, HttpOnly, SameSite | SEC-07 to SEC-11 (SEC-12 and SEC-14 support it) |
 | Origin check on state-changing requests against the configured allowed origins | SEC-01 to SEC-06, SEC-51 and SEC-52 |
-| Rate limits on login, signup and import, keyed by client IP; client IP from `X-Forwarded-For` only when the peer is the trusted proxy (Caddy) | SEC-13, SEC-16 to SEC-22, SEC-53, SEC-59 (import is keyed per user today; SEC-59 adds the per-IP key, see Open question 1) |
+| Rate limits on login, signup and import, keyed by client IP; client IP from `X-Forwarded-For` only when the peer is the trusted proxy (Caddy) | SEC-13, SEC-16 to SEC-22, SEC-53, SEC-59 (import is keyed per user and, by the owner's decision, per client IP) |
 | Signup off by default (env flag) | SEC-15, SEC-58 |
 | Images served through an authenticated route, never a public static mount | SEC-24 (SEC-25 covers what may be stored) |
 
@@ -341,7 +349,17 @@ The app is public, and its containers can reach the Docker host, the LAN and the
 - SEC-23: the ADR 2026-09-24 audit found every data route behind a session check; the public routes are only those named.
 - Reverse-proxy matters from today's topology (nginx's 6 MB body limit for 5 MB photos, per-request name resolution, a unique backend alias) disappear with the single container. The single app now has to accept 5 MB photos itself (recipes area) and answer the 413 of SEC-27 for JSON bodies.
 - HSTS and TLS are Caddy's job (wildcard certificate), not the app's, and are therefore not criteria here.
-- SEC-57 is a new guard proposed because a production server silently running with a published development secret is the kind of regression the design warns about; with Better Auth, the equivalent is its own secret.
+- SEC-57 is a new guard, decided by the owner (index Q7), because a production server silently running with a published development secret is the kind of regression the design warns about; with Better Auth, the equivalent is its own secret.
+- SEC-60: `nosniff` stops a browser from reading an uploaded file as something other than its declared type; `same-origin` keeps the app's addresses (which carry recipe and import ids) out of the Referer sent to recipe sites the owner opens. CSP stays in the backlog (design §2).
+
+### Owner decisions (2026-11-24)
+The owner accepted every default in index.md on 2026-11-24.
+- Q6 rate-limit key: per-user caps kept; import starts also capped at 30 per client IP per hour. SEC-16 (table), SEC-59 (now a requirement).
+- Q7 session secret: production refuses to start without one. SEC-57 (now a requirement).
+- Q8 response-hardening headers: `X-Content-Type-Options: nosniff` and `Referrer-Policy: same-origin` on every response; CSP stays in the backlog. SEC-60 (new).
+- Q13 HEIC uploads: accepted and converted to JPEG, so the content check admits HEIC/HEIF for uploads. SEC-25.
+- Q34 yt-dlp guard and login limit: the guard stays inside the app; 20 login attempts per IP per 15 minutes stays. No criterion behaviour changed (SEC-17, SEC-43 to SEC-48; SEC-45 and SEC-46 only had their question reference updated).
+- Group E note: whether Caddy appends to or overwrites `X-Forwarded-For` is checked by the builder when the skeleton is deployed (SEC-13). No change.
 
 ## Tests not carried
 - `backend/src/services/safeFetch.test.ts` "returns a null-body response for 204": tests the fetch client's handling of a response with no body (an implementation detail of the in-house client).
@@ -349,9 +367,4 @@ The app is public, and its containers can reach the Docker host, the LAN and the
 - `backend/src/services/egressProxy.test.ts` "parses %s" for the exact string forms: carried as behaviour in SEC-45; the parser function itself is internal.
 
 ## Open questions for the owner
-1. (Merged in index.md with IMP open question 2 and IMP's rate-limit Features row.) Design §9 says rate limits on login, signup and import are keyed by client IP. Today import (and photo-from-URL) are keyed by logged-in user (30 and 60 per hour), login and signup by IP. Recommendation (consolidated with IMP): keep the per-user caps, because a user key is more accurate for an authenticated endpoint and the real cost is paid AI calls, and also add the per-IP limit on import that design §9 asks for.
-2. Production currently falls back to a built-in development session secret if none is set (SEC-57). Recommendation: refuse to start in production without one (an owner decision, see the Features row).
-3. The yt-dlp guard is an in-process forward proxy today. In the one-container build, a network-level egress block would also work. Recommendation: keep the guard in the app (testable, no extra infrastructure), and add the network block only if the homelab makes it free.
-4. No response-hardening headers beyond hiding the framework exist today, and CSP is in the backlog. Recommendation: add `X-Content-Type-Options: nosniff` and `Referrer-Policy` now (one line each), leave CSP in the backlog.
-5. Does Caddy overwrite or append to a client-sent `X-Forwarded-For`? SEC-13 assumes the entry Caddy appends is used. Recommendation: confirm in the Caddy config when the skeleton is deployed beside the old app, and pin Caddy by its fixed address.
-6. The login-attempt IP limit (SEC-17) is 20 per 15 minutes and counts every valid-shaped attempt, so a shared household IP could lock itself out. Recommendation: keep the number; single-user app.
+All answered by the owner on 2026-11-24 (accepted defaults); see Rationale, Owner decisions.

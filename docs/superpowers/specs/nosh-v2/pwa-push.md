@@ -37,14 +37,14 @@ nosh is used mostly as an app installed on the owner's iPhone home screen. This 
 | No offline API/data caching | keep | Deliberate: never serve a stale auth response or an API URL as the app page. |
 | Push notification when an import finishes or fails | keep | Core to the "start an import, lock the phone" flow. |
 | Opt-in prompt in the import screen | keep | Asked at the moment it is useful; required to be a tap on iOS. |
-| Notifications on/off control outside the import screen | keep | Today it is an entry in the user menu, which design §7 removes. Its new home is open question 3 (recommended: the Settings screen). SET and AUTH defer to this row. |
+| Notifications on/off control outside the import screen | keep | Decided by the owner (index Q9): it lives on the Settings screen (SET-30), with the "Notify me" prompt kept in the import screen. SET and AUTH defer to this row. |
 | Push off when server has no VAPID keys | keep | Same "feature off, app still works" pattern as a missing Gemini key. |
 | Push endpoint allowlist | keep | SSRF defence (design §9); see SEC. |
 | Push subscriptions kept across cutover | keep | Same origin and VAPID keys so existing devices keep working (design §3, §11). |
-| Theme and background colour from the new palette | owner? | Today's colours are the retired red/paper brand, and the two theme colours disagree. The style log fixes the P4 palette but names no OS-chrome colour. Recommend chalk paper (PWA-04); the alternative is ink, closest to today's page-head `#1C1814`. Open question 1. |
+| Theme and background colour from the new palette | keep | Decided by the owner (index Q26): chalk paper as theme and background colour, the same value in the manifest and the page head (PWA-04). |
 | Light and dark appearance follow the device setting | keep | Design §7 (decided): dark mode is derived from P4 and follows the system setting. |
-| Manual dark/light override remembered per device | drop | Today a user-menu toggle overrides the system setting. Design §7 says dark mode follows the system; it can come back if the owner asks (open question 3). |
-| Icons | owner? | Current icons are old-brand art; the restyle probably wants new ones. |
+| Manual dark/light override remembered per device | drop | Design §7 says dark mode follows the system; confirmed by the owner (index Q9). |
+| Icons | keep | Decided by the owner (index Q24): new icons in the P4 style at cutover (PWA-02, PWA-03). An installed iPhone app only refreshes its home-screen icon on reinstall. |
 
 ## Acceptance criteria
 
@@ -53,15 +53,18 @@ nosh is used mostly as an app installed on the owner's iPhone home screen. This 
 Cites: `frontend/vite.config.ts`, ADR 2026-08-08 Deployment group finished
 
 ### PWA-02 Manifest icons
-**Given** the manifest **When** a browser picks an icon **Then** it offers a scalable SVG icon, a 192x192 PNG and a 512x512 PNG (purpose "any"), and a 512x512 PNG with purpose "maskable" so Android can crop it to a shape.
+**Given** the manifest **When** a browser picks an icon **Then** it offers a scalable SVG icon, a 192x192 PNG and a 512x512 PNG (purpose "any"), and a 512x512 PNG with purpose "maskable" so Android can crop it to a shape. All of them are new artwork in the P4 style (design §7), not the old-brand icons.
+Decision: owner 2026-11-24, index Q24 (v1 shipped old-brand icon art)
 Cites: `frontend/vite.config.ts`, `frontend/public/*`, ADR 2026-08-08 Design polish follow-ups
 
 ### PWA-03 iPhone home-screen metadata
-**Given** the owner uses "Add to Home Screen" in Safari **When** the page head is read **Then** it provides an Apple touch icon (PNG), declares the page as a standalone-capable web app, and titles it "Nosh"; the page also has a favicon (SVG) and a viewport that covers the full screen including the notch area.
+**Given** the owner uses "Add to Home Screen" in Safari **When** the page head is read **Then** it provides an Apple touch icon (PNG, new P4-style artwork like PWA-02), declares the page as a standalone-capable web app, and titles it "Nosh"; the page also has a favicon (SVG) and a viewport that covers the full screen including the notch area.
+Decision: owner 2026-11-24, index Q24 (v1 used the old-brand Apple touch icon)
 Cites: `frontend/index.html`, `frontend/public/*`
 
 ### PWA-04 Manifest colours
-**Given** the manifest and page head **When** the app is installed or opened **Then** the manifest provides a background colour (shown on the launch splash) and a theme colour (shown in the OS UI), and the page head declares a theme colour too. Both come from the locked P4 palette (design §7). Recommended (open question 1; the alternative is ink as the theme colour): the manifest's background and theme colours are both chalk paper, and the page head declares chalk paper as the theme colour, the same value as the manifest. A second, dark-mode page-head value (the dark-mode paper) is a change that comes with design §7's dark mode; today the page head has a single value.
+**Given** the manifest and page head **When** the app is installed or opened **Then** the manifest provides a background colour (shown on the launch splash) and a theme colour (shown in the OS UI), and the page head declares a theme colour too. All come from the locked P4 palette (design §7): the manifest's background and theme colours are both chalk paper, and the page head declares chalk paper as the theme colour, the same value as the manifest. With design §7's dark mode, the page head may add the dark-mode paper as the theme colour for dark appearance.
+Decision: owner 2026-11-24, index Q26 (v1 had `#f6f1e7` background, `#b23a2e` manifest theme and `#1C1814` page-head theme)
 Cites: `frontend/vite.config.ts`, `frontend/index.html`, design §7, `docs/restart/style-log.md` (Round 5, P4)
 
 ### PWA-05 Manifest, service worker and app page are always fresh
@@ -157,7 +160,8 @@ Cites: `frontend/src/push/pushNotifications.ts`, `frontend/src/push/usePushNotif
 Cites: `frontend/src/push/pushNotifications.ts`, `frontend/src/components/UserMenu.tsx`
 
 ### PWA-28 Enabling is a tap-driven opt-in
-**Given** state "off" **When** the owner taps "Notify me when it's done" (import screen, shown while an import runs) or the settings toggle **Then** the browser permission prompt appears directly from that tap (never on page load), and on grant the device subscribes (reusing an existing browser subscription if there is one) and sends it to the server. If permission is denied the state becomes denied; if the prompt is dismissed it stays off; if saving fails the state falls back to off.
+**Given** state "off" **When** the owner taps "Notify me when it's done" (import screen, shown while an import runs) or the Notifications toggle on the Settings screen (SET-30) **Then** the browser permission prompt appears directly from that tap (never on page load), and on grant the device subscribes (reusing an existing browser subscription if there is one) and sends it to the server. If permission is denied the state becomes denied; if the prompt is dismissed it stays off; if saving fails the state falls back to off.
+Decision: owner 2026-11-24, index Q9 (v1 had the toggle in the header user menu)
 Cites: `frontend/src/push/pushNotifications.ts`, `frontend/src/push/usePushNotifications.ts`, `frontend/src/import/ImportDialog.tsx`
 
 ### PWA-29 Confirmation while an import runs
@@ -184,7 +188,15 @@ Cites: `frontend/index.html` (today: stored choice, else the system setting), de
 - PWA-28: iOS only shows the permission prompt in response to a tap; asking inside the import flow also puts the question where the owner is deciding whether to wait or leave.
 - PWA-12: runtime public key lets keys be rotated with a config change only.
 - PWA-31: the same origin and keys are required because a subscription is bound to the origin and the key it was created with.
-- PWA-04: today the manifest says `#f6f1e7` background and `#b23a2e` theme, and the page head says `#1C1814`; the two theme colours disagree and both belong to the retired brand. The style log fixes the palette but not the OS-chrome colour, so PWA-04 recommends the paper colour: it keeps the top of the screen as clean as the page (style log round 3) and gives one value in both places for light appearance. The area's first recommendation was ink, which is closest to today's page-head colour; the owner chooses (open question 1). The manifest takes a single theme and a single background colour, so both are chalk paper and the splash is chalk paper in either appearance; only the page head can vary by appearance, so it adds the dark-mode paper for dark. The owner can override this at spec review. Exact dark values are the builder's (design §13).
+- PWA-04: v1's manifest said `#f6f1e7` background and `#b23a2e` theme, and the page head `#1C1814`; the two theme colours disagreed and both belonged to the retired brand. The style log fixes the palette but not the OS-chrome colour; the owner chose chalk paper (index Q26), which keeps the top of the screen as clean as the page (style log round 3). The manifest takes a single theme and background colour, so the splash is chalk paper in either appearance. Exact dark values are the builder's (design §13).
+
+### Owner decisions (2026-11-24)
+The owner accepted every default in index.md on 2026-11-24.
+- Q9 notifications toggle: on the Settings screen (SET-30); the "Notify me" prompt stays in the import screen; the manual dark/light override is dropped (PWA-32). PWA-28.
+- Q24 icons: new icons in the P4 style at cutover. PWA-02, PWA-03.
+- Q26 theme colour: chalk paper as theme and background colour, the same in the manifest and the page head. PWA-04.
+- Q29 notifications: wording "Recipe ready" / "Import failed" kept, and a failed-import notification opens the library. No criterion changed (PWA-20, PWA-21).
+- Group E note: who sends the "import done" notification is an implementation detail of the job queue; PWA-20 to PWA-23 hold either way. No change.
 
 ## Tests not carried
 - `backend/src/routes/push.test.ts` "rejects an endpoint that isn't a real push service (the Docker host's dockge port)" and "(an internal URL over plain http)": folded into PWA-15 as "internal addresses"; the specific Docker addresses are deployment detail.
@@ -192,9 +204,4 @@ Cites: `frontend/index.html` (today: stored choice, else the system setting), de
 - No sibling tests exist for `frontend/src/sw.ts`, `frontend/src/push/*` or `frontend/vite.config.ts`; their behaviour above comes from the code and ADRs, so the rewrite needs new tests for PWA-07 to PWA-09 and PWA-24 to PWA-30.
 
 ## Open questions for the owner
-1. Theme colour for the OS chrome: the style log fixes the P4 palette but names no OS-chrome colour. Today the manifest says `#b23a2e` and the page head `#1C1814` (dark). Recommendation: chalk paper as theme and background colour, the same value in the manifest and the page head (PWA-04); the alternative is ink.
-2. Icons and splash: the current icons are old-brand art. Recommend new icons (SVG, 192, 512, maskable 512, Apple touch) in the new style at cutover. Note an installed iPhone app only refreshes its home-screen icon on reinstall.
-3. Where do the user menu's entries live once it is gone (design §7: settings is an icon top-right)? It holds the notifications toggle, your username, "Log out", the app version and a dark/light override. Recommend an Account section on the Settings screen with the username, "Log out" and the version at the bottom, a Notifications toggle on the same screen, and keeping the "Notify me" prompt in the import screen. The dark/light override is dropped because dark mode follows the device (design §7, PWA-32); say if you want it back. (Merged with AUTH open question 6 and SET open question 3.)
-4. Notification wording and icon: "Recipe ready" / "Import failed" and the 192 icon. Recommendation: keep as is.
-5. Should tapping a failed-import notification open the failed job directly (today it opens `/` and the app restores it on launch)? Recommendation: keep today's behaviour.
-6. If the job queue changes (design §6), who sends the notification when a job finishes is an implementation detail, but the criteria (PWA-20 to PWA-23) must still hold, including for jobs that finish while the app is closed.
+All answered by the owner on 2026-11-24 (accepted defaults); see Rationale, Owner decisions.

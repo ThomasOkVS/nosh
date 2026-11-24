@@ -28,6 +28,7 @@ and see, and how those choices are stored.
 | Feature | Verdict | Why |
 |---|---|---|
 | Settings screen (reached from the top-right settings icon) | keep | Single home for every per-user preference. |
+| Account section (username, Log out, app version) on this screen | keep | Decided by the owner (index Q9): these move here from the header user menu (AUTH-21, SET-30). |
 | Model picker: Automatic or one allowed model, saved per user | keep | Owner's explicit ask (ADR 2026-09-24): a saved choice, not a per-import prompt. |
 | Usage estimate: "~N of M requests left today" plus tokens used today, per model | keep | Google exposes no remaining-quota figure, so nosh counts its own calls. |
 | Usage estimate is shared across all users and bucketed by the Pacific calendar day | keep | Google's limits are per project and reset at midnight Pacific. |
@@ -36,8 +37,8 @@ and see, and how those choices are stored.
 | Allowed-model list with optional daily limits comes from server configuration | keep | Model ids go into outbound request addresses, so they cannot be free text. |
 | Recipe preferences: recipe language, units, oven temperature, keep spoons as spoons | keep | Controls live here; their meaning is in UNIT. |
 | Optimistic save with revert and toast on failure, per control | keep | Each control saves on its own, with no Save button. |
-| Push notification toggle (placement: see PWA open question 3) | keep | Owned by PWA (PWA-27 to PWA-30), whose row keeps it. Today it lives in the user menu, which design §7 removes; PWA open question 3 decides where it goes. |
-| Separate text-model and video-model pickers | owner? | Today one choice overrides both import paths. A single picker loses little; separate pickers are a later option (ADR 2026-09-24). |
+| Push notification toggle on this screen | keep | Decided by the owner (index Q9): the toggle moves here from the user menu, which design §7 removes (SET-30). Its behaviour is owned by PWA (PWA-27 to PWA-30). |
+| Separate text-model and video-model pickers | drop | Decided by the owner (index Q23): one picker with Automatic, as today (ADR 2026-09-24). |
 
 ## Acceptance criteria
 
@@ -150,12 +151,17 @@ Cites: `frontend/src/pages/SettingsPage.test.tsx` "saves just the changed field"
 Cites: `frontend/src/pages/SettingsPage.tsx` (no automated test)
 
 ### SET-28 ~~Push "notify me" is not a setting here~~
-Struck in the consistency pass: it recorded where the toggle is not, and the user menu that holds it today goes away (design §7). The toggle's behaviour is PWA-27 to PWA-30; its placement is PWA open question 3.
+Struck in the consistency pass: it recorded where the toggle is not, and the user menu that holds it today goes away (design §7). The toggle's behaviour is PWA-27 to PWA-30; the owner placed it on this screen (index Q9, SET-30).
 Cites: none (struck)
 
 ### SET-29 Imports use the settings in force when they start
 **Given** a user's saved model choice, recipe language, unit system, temperature unit and keep-spoons setting **When** they start an import **Then** the import uses those values as read at the moment it starts (a saved model no longer on the allowed list counts as Automatic, SET-07); changing a setting afterwards does not affect an import already running. See IMP-07 and UNIT-35.
 Cites: `backend/src/routes/import.ts` (no test in this area)
+
+### SET-30 Account and Notifications sections
+**Given** a signed-in owner **When** they open the Settings screen **Then**, besides the model and preference sections, it has an Account section with their username and a "Log out" action, and the app version at the bottom of the screen (AUTH-21); and, where push can work on this device (PWA-26), a Notifications section with the import-notification toggle in its current state (PWA-27 to PWA-30). Where push cannot work, the Notifications section is not shown.
+Decision: owner 2026-11-24, index Q9 (v1 had these entries in a menu under the username in the header, not on the Settings screen)
+Cites: `frontend/src/components/UserMenu.tsx`, `frontend/src/pages/SettingsPage.tsx`, design §7
 
 ## Rationale
 - **SET-07, SET-19:** the allowed list is runtime configuration, not schema, so a stored id can outlive its place on the list. Model ids go into the outbound request address, so they are checked when saved, when parsed, and when an import reads them back (ADR 2026-09-24).
@@ -166,11 +172,14 @@ Cites: `backend/src/routes/import.ts` (no test in this area)
 - **SET-17, SET-26:** the owner asked for a saved setting, not a prompt on every import, and each control saves alone so there is no Save button to forget.
 - **SET-20:** 20 vs 500 requests/day was the deciding factor for using the lighter model on video.
 
+### Owner decisions (2026-11-24)
+The owner accepted every default in index.md on 2026-11-24.
+- Q9 user menu entries: the Settings screen gets an Account section (username, "Log out", version at the bottom) and a Notifications toggle. SET-30 (new); SET-28 stays struck.
+- Q23 one model picker or two: one picker with Automatic, as today. No criterion changed.
+- Q28 AI usage estimate: kept on this screen, shared across users. No criterion changed (SET-08 to SET-13).
+
 ## Tests not carried
 - None. Every case in `backend/src/routes/settings.test.ts`, `backend/src/config/llmModels.test.ts` and `frontend/src/pages/SettingsPage.test.tsx` is carried. `frontend/src/components/RecipePreferencesSection.tsx` has no test file of its own; it is covered through the page test (SET-25, SET-26).
 
 ## Open questions for the owner
-1. Keep the usage estimate in the new screen at all? Recommendation: keep, since 20 requests/day on the standard model is easy to hit.
-2. Separate model pickers for web pages and videos? Recommendation: no, keep one override with Automatic as default.
-3. Moved: where the push notification toggle lives is PWA open question 3 (merged in index.md).
-4. Is a usage figure shared across users still right? Recommendation: yes; nosh is single-user in practice and the AI project quota is shared anyway.
+All answered by the owner on 2026-11-24 (accepted defaults); see Rationale, Owner decisions.

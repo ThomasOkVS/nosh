@@ -45,7 +45,7 @@ Ingredient amounts are free text ("1 1/2", "2-3", "2 x 400"). This area turns th
 | Import ingredient-line parsing | keep | Without it every imported line lands in the name field. |
 | Stopword language detection (skip pointless translation call) | keep | Saves model quota; uncertain means translate. |
 | Per-user recipe preferences (language, unit system, temperature, keep spoons) | keep | Stored on the user; edited in settings (see SET). |
-| Convert-and-store on import (lossy) | owner? | Accepted as lossy in 2026-09-25, but it is the one place data is silently changed; see Open question 1. |
+| Convert-and-store on import (lossy) | keep | Decided by the owner (index Q3): kept as today for parity (UNIT-35); keeping the source line text is a later option. |
 | Volume to weight conversion | drop | Needs ingredient densities; stays in the backlog (design §2). |
 | Locale decimals in the recipe form | drop | Backlog item; only reading "2,5" is carried. |
 
@@ -212,7 +212,8 @@ Cites: `backend/src/services/recipeLanguage.test.ts` "recognises clearly Dutch a
 Cites: `backend/src/services/recipeLanguage.test.ts` "skips recipes already in the target language", "translates when unsure", `backend/src/services/recipeExtraction.test.ts` "makes no translation call when the recipe is already in the target language", "makes no translation call with no language set", ADR 2026-09-25
 
 ### UNIT-41 Ingredient lines are split into quantity, unit and name
-**Given** an imported ingredient line **When** it is parsed **Then** it splits as: "1 tsp chili powder" to 1 / tsp / chili powder; "1 pound extra lean ground beef"; "2 cloves garlic (finely minced)" to 2 / cloves / garlic (finely minced); "500g beef mince" and "400ml crème fraîche" with the glued unit separated; "2-3 tsp olive oil" to quantity "2-3"; "1 1/2 cups flour"; "1/2 cup milk"; "½ tsp salt"; "2 x 400g cans chopped tomatoes" to "2 x 400" / g / cans chopped tomatoes; "2 tbsp. butter" (full stop dropped); "3 fl oz cream" (the two-word unit "fl oz"). Quantity forms recognised: multipack with x or ×, mixed numbers, a number followed by a Unicode fraction, ranges with a hyphen, en or em dash or "to", plain fractions, Unicode fractions, integers and decimals with a dot or comma. Units are the English and Dutch words of UNIT-06 and UNIT-07 with regular plurals, and the author's spelling and case are kept.
+**Given** an imported ingredient line **When** it is parsed **Then** it splits as: "1 tsp chili powder" to 1 / tsp / chili powder; "1 pound extra lean ground beef"; "2 cloves garlic (finely minced)" to 2 / cloves / garlic (finely minced); "500g beef mince" and "400ml crème fraîche" with the glued unit separated; "2-3 tsp olive oil" to quantity "2-3"; "2 tot 3 el olie" to quantity "2 tot 3" / el / olie; "1 1/2 cups flour"; "1/2 cup milk"; "½ tsp salt"; "2 x 400g cans chopped tomatoes" to "2 x 400" / g / cans chopped tomatoes; "2 tbsp. butter" (full stop dropped); "3 fl oz cream" (the two-word unit "fl oz"). Quantity forms recognised: multipack with x or ×, mixed numbers, a number followed by a Unicode fraction, ranges with a hyphen, en or em dash, "to" or the Dutch "tot", plain fractions, Unicode fractions, integers and decimals with a dot or comma. Units are the English and Dutch words of UNIT-06 and UNIT-07 with regular plurals, and the author's spelling and case are kept.
+Decision: owner 2026-11-24, index Q25 (v1 did not split "tot" as a range in ingredient lines, although the quantity evaluator of UNIT-03 already read it as one)
 Cites: `backend/src/services/ingredientLine.test.ts` "splits %s", ADR 2026-08-11
 
 ### UNIT-42 Size words are not units
@@ -241,7 +242,13 @@ Cites: `backend/src/services/ingredientLine.test.ts` "splits unparsed lines", "l
 - **Fail open (UNIT-38).** A recipe in the wrong language beats no recipe; the stopword check exists because tagging or translating every import with the model was rejected on quota grounds (ADR 2026-08-11 and 2026-09-25).
 - **Preference values (UNIT-34).** The option lists are fixed in code and the data store rejects any other value for language, unit system and temperature unit, so the rewrite should keep an enum or equivalent check. Keep spoons is a plain boolean, default true.
 - **Port directly (design §8).** `packages/units/src/units.test.ts` (number and quantity parsing, formatting, unit lookup, scaling, auto-tidy, unit systems, anchor factor, temperature), `backend/src/services/ingredientLine.test.ts` and `backend/src/services/recipeLanguage.test.ts` are pure logic and move to the new codebase nearly verbatim. The criteria above are the readable description; the test cases are the precise oracle. The new shared units module should export the same functions.
-- **Quirk to know about.** The quantity evaluator accepts "tot" as a range word, but the line parser splits a range only with a hyphen, en or em dash, or "to", so "2 tot 3 el" is not split as a range today. See Open question 2.
+- **Quirk to know about.** The quantity evaluator accepts "tot" as a range word, but the line parser splits a range only with a hyphen, en or em dash, or "to", so "2 tot 3 el" was not split as a range in v1. The owner chose to accept "tot" (index Q25, UNIT-41).
+
+### Owner decisions (2026-11-24)
+The owner accepted every default in index.md on 2026-11-24.
+- Q3 lossy convert-and-store on import: kept as today. No criterion changed (UNIT-35).
+- Q25 "tot" as a range word in ingredient lines: accepted, like "to". UNIT-41.
+- Q30 recipe language and scaling on display: the language setting does not translate stored recipes on display, and a scale is not remembered per recipe. No criterion changed (UNIT-19, UNIT-30).
 
 ## Tests not carried
 - `packages/units/src/units.test.ts` "parseNumber" `it.each` rows are grouped into UNIT-01 and UNIT-02 rather than one criterion each; nothing is dropped.
@@ -249,7 +256,4 @@ Cites: `backend/src/services/ingredientLine.test.ts` "splits unparsed lines", "l
 - `frontend/src/pages/RecipeDetailPage.test.tsx`: all eight cases are unit and scaling cases and are carried (UNIT-24 to UNIT-31). REC, which also lists the file, cites two of them for the page itself (REC-06, REC-20).
 
 ## Open questions for the owner
-1. Keep the lossy convert-and-store on import? Recommendation: keep for parity. A more faithful alternative is to also keep the source line text so nothing is irreversibly lost; it adds a column and UI, so do it after cutover if wanted.
-2. Make the line parser accept "tot" as a range word like the quantity evaluator already does ("2 tot 3 el")? Recommendation: yes, a one-word fix for Dutch recipes.
-3. Should the recipe-language setting also translate stored recipes on display, not only imports? Recommendation: no, it would need a model call per view.
-4. Should the scale factor be remembered per recipe? Recommendation: no, view-only with reset on reload was the agreed scope.
+All answered by the owner on 2026-11-24 (accepted defaults); see Rationale, Owner decisions.

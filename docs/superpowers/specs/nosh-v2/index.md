@@ -19,94 +19,81 @@ the stack, scope and project order.
 | `pwa-push.md` | PWA | Installable PWA, service worker, light/dark appearance, web push notifications | reviewed |
 | `security.md` | SEC | Origin check, rate limiting, error handling, SSRF guard, env config | reviewed |
 
-"Reviewed" means the consistency and coverage pass is done. The spec still
-waits for the owner's answers below and the owner's approval (design §8 gate).
+"Reviewed" means the consistency pass is done and the owner has answered every
+question (below). The spec still waits for the owner's approval (design §8 gate).
 
-## Open questions for the owner
+## Owner decisions (2026-11-24)
 
-Most important first. Each item has a default; "accept all defaults except
-N, M" is a complete answer. Links go to the area question with the full
-context.
+The owner answered every question with "Accept all defaults". Each criterion
+that a decision changed carries a `Decision: owner 2026-11-24, index Q<n>`
+line naming what v1 did. Each area's Rationale lists its decisions.
 
-### A. Affects the data import and cutover
+1. Login accepts any stored non-empty username; the format rules apply to sign-up only. AUTH-10, AUTH-23.
+2. Usernames are case-insensitive for uniqueness and login; the importer stops on a case collision. AUTH-06, AUTH-07, AUTH-23.
+3. Imports stay stored converted to the owner's units (lossy, as today). No change (UNIT-35).
+4. Every photo is migrated and kept; the UI shows one replaceable cover, and a new photo becomes the cover. REC-15, REC-18, REC-21, REC-33.
+5. Tags are case-insensitive, stored lower-case and merged on migration. REC-07, REC-10, REC-35, SRCH-21.
+6. Per-user caps stay; import starts are also capped at 30 per client IP per hour. SEC-16, SEC-59, IMP-06.
+7. Production refuses to start without a session secret. SEC-57.
+8. Every response carries `X-Content-Type-Options: nosniff` and `Referrer-Policy: same-origin`; CSP stays in the backlog. SEC-60 (new).
+9. The Settings screen gets an Account section (username, "Log out", version at the bottom) and a Notifications toggle; the "Notify me" prompt stays in the import screen; the dark/light override is dropped; search stays on the library screen. AUTH-21, SET-30 (new), PWA-28 (AUTH-22, SRCH-05, SET-28 stay struck).
+10. Deleting a folder deletes everything inside it, with the count warning, as today. No change (COL-15, COL-16).
+11. Drag and drop stays for desktop; recipe cards in the folder view get a move action that works on touch. COL-25 (new).
+12. Caps: title 200 characters, collection name 100, 100 ingredients, 100 steps, 30 tags, 20 photos per recipe. REC-03, REC-14, REC-15, REC-28, COL-09.
+13. HEIC/HEIF photos are accepted on upload and converted to JPEG. REC-14, REC-33, SEC-25.
+14. Search matching stays as today; accents and partial words go to the backlog. No change (SRCH-16, SRCH-17).
+15. A duplicate sibling folder name gives 409 "A collection with that name already exists here", shown in the form. COL-10.
+16. The create form takes a photo, and saving lands on the recipe page. REC-30, REC-33, REC-36.
+17. A prep or cook time of 0 is refused (form and API); a stored 0 is carried over as none. REC-03, REC-28, REC-29.
+18. Photo upload errors show the server's reason. REC-33.
+19. Sign-up asks for username and password only; email stays an optional stored field for imported accounts. AUTH-01, AUTH-04 (struck), AUTH-06, AUTH-07, AUTH-20, AUTH-23.
+20. After login the owner returns to the full path, query and hash. AUTH-16.
+21. Every AI rejection shows one plain import error message. IMP-24.
+22. Only the newest finished import is announced on launch, as today. No change (IMP-43).
+23. One model picker with Automatic, as today. No change.
+24. New icons in the P4 style at cutover. PWA-02, PWA-03.
+25. "tot" counts as a range word in ingredient lines. UNIT-41.
+26. Chalk paper is the theme and background colour, the same in the manifest and the page head. PWA-04.
+27. The session lasts a fixed week, as today. No change (AUTH-12).
+28. The AI usage estimate stays on Settings, shared across users. No change (SET-08 to SET-13).
+29. Notification wording and the failed-import target stay as today. No change (PWA-20, PWA-21).
+30. The language setting does not translate stored recipes on display, and a scale is not remembered. No change (UNIT-19, UNIT-30).
+31. Rename and move stay one form; "Library" for the screen title and nav, "Home" for crumbs, selectors and captions. No change.
+32. Equally ranked search results are ordered newest first. SRCH-18.
+33. A running import resumes after a restart if the job queue makes it free, otherwise it fails with the "interrupted" message; the same URL may be imported twice. IMP-01, IMP-36.
+34. The yt-dlp guard stays inside the app; the login limit stays 20 per IP per 15 minutes. No behaviour change (SEC-17, SEC-43 to SEC-48).
+35. Duplicating a recipe is out of scope for the first release. No change.
 
-1. **Old usernames that break today's rules.** Accounts that had no username were backfilled from the email's local part, and login applies the sign-up rules (only letters, digits and `_`, at most 32 characters) and answers 400 otherwise. Names that don't pass, for example `john.doe_3`, would be locked out after cutover. Does yours look like that? Default: login accepts any stored username; the format rules apply to sign-up only. [AUTH Q1](auth.md#open-questions-for-the-owner)
-2. **Case-insensitive usernames.** `Alice` and `alice` are two accounts today. Default: case-insensitive for uniqueness and login; the importer checks for collisions first. [AUTH Q2](auth.md#open-questions-for-the-owner)
-3. **Lossy unit conversion on import.** Imports are stored already converted to your units; the source amounts are not kept. Default: keep as today; keeping the source line text is a later option. [UNIT Q1](units.md#open-questions-for-the-owner)
-4. **Several photos per recipe.** Recipes can hold several photos, but the UI only uses the first. Default: migrate every photo, ship one replaceable cover photo, revisit a gallery later. [REC Q1](recipes.md#open-questions-for-the-owner)
-5. **Tag case.** "Soup" and "soup" are two tags today, and the tag filter matches exact names. Default: tags are case-insensitive; lower-case on save and merge on migration. [REC Q2](recipes.md#open-questions-for-the-owner), [SRCH Q3](search.md#open-questions-for-the-owner)
+Group E notes, no change: import from pasted text, a photo or a screenshot
+stays in the backlog (design §2); Dutch word forms in search stay in the
+backlog (design §2, §5); who sends the "import done" notification is a job
+queue detail (PWA-20 to PWA-23 hold either way); the builder checks how Caddy
+handles `X-Forwarded-For` when the skeleton is deployed (SEC-13).
 
-### B. Security and limits
+## Owner verdicts (2026-11-24)
 
-6. **Rate-limit key for import and photo-from-URL.** Today these are capped per logged-in user (30 imports, 60 photo fetches an hour); design §9 says import is limited per client IP. Default: keep the per-user caps and add a per-IP import limit of 30 starts per hour, as design §9 asks (SEC-59). [SEC Q1](security.md#open-questions-for-the-owner), [IMP Q2](import.md#open-questions-for-the-owner)
-7. **Session secret in production.** Today a built-in development secret is used if none is set. Default: refuse to start in production without one (SEC-57). [SEC Q2](security.md#open-questions-for-the-owner)
-8. **Response-hardening headers.** Default: add `X-Content-Type-Options: nosniff` and `Referrer-Policy` now; CSP stays in the backlog. [SEC Q4](security.md#open-questions-for-the-owner)
+The Features rows that were left to the owner, with the verdict now in each
+area file.
 
-### C. Behaviour changes or new placement
-
-9. **Where the user menu's entries go.** Design §7 removes the header user menu, which holds your username, "Log out", the app version, the notifications toggle and a dark/light override. Default: an Account section on the Settings screen (username, "Log out", version at the bottom) and a Notifications toggle there too; keep the "Notify me" prompt in the import screen; drop the dark/light override because dark mode follows the device (design §7). Search is on the library screen only (SRCH-01; SRCH-05 is struck); say if you want it elsewhere. [PWA Q3](pwa-push.md#open-questions-for-the-owner), [AUTH Q6](auth.md#open-questions-for-the-owner), [SET Q3](settings.md#open-questions-for-the-owner)
-10. **Deleting a folder deletes everything inside it.** Default: keep, with the count warning. [COL Q1](collections.md#open-questions-for-the-owner)
-11. **Drag and drop on iPhone.** Dragging recipes onto folders works with a mouse only. Default: keep it for desktop and make sure the move control is reachable from the folder view on touch. [COL Q3](collections.md#open-questions-for-the-owner)
-12. **Length and count limits.** Nothing has a cap today. Default: title 200 characters, collection name 100, 100 ingredients, 100 steps, 30 tags and 20 photos per recipe. [REC Q6](recipes.md#open-questions-for-the-owner), [COL Q4](collections.md#open-questions-for-the-owner)
-13. **iPhone photos (HEIC).** Rejected today. Default: accept them and convert to JPEG on upload. [REC Q3](recipes.md#open-questions-for-the-owner)
-14. **Accents and half-typed words in search.** Today "creme" does not find "crème" and "choc" does not find "chocolate". Default: keep today's matching for the first release and put both in the backlog next to Dutch-aware search (design §2, §6). [SRCH Q2](search.md#open-questions-for-the-owner)
-15. **Duplicate folder name under the same parent.** Gives a generic 500 today. Default: 409 with "A collection with that name already exists here", shown in the form. [COL Q2](collections.md#open-questions-for-the-owner)
-16. **After saving a new recipe.** You land on its edit form, to add photos. Default: the create form takes a photo directly and you land on the recipe page. [REC Q4](recipes.md#open-questions-for-the-owner)
-17. **Zero prep or cook time.** It can be saved but is never shown. Default: refuse 0 in the form. [REC Q5](recipes.md#open-questions-for-the-owner)
-18. **Photo upload errors.** Every failure says "Failed to upload image". Default: show the server's reason (wrong type, too large). [REC Q7](recipes.md#open-questions-for-the-owner)
-19. **Email on sign-up.** Stored and unique, never used. Default: keep it as a stored field for imported accounts; the new sign-up form asks for username and password only. [AUTH Q3](auth.md#open-questions-for-the-owner)
-20. **Return to the page you asked for after login.** Only the path survives today. Default: keep the full path, query and hash. [AUTH Q5](auth.md#open-questions-for-the-owner)
-21. **AI provider wording in import errors** ("Gemini returned 400"). Default: replace it with one plain message. [IMP Q4](import.md#open-questions-for-the-owner)
-22. **Imports that finished while the app was closed.** Only the newest is announced on launch. Default: keep. [IMP Q5](import.md#open-questions-for-the-owner)
-23. **One model picker or two** (web pages and videos). Default: one picker with Automatic. [SET Q2](settings.md#open-questions-for-the-owner)
-24. **App icons.** Today's icons are old-brand art. Default: new icons in the P4 style at cutover (an installed iPhone app only refreshes its icon on reinstall). [PWA Q2](pwa-push.md#open-questions-for-the-owner)
-25. **Dutch range word in ingredient lines.** "2 tot 3 el" is not split as a range. Default: accept "tot" like "to". [UNIT Q2](units.md#open-questions-for-the-owner)
-
-26. **Theme colour for the OS chrome.** The style log fixes the P4 palette but names no OS-chrome colour; today the page head says `#1C1814` (dark) and the manifest `#b23a2e`. Default: chalk paper as theme and background colour, the same in the manifest and the page head; the alternative is ink. [PWA Q1](pwa-push.md#open-questions-for-the-owner)
-
-### D. Confirm today's behaviour (default: keep as it is)
-
-27. **Session length:** a fixed week from login. Default: keep. [AUTH Q4](auth.md#open-questions-for-the-owner)
-28. **AI usage estimate:** keep it on the Settings screen, shared across users. Default: keep both. [SET Q1, Q4](settings.md#open-questions-for-the-owner)
-29. **Notifications:** keep the wording "Recipe ready" and "Import failed"; a failed-import notification opens the library, which then shows the error. Default: keep both. [PWA Q4, Q5](pwa-push.md#open-questions-for-the-owner)
-30. **Recipe language and scaling on display:** the language setting does not translate stored recipes on display, and a scale is not remembered per recipe. Default: keep both. [UNIT Q3, Q4](units.md#open-questions-for-the-owner)
-31. **Folder screen:** rename and move stay one form; the screen title and nav say "Library" (design §7) while crumbs, selectors and captions call the root "Home". Default: keep this split; say if you want one name everywhere. [COL Q5, Q6](collections.md#open-questions-for-the-owner)
-32. **Search ties:** equally ranked results have no order. Default: newest first. [SRCH Q4](search.md#open-questions-for-the-owner)
-33. **Imports and restarts:** a server restart may resume a running import or fail it with an "interrupted" message; the same URL may be imported twice. Default: resume if the job queue makes it free, otherwise fail; allow duplicates. [IMP Q3, Q6](import.md#open-questions-for-the-owner)
-34. **yt-dlp guard and login limit:** keep the in-app guard in front of yt-dlp; keep 20 login attempts per IP per 15 minutes. Default: keep both. [SEC Q3, Q6](security.md#open-questions-for-the-owner)
-35. **Duplicate a recipe:** not possible today. Default: out of scope for the first release. [REC Q8](recipes.md#open-questions-for-the-owner)
-
-### E. No answer needed (notes)
-
-- Import from pasted text, a photo or a screenshot does not exist today; design §2 keeps it in the backlog. [IMP Q1](import.md#open-questions-for-the-owner)
-- Dutch word forms in search stay in the backlog (design §2, §5). [SRCH Q1](search.md#open-questions-for-the-owner)
-- Who sends the "import done" notification is an implementation detail of the job queue; PWA-20 to PWA-23 must hold either way. [PWA Q6](pwa-push.md#open-questions-for-the-owner)
-- Whether Caddy appends to or overwrites `X-Forwarded-For` is checked by the builder when the skeleton is deployed. [SEC Q5](security.md#open-questions-for-the-owner)
-
-## Features awaiting the owner's verdict
-
-Every Features row whose verdict is still the owner's decision. Each is covered by a question
-above.
-
-| Area | Feature | Recommendation | Question |
+| Area | Feature | Verdict | Question |
 |---|---|---|---|
-| AUTH | Email address on the account | Keep it stored for imported accounts; sign-up asks for username and password only | 19 |
-| AUTH | Case-sensitive usernames | Case-insensitive uniqueness and login | 2 |
-| REC | Image gallery (multiple images per recipe) | Migrate all; ship one replaceable cover photo | 4 |
-| REC | Tag names normalised to one case | Lower-case on save, merge on migration | 5 |
-| REC | HEIC/HEIF photos | Accept and convert to JPEG | 13 |
-| COL | Delete collection deletes everything inside it | Keep, with the count warning | 10 |
-| COL | Drag a recipe card onto a folder or crumb | Keep for desktop; touch-friendly move from the folder view | 11 |
-| SRCH | Accent-insensitive and partial-word matching | Backlog, with Dutch-aware search | 14 |
-| UNIT | Convert-and-store on import (lossy) | Keep for parity | 3 |
-| IMP | Cap of 30 import starts per hour per user | Keep per user and add the per-IP limit of design §9 | 6 |
-| IMP | Only the newest pending import is restored on launch | Keep | 22 |
-| IMP | Raw AI provider wording in some failure messages | Replace with one plain message | 21 |
-| SET | Separate text-model and video-model pickers | One picker with Automatic | 23 |
-| PWA | Icons | New icons in the P4 style | 24 |
-| PWA | Theme and background colour from the new palette | Chalk paper (alternative: ink) | 26 |
-| SEC | Session secret required in production | Refuse to start without one | 7 |
-| SEC | Basic response-hardening headers | Add `nosniff` and `Referrer-Policy` | 8 |
+| AUTH | Email address on the account | keep (optional stored field; not asked on sign-up) | 19 |
+| AUTH | Case-sensitive usernames | drop (case-insensitive) | 2 |
+| REC | Image gallery (multiple images per recipe) | drop (all photos migrated; one replaceable cover) | 4 |
+| REC | Tag names normalised to one case | keep (lower-case on save, merged on migration) | 5 |
+| REC | HEIC/HEIF photos | keep (accepted, converted to JPEG) | 13 |
+| COL | Delete collection deletes everything inside it | keep (with the count warning) | 10 |
+| COL | Drag a recipe card onto a folder or crumb | keep (desktop; touch move from the folder view, COL-25) | 11 |
+| SRCH | Accent-insensitive and partial-word matching | drop (backlog, with Dutch-aware search) | 14 |
+| UNIT | Convert-and-store on import (lossy) | keep | 3 |
+| IMP | Cap of 30 import starts per hour per user | keep (plus 30 per client IP, SEC-59) | 6 |
+| IMP | Only the newest pending import is restored on launch | keep | 22 |
+| IMP | Raw AI provider wording in some failure messages | drop (one plain message) | 21 |
+| SET | Separate text-model and video-model pickers | drop (one picker) | 23 |
+| PWA | Icons | keep (new P4-style icons) | 24 |
+| PWA | Theme and background colour from the new palette | keep (chalk paper) | 26 |
+| SEC | Session secret required in production | keep (SEC-57) | 7 |
+| SEC | Basic response-hardening headers | keep (SEC-60) | 8 |
 
 ## Shared behaviours
 
@@ -117,21 +104,21 @@ The consistency pass fixed the losing side where two areas disagreed.
 | Behaviour | Areas | Agreed rule |
 |---|---|---|
 | Recipes at Home | COL, SRCH, REC | COL-03 is the single rule: a recipe is at Home exactly when it has no collection; browsing a folder shows only its direct contents, newest first; a search or tag filter covers the folder and everything below it (at Home, the whole library). REC-10, REC-11, SRCH-07, SRCH-08, SRCH-25 and SRCH-26 apply it; editing never moves a recipe (REC-12, COL-17). |
-| Tag vocabulary | IMP, REC, SRCH | Imports choose tags only from the fixed English vocabulary, lower-case, at most 5 (IMP-10, IMP-22); tags typed by hand are free-form and stored as typed (REC-07, REC-35); the tag filter matches the exact name (SRCH-21). Both kinds share one tag table. Case handling is question 5. |
+| Tag vocabulary | IMP, REC, SRCH | Imports choose tags only from the fixed English vocabulary, lower-case, at most 5 (IMP-10, IMP-22). Tags typed by hand are free-form but stored trimmed and lower-cased, and a duplicate in any letter case is ignored (REC-07, REC-35); the tag filter ignores letter case (REC-10, SRCH-21). Both kinds share one tag table; v1 tags that differ only in case are merged on migration (owner, Q5). |
 | Translate and convert: on import versus on display | IMP, UNIT, SET | On import: extract and tag, translate (structured-data path only, when a recipe language is set and the recipe is not already in it), convert units last, and store the converted draft (IMP-25, UNIT-35); the settings in force when the import starts are used (IMP-07, SET-29). On display: every recipe is converted to the current unit preferences on every view and never written back; the recipe language only picks the label of a unit that conversion introduces (UNIT-31, UNIT-19). The preferences themselves are SET-21 to SET-26 (UNIT-33 and UNIT-34 restate the API). Fixed: IMP-30 now says the label follows the recipe-language setting, as UNIT-19 and the code do, not "a Dutch recipe". |
-| Image fetch after import | IMP, REC, SEC | The draft carries a photo address (IMP-16, IMP-17); after the owner saves the form, the photo is attached by a separate best-effort request (REC-18, REC-36, IMP-45); a failure leaves the recipe saved and shows "Couldn't import the photo — add one manually". The fetch is SSRF-guarded with re-checked redirects (SEC-31 to SEC-39), bounded to 10 s and 5 MB (SEC-41), and limited to 60 per user per hour (SEC-22). Fixed: SEC-25 said a fetched photo with the wrong bytes gets 400; the code answers 422, as REC-19 says. |
+| Image fetch after import | IMP, REC, SEC | The draft carries a photo address (IMP-16, IMP-17); after the owner saves the form, the photo is attached by a separate best-effort request (REC-18, REC-36, IMP-45); a photo the owner chose on the form takes precedence (REC-33, REC-36); a failure leaves the recipe saved and shows "Couldn't import the photo — add one manually". The fetch is SSRF-guarded with re-checked redirects (SEC-31 to SEC-39), bounded to 10 s and 5 MB (SEC-41), and limited to 60 per user per hour (SEC-22). Fixed: SEC-25 said a fetched photo with the wrong bytes gets 400; the code answers 422, as REC-19 says. |
 | Push after import | IMP, PWA | Every subscribed device is notified when a job ends in done or error, never when cancelled (IMP-37, PWA-20, PWA-21): "Recipe ready" opens the review form, "Import failed" opens the library, which restores the failed job. Endpoint allowlist and cleanup are PWA-15 to PWA-23 (and SEC-49, SEC-50). A notification failure never changes the import's result. |
-| Push "notify me" toggle | PWA, SET, AUTH, IMP | PWA owns the toggle and its states (PWA-26 to PWA-30); the import screen's opt-in is IMP-44 and PWA-28. Its home outside the import screen is question 9. Fixed: SET's `drop` row and SET-28 ("not on this page") became a `keep` row deferring to PWA and a struck criterion; AUTH's row defers to PWA. |
-| User menu entries and app navigation | AUTH, PWA, SET, SRCH, design §7 | Design §7 replaces the header (logo, search box, user menu) with a bottom nav pill (Library + "+") and a settings icon top-right. Kept: one step to Home and Settings from every signed-in screen (AUTH-24), the username, "Log out" and version (AUTH-14, AUTH-21), the notifications toggle (PWA-27 to PWA-30), search on the library screen (SRCH-01). Dropped: the dropdown itself (AUTH-22 struck), search from every page (SRCH-05 struck) and the manual dark/light override (PWA-32: follows the device). Placement is question 9. |
+| Push "notify me" toggle | PWA, SET, AUTH, IMP | PWA owns the toggle and its states (PWA-26 to PWA-30); the import screen's opt-in is IMP-44 and PWA-28. Outside the import screen it lives on the Settings screen (SET-30; owner, Q9). |
+| User menu entries and app navigation | AUTH, PWA, SET, SRCH, design §7 | Design §7 replaces the header (logo, search box, user menu) with a bottom nav pill (Library + "+") and a settings icon top-right. Home and Settings are one step away wherever the nav shows (AUTH-24). The Settings screen holds an Account section with the username, "Log out" and the version at the bottom, and the Notifications toggle (AUTH-21, SET-30; owner, Q9). Search is on the library screen only (SRCH-01). Dropped: the dropdown itself (AUTH-22 struck), search from every page (SRCH-05 struck) and the manual dark/light override (PWA-32: follows the device). |
 | Per-user model choice and usage | SET, IMP | The model is a per-user saved choice from a server allowlist, Automatic by default; a saved model that left the list counts as Automatic (SET-02 to SET-07, IMP-07). Every AI request that reached the provider is counted per model, shared by all users, per Pacific day, and counting never fails an import (SET-08 to SET-10, IMP-46). No disagreement found. |
-| Rate limits | SEC, AUTH, IMP | SEC-16 holds the one table: login 20 per IP per 15 min, login failures 10 per account per 15 min, signup 5 per IP per hour, import starts 30 per user per hour, photo from URL 60 per user per hour, and the recommended import starts 30 per IP per hour (SEC-59); fixed windows, 429 with `Retry-After`. AUTH-09 and IMP-06 refer to it. Fixed: IMP-06 said "in the last hour" (a sliding window); it now uses SEC-16's fixed window and notes that an invalid start still counts (SEC-21). The per-user versus per-IP key for import is question 6. |
+| Rate limits | SEC, AUTH, IMP | SEC-16 holds the one table: login 20 per IP per 15 min, login failures 10 per account per 15 min, signup 5 per IP per hour, import starts 30 per user per hour and 30 per client IP per hour (SEC-59; owner, Q6), photo from URL 60 per user per hour; fixed windows, 429 with `Retry-After`. AUTH-09 and IMP-06 refer to it; an invalid import start still counts (SEC-21). |
 | Sign-up switch | AUTH, SEC | Off unless the setting is exactly `true`; when off, the API answers 403 "Sign-ups are disabled on this server" and creates nothing (AUTH-02, SEC-15, SEC-58). No disagreement found. |
 | Session cookie and fresh session | AUTH, SEC | `__Host-` prefix, Secure, HttpOnly, SameSite=Lax, Path=/, no Domain, one week, never issued over plain HTTP; a new session id on login and sign-up (AUTH-11, AUTH-12, SEC-07 to SEC-12). SEC owns the detail. No disagreement found. |
 | Failed-login delay and enumeration | AUTH, SEC | One 401 "Invalid username or password" for both failures, about a second's delay, equal work for unknown usernames (AUTH-09, SEC-19). No disagreement found. |
 | URL guard on import | IMP, SEC | Blocked literals answer 400 "This URL cannot be imported" before a job exists (IMP-03, SEC-34, SEC-35); a name that resolves inward fails the job with the same message and status 400 (IMP-03, SEC-36); every redirect hop is re-checked (IMP-15, SEC-39); yt-dlp goes through the same guard and fails closed with 503 (IMP-19, SEC-43, SEC-48). Fixed: SEC-48 now cites the yt-dlp guard tests that IMP lists under Tests not carried. |
 | Photo storage and serving | REC, SEC | Photos are checked by content, stored under random names, and served only through an owner-checked route (REC-14, REC-16, SEC-24, SEC-25); deleting a recipe or a folder removes the files too (REC-13, COL-15). |
-| Theme colour | PWA, style log | The style log fixes the P4 palette but names no OS-chrome colour. PWA-04 recommends chalk paper for the manifest's theme and background colours and the page head; the alternative is ink. Question 26. |
-| Length limits | REC, COL | None today in either area; one set of caps is question 12. |
+| Theme colour | PWA, style log | Chalk paper from the P4 palette is the theme and background colour, the same in the manifest and the page head (PWA-04; owner, Q26). |
+| Length limits | REC, COL | Recipe title at most 200 characters, at most 100 ingredients, 100 steps, 30 tags and 20 photos per recipe (REC-03, REC-14, REC-15, REC-28); collection name at most 100 characters (COL-09). Owner, Q12. |
 
 ## Set aside
 

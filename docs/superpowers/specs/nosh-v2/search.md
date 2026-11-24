@@ -28,7 +28,7 @@ Home.
 | Relevance ranking (title above description and tags above ingredients above steps) | keep | Titles are the strongest signal. |
 | Tag filter via clicking a tag chip, combinable with a search | keep | Tag browsing without a separate tag list (ADR 2026-08-19). |
 | Matching of Dutch word forms ("tomaten" finds "tomaat") | drop | Design §2 and §5 (decided): Dutch-aware search stays in the backlog for after cutover. Today Dutch recipes match exact words only (SRCH-17). |
-| Accent-insensitive and partial-word matching | owner? | Today accents must match exactly and half-typed words match nothing. A change to search behaviour, which design §6 keeps "same as today". See open question 2. |
+| Accent-insensitive and partial-word matching | drop | Decided by the owner (index Q14): today's matching is kept for the first release (SRCH-16, SRCH-17); both improvements go to the backlog next to Dutch-aware search (design §2, §6). |
 | Debounced search-as-you-type | keep | Results follow typing without a submit step. |
 | Folder filters on the recipe list (`collection`, `within`) | keep | The library page needs "direct contents" and "whole subtree" views. |
 | Search ignored when the query is blank | keep | A blank search is a browse, not an error in the UI. |
@@ -104,7 +104,8 @@ Cites: `backend/src/repositories/recipes.ts`
 Cites: `backend/migrations/1700000000006_recipe-search-vectors.js`, ADR 2026-08-05
 
 ### SRCH-18 Results are ranked by where the words match
-**Given** several recipes match a search **When** results are shown **Then** the best matches come first: a match in the title counts most, then a match in the description or tags, then in ingredient names, then in step text. The order among equally good matches is not defined.
+**Given** several recipes match a search **When** results are shown **Then** the best matches come first: a match in the title counts most, then a match in the description or tags, then in ingredient names, then in step text. Equally good matches are ordered newest created first, like the plain list.
+Decision: owner 2026-11-24, index Q32 (v1 left the order among equally good matches undefined)
 Cites: `backend/migrations/1700000000006_recipe-search-vectors.js`, `backend/src/repositories/recipes.ts`
 
 ### SRCH-19 A blank query is refused by the search endpoint
@@ -116,7 +117,8 @@ Cites: `backend/src/routes/recipes.test.ts` "requires a query parameter for sear
 Cites: `backend/src/repositories/recipes.ts`
 
 ### SRCH-21 Filtering by tag
-**Given** the owner has recipes with different tags **When** they filter by a tag **Then** only recipes carrying a tag with exactly that name are listed (a recipe tagged more than once is listed once), and recipes without it are left out.
+**Given** the owner has recipes with different tags **When** they filter by a tag **Then** only recipes carrying that tag, compared ignoring letter case ("Dessert" finds recipes tagged "dessert"), are listed (a recipe tagged more than once is listed once), and recipes without it are left out.
+Decision: owner 2026-11-24, index Q5 (v1 matched the exact tag name, case-sensitively)
 Cites: `backend/src/routes/recipes.test.ts` "filters the recipe list by tag", ADR 2026-08-19
 
 ### SRCH-22 Tag filter combines with a search
@@ -165,18 +167,23 @@ ingredients, steps or tags change.
 
 SRCH-15 to SRCH-17: today the matching is built for English only, even though
 recipe content is often Dutch. These criteria describe what the owner gets
-today, so the rewrite can decide on purpose whether to keep or improve it
-(open questions 1 and 2).
+today. The owner kept them for the first release; Dutch word forms, accents
+and partial words are in the backlog (design §2, §5; index Q14).
 
 SRCH-21 and SRCH-23: tag browsing is a filter reached by clicking a tag, not a
 separate tag list; an early version with a chip row of all tags was cut as
 clutter (ADR 2026-08-19).
 
+### Owner decisions (2026-11-24)
+The owner accepted every default in index.md on 2026-11-24.
+- Q5 tag case: the tag filter ignores letter case; tags are stored lower-case (REC-07). SRCH-21.
+- Q9 search placement: search stays on the library screen only. No change (SRCH-01; SRCH-05 stays struck).
+- Q14 accents and partial words: today's matching is kept; both go to the backlog. No criterion changed (SRCH-16, SRCH-17).
+- Q32 search ties: equally ranked results are ordered newest first. SRCH-18.
+- Group E note: Dutch word forms stay in the backlog (design §2, §5). No change.
+
 ## Tests not carried
 - `frontend/src/components/LibrarySearch.test.tsx` "jumps to a whole-library search from a non-library page on Enter": the header search on every page is dropped (design §7), so SRCH-05 is struck. The other three tests are carried (SRCH-02, SRCH-04, SRCH-06).
 
 ## Open questions for the owner
-1. No answer needed: Dutch word forms ("tomaten" finds "tomaat") are decided by design §2 and §5, which keep Dutch-aware search in the backlog. When it is picked up, the matching language could follow the recipe language (UNIT) or match both languages.
-2. Accents and partial words: should "creme" find "crème", and should "choc" find "chocolate" while typing? Recommendation: keep today's matching for the first release (design §2: no new features; §6: same search behaviour as today) and put both in the backlog next to Dutch-aware search. If you want them now, accent-insensitive matching and prefix matching on the last word typed both suit search-as-you-type.
-3. Tag matching: tags match by exact name, so "Dessert" and "dessert" are different tags. Recommendation: treat tag names case-insensitively when filtering and when saving. (Merged with REC open question 2 in index.md.)
-4. Tie order: equally ranked matches have no defined order. Recommendation: break ties by newest first, matching the plain list.
+All answered by the owner on 2026-11-24 (accepted defaults); see Rationale, Owner decisions.

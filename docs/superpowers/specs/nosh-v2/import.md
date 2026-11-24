@@ -57,14 +57,15 @@ The owner pastes a link to a recipe page, an Instagram Reel or a TikTok. nosh re
 | Convert units and oven temperatures to the owner's preferences on import | keep | Design §5. The converted values are what gets stored. |
 | Tags only from a fixed vocabulary, capped at five | keep | Design §5. |
 | Photo attached automatically after the recipe is saved | keep | Design §5 ("photo fetched after save"). |
-| Cap of 30 import starts per hour per user | owner? | Today it is per signed-in user. Design §9 says rate limits on import are keyed by client IP. Recommend keeping it per user (the real cost is paid AI calls) and also keeping an IP limit. |
-| Only the newest pending import is restored on launch | owner? | The server lists all pending jobs; the app shows only the newest. Recommend keeping, since one import at a time is the only way to start them. |
-| Raw AI provider wording in some failure messages ("Gemini returned 400") | owner? | The owner sees it today. Recommend replacing it with the generic "AI could not read it" wording of IMP-24. |
+| Cap of 30 import starts per hour per user | keep | Decided by the owner (index Q6): the per-user cap stays (IMP-06, SEC-21) and a per-IP cap of 30 starts per hour is added, as design §9 asks (SEC-59). |
+| Only the newest pending import is restored on launch | keep | Decided by the owner (index Q22): kept as today (IMP-43). |
+| Raw AI provider wording in some failure messages ("Gemini returned 400") | drop | Decided by the owner (index Q21): every such failure shows one plain message (IMP-24). |
 
 ## Acceptance criteria
 
 ### IMP-01 Starting an import returns a running job at once
-**Given** a signed-in owner **When** they start an import with a valid `http` or `https` URL **Then** the API answers 202 straight away with a job in status `running`, with no recipe yet, an empty list of progress stages, the URL, the target folder (or none) and a creation time, and the extraction carries on without the client staying connected.
+**Given** a signed-in owner **When** they start an import with a valid `http` or `https` URL **Then** the API answers 202 straight away with a job in status `running`, with no recipe yet, an empty list of progress stages, the URL, the target folder (or none) and a creation time, and the extraction carries on without the client staying connected. Starting an import of a URL that already has a pending job is allowed and creates a second, independent job.
+Decision: owner 2026-11-24, index Q33 (v1 also allowed it; now stated)
 Cites: `backend/src/routes/import.test.ts` "answers 202 with a running job, which finishes with its stages and the recipe", `frontend/src/api/import.test.ts` "starts an import by POSTing the url and target folder, returning the created job", ADR 2026-09-24
 
 ### IMP-02 Bad input is refused with 400 and creates no job
@@ -84,7 +85,8 @@ Cites: `backend/src/routes/import.test.ts` "rejects requests with no session"
 Cites: `backend/src/routes/import.test.ts` "refuses to file an import in another user's folder", "keeps the folder the import was started from on the job", `backend/migrations/1700000000014_create-import-jobs-and-push-subscriptions.js`
 
 ### IMP-06 Starting imports is capped per user
-**Given** an owner who has used up 30 import starts in the current one-hour window **When** they start another **Then** the API answers 429 with a `Retry-After` header (the window rules are SEC-16; an invalid start still counts, SEC-21). Polling a job, listing jobs, cancelling and marking reviewed never count towards the cap.
+**Given** an owner who has used up 30 import starts in the current one-hour window **When** they start another **Then** the API answers 429 with a `Retry-After` header (the window rules are SEC-16; an invalid start still counts, SEC-21). Import starts are also capped per client IP (SEC-59). Polling a job, listing jobs, cancelling and marking reviewed never count towards the cap.
+Decision: owner 2026-11-24, index Q6 (v1 had the per-user cap only)
 Cites: `backend/src/routes/import.ts` (cap of 30 per hour per user), `backend/src/security.test.ts` "rejects imports past 30 an hour for one user" (owned by SEC), ADR 2026-09-24
 
 ### IMP-07 Settings are snapshotted when the import starts
@@ -156,7 +158,8 @@ Cites: `backend/src/services/recipeTags.test.ts` "keeps vocabulary tags and drop
 Cites: `backend/src/routes/import.test.ts` "fails the job with a 422 when no recipe can be extracted", `backend/src/services/recipeExtraction.test.ts` "throws ExtractionError when Gemini's output doesn't validate as a recipe"
 
 ### IMP-24 The AI being down is told apart from the page having no recipe
-**Given** the AI answers 429 or a 5xx **When** an import needs it **Then** the job fails with status code 503 and the message `The recipe AI is busy or over its quota right now — try again shortly`. **Given** the AI times out (30 seconds per request), returns a non-JSON or empty answer, or rejects the request in any other way **Then** the job fails with status code 422 and a message that does not echo the provider's raw response body (that body is logged only). A cancelled job's failure is never shown.
+**Given** the AI answers 429 or a 5xx **When** an import needs it **Then** the job fails with status code 503 and the message `The recipe AI is busy or over its quota right now — try again shortly`. **Given** the AI times out (30 seconds per request), returns a non-JSON or empty answer, or rejects the request in any other way **Then** the job fails with status code 422 and the one plain message `The recipe AI couldn't read that link — try again later`, whatever the cause; the provider's name, status code and raw response body are logged only. A cancelled job's failure is never shown.
+Decision: owner 2026-11-24, index Q21 (v1 showed provider wording such as "Gemini returned 400" or "Gemini returned malformed JSON")
 Cites: `backend/src/llm/geminiClient.test.ts` "maps quota and outage responses to a retryable error", "throws GeminiExtractionError on a non-2xx response", "throws GeminiExtractionError when the response has no candidates", "throws GeminiExtractionError when the model text isn't valid JSON", "throws GeminiExtractionError when the request itself rejects", `backend/src/services/recipeExtraction.test.ts` "throws ExtractionError when Gemini fails"
 
 ### IMP-25 Order of translate, convert and tag, and what is stored
@@ -204,7 +207,8 @@ Cites: `backend/src/routes/import.test.ts` "cancels a running job, aborting its 
 Cites: `backend/src/routes/import.test.ts` "lists running and unreviewed jobs as pending until marked reviewed", "hides another user's jobs"
 
 ### IMP-36 Jobs never stay running forever
-**Given** the server restarts while an import is running **When** it comes back **Then** that import is not left running: it either resumes, or it is marked `error` with status code 500 and the message `The import was interrupted by a server restart — please try again`. Finished and cancelled jobs older than 7 days are deleted.
+**Given** the server restarts while an import is running **When** it comes back **Then** that import is not left running: it resumes when the job queue can pick it up again at no extra cost; otherwise it is marked `error` with status code 500 and the message `The import was interrupted by a server restart — please try again`. Finished and cancelled jobs older than 7 days are deleted.
+Decision: owner 2026-11-24, index Q33 (v1 always marked it failed)
 Cites: `backend/src/routes/import.test.ts` "marks jobs left running by a previous process as failed on recovery", ADR 2026-09-24
 
 ### IMP-37 Push notification when an import finishes
@@ -265,6 +269,15 @@ Cites: `backend/src/llm/geminiClient.test.ts` "reports token usage, counting thi
 - IMP-45: the photo is attached after saving because images belong to a recipe that does not exist until the owner saves (ADR 2026-08-13). A failed photo never undoes a save.
 - Not covered here: Gemini is the provider (design §3, one server-side key, per-user model choice from an allowlist). Which model is "automatic" for text versus video, the allowlist, and the usage estimate are SET's. The model list used today pairs a stronger model for pages with a cheaper model with a much larger free daily quota for video.
 
+### Owner decisions (2026-11-24)
+The owner accepted every default in index.md on 2026-11-24.
+- Q6 rate-limit key: the per-user cap stays and a per-IP cap of 30 starts per hour is added. IMP-06 (and SEC-59).
+- Q9 notifications: the "Notify me" prompt stays in the import screen; the on/off toggle moves to Settings. No criterion changed here (IMP-44; PWA-28, SET-30).
+- Q21 AI provider wording: one plain message for every AI rejection. IMP-24.
+- Q22 only the newest finished import is announced on launch: kept. No criterion changed (IMP-43).
+- Q33 restarts and duplicates: a running import resumes if the job queue makes it free, otherwise it fails with the "interrupted" message; the same URL may be imported twice. IMP-01, IMP-36.
+- Group E note: import from pasted text, a photo or a screenshot stays in the backlog (design §2). No change.
+
 ## Tests not carried
 - `backend/src/llm/geminiClient.test.ts` "sends the model, API key, and a JSON responseSchema": implementation detail (header names, URL shape, schema format); the observable parts are in IMP-11 and IMP-20.
 - `backend/src/llm/geminiClient.test.ts` "createGeminiVideoExtractor maps quota and outage responses to a retryable error": same as the text case, covered by IMP-24.
@@ -273,9 +286,4 @@ Cites: `backend/src/llm/geminiClient.test.ts` "reports token usage, counting thi
 - `backend/src/services/socialVideo.runner.test.ts` "runs /usr/bin/yt-dlp with --proxy and an environment with no proxy variables": outbound-guard mechanics of the current downloader, carried by SEC-48 (cited there).
 
 ## Open questions for the owner
-1. Import from pasted text, a photo or a screenshot is not in the app today and the brief for this area mentioned it. Recommendation: do not add it for the first release (design §2); keep it in the backlog.
-2. (Merged in index.md with SEC open question 1.) The import cap is per user (30 starts per hour), the design says import limits are keyed by client IP (§9). Recommendation: keep the per-user cap, because the real cost is paid AI calls, and also apply the IP limit.
-3. When the server restarts mid-import, today the job is marked failed with an "interrupted" message and the owner must retry. A queue-backed design could resume it. Recommendation: resume if the queue makes it free, otherwise keep the failure message (IMP-36 allows both).
-4. Some AI failure messages show the provider's wording to the owner (for example "Gemini returned 400"). Recommendation: replace them with one plain message (IMP-24 only requires that the raw response body is never shown).
-5. Imports that finish while the app was closed and were never opened: only the newest is announced on launch. Recommendation: keep; the older ones stay pending on the server for 7 days only if never reviewed, but nothing in the app lists them.
-6. Should repeating the same URL while an earlier import of it is still pending be blocked or merged? Today it is allowed (two jobs). Recommendation: allow.
+All answered by the owner on 2026-11-24 (accepted defaults); see Rationale, Owner decisions.

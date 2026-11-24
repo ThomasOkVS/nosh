@@ -52,21 +52,22 @@ is not logged in.
 | Log out | keep | Parity. |
 | Route protection (redirect to login, return to the page asked for) | keep | Parity. |
 | Show/hide password toggle | keep | Small, useful, accessible. |
-| Header user menu dropdown | drop | Design §7 replaces the header user menu with a settings icon top-right and a bottom nav pill. Its entries are kept elsewhere (rows below); where they go is PWA open question 3. |
-| See who is logged in, log out, see the app version | keep | Parity (ADR 2026-08-19: the owner asked for a visible build identifier). New placement is PWA open question 3 (recommended: the Settings screen). |
-| Manual dark/light toggle remembered per device | drop | Design §7 decided dark mode follows the system setting (PWA-32). It can come back if the owner asks (PWA open question 3). |
-| Notifications on/off entry (today in the user menu) | keep | Owned by PWA (PWA-27 to PWA-30); placement is PWA open question 3. |
+| Header user menu dropdown | drop | Design §7 replaces the header user menu with a settings icon top-right and a bottom nav pill. Its entries move to the Settings screen (owner, index Q9). |
+| See who is logged in, log out, see the app version | keep | Parity (ADR 2026-08-19: the owner asked for a visible build identifier). Placed in an Account section on the Settings screen (owner, index Q9). |
+| Manual dark/light toggle remembered per device | drop | Design §7 decided dark mode follows the system setting (PWA-32); confirmed by the owner (index Q9). |
+| Notifications on/off entry (today in the user menu) | keep | Owned by PWA (PWA-27 to PWA-30); it moves to the Settings screen (owner, index Q9; SET-30). |
 | App shell: one step to Home and to Settings from every signed-in screen; import dialog available app-wide | keep | Today the "Nosh" logo links Home and the user menu links Settings. Design §7 replaces both with the bottom nav pill (Library + "+") and a settings icon. |
 | Header link to the weekly planner | drop | Planner dropped (design §5). |
 | Old `/recipes` address redirects to the library, keeping `q` and `tag` | drop | The separate all-recipes page was retired on 2026-09-23. The rewrite defines its own addresses, nosh is private, and an unknown address already lands on Home (AUTH-16). |
-| Email address on the account | owner? | Stored and unique, but never used to log in and nothing is ever sent to it. Recommend keeping it as a stored field (the importer carries it) but deciding whether the new sign-up form should still ask for it. |
-| Case-sensitive usernames | owner? | Today `Alice` and `alice` are two different accounts. Recommend case-insensitive uniqueness in the rewrite; see open questions. |
+| Email address on the account | keep | Decided by the owner (index Q19): kept as an optional, unique stored field so imported accounts keep theirs; the new sign-up form no longer asks for it. |
+| Case-sensitive usernames | drop | Decided by the owner (index Q2): usernames are case-insensitive for uniqueness and login (AUTH-06, AUTH-07); the importer checks for collisions first. |
 | Password reset / change password / delete account | drop | Do not exist today. Out of scope for the restart. |
 
 ## Acceptance criteria
 
 ### AUTH-01 Sign up creates an account and logs in
-**Given** the server allows sign-ups and nobody is logged in **When** a visitor submits an email, a username and a password that pass validation **Then** an account is created, the response is 201 with the user's `id`, `email` and `username` (never the password or its hash), and the visitor is logged in immediately, so asking for the current user returns that account. The browser then lands on the home page.
+**Given** the server allows sign-ups and nobody is logged in **When** a visitor submits a username and a password that pass validation **Then** an account is created with no email, the response is 201 with the user's `id`, `email` (null) and `username` (never the password or its hash), and the visitor is logged in immediately, so asking for the current user returns that account. The browser then lands on the home page.
+Decision: owner 2026-11-24, index Q19 (v1 required an email on sign-up)
 Cites: `backend/src/routes/auth.test.ts` "signs a new user up and starts a session"
 
 ### AUTH-02 Sign-up is refused when the server disallows it
@@ -77,20 +78,23 @@ Cites: `backend/src/routes/auth.ts`; design §9. Rate limits on sign-up are in S
 **Given** a sign-up request **When** the username, after trimming surrounding spaces, is shorter than 3 or longer than 32 characters, or contains anything other than letters, digits and underscores **Then** the response is 400 with the message "Username must be at least 3 characters", "Username must be at most 32 characters" or "Username can only contain letters, numbers, and underscores" respectively, and nothing is stored. A valid username is stored trimmed.
 Cites: `backend/src/routes/auth.test.ts` "rejects signup with an invalid username", ADR 2026-08-06 (Login switched from email to username)
 
-### AUTH-04 Email must be well formed
-**Given** a sign-up request **When** the email is missing or not a valid email address **Then** the response is 400 with a validation message and nothing is stored. A valid email has no length cap beyond the server's request size limit.
-Cites: `backend/src/validation/auth.ts`
+### AUTH-04 ~~Email must be well formed~~
+Struck by the owner's decision (index Q19, 2026-11-24): the sign-up form no longer asks for an email, so there is no email input to validate. Accounts imported from v1 keep their stored email (AUTH-23).
+Decision: owner 2026-11-24, index Q19 (v1 required a well-formed email on sign-up)
+Cites: none (struck)
 
 ### AUTH-05 Any non-empty password is accepted
 **Given** a sign-up request with otherwise valid fields **When** the password is any non-empty text, including a very short one such as two characters **Then** the account is created (201). **When** the password is empty **Then** the response is 400 "Password is required". There is no minimum length, no complexity rule and no maximum other than the server's request size limit.
 Cites: `backend/src/routes/auth.test.ts` "accepts a short password (no minimum length enforced)", "rejects signup with an empty password", ADR 2026-08-06 (No minimum password length)
 
-### AUTH-06 Duplicate email or username is refused
-**Given** an account already exists **When** someone signs up with the same email **Then** the response is 409 "Email already registered". **When** they sign up with a new email but an existing username **Then** the response is 409 "Username already taken". The email check runs first. Nothing is created and no session starts in either case.
-Cites: `backend/src/routes/auth.test.ts` "rejects signup with a duplicate email", "rejects signup with a duplicate username"
+### AUTH-06 Duplicate username is refused, ignoring case
+**Given** an account already exists **When** someone signs up with the same username, in any mix of upper and lower case (`Alice` when `alice` exists) **Then** the response is 409 "Username already taken", nothing is created and no session starts.
+Decision: owner 2026-11-24, index Q2 and Q19 (v1 compared usernames case-sensitively and also refused a duplicate email with 409 "Email already registered")
+Cites: `backend/src/routes/auth.test.ts` "rejects signup with a duplicate username"
 
 ### AUTH-07 Log in with username and password
-**Given** an account exists **When** the owner submits its username and the correct password **Then** the response is 200 with `id`, `email` and `username`, and the browser holds a session, so asking for the current user returns that account. The login form asks for "Username" and "Password" only, never email.
+**Given** an account exists **When** the owner submits its username, in any letter case, and the correct password **Then** the response is 200 with `id`, `email` (null when the account has none) and `username` as stored, and the browser holds a session, so asking for the current user returns that account. The login form asks for "Username" and "Password" only, never email.
+Decision: owner 2026-11-24, index Q2 (v1 matched the username case-sensitively)
 Cites: `backend/src/routes/auth.test.ts` "logs an existing user in", `frontend/src/pages/LoginPage.test.tsx` "submits the entered credentials", ADR 2026-08-06 (Login switched from email to username)
 
 ### AUTH-08 Existing argon2 password hashes keep working
@@ -102,8 +106,9 @@ Cites: design §3, §6, §11; `backend/src/routes/auth.ts`; ADR 2026-08-06 (Back
 Cites: `backend/src/routes/auth.test.ts` "rejects login with the wrong password", "rejects login for an unknown username", `frontend/src/pages/LoginPage.test.tsx` "shows the server's error message when login fails"
 
 ### AUTH-10 Login input is validated
-**Given** a login request **When** the username is missing or breaks the username rules of AUTH-03, or the password is missing or empty **Then** the response is 400 with a validation message and no credential check happens (and no failure delay).
-Cites: `backend/src/validation/auth.ts`. See open question 1 about old usernames that break the rules.
+**Given** a login request **When** the username is missing or empty after trimming, or the password is missing or empty **Then** the response is 400 with a validation message and no credential check happens (and no failure delay). The sign-up username rules of AUTH-03 do not apply to login, so every stored username, including backfilled names such as `john.doe_3`, can log in.
+Decision: owner 2026-11-24, index Q1 (v1 applied the sign-up username rules to login and answered 400 for names such as `john.doe_3`)
+Cites: `backend/src/validation/auth.ts`
 
 ### AUTH-11 A fresh session on every login and sign-up
 **Given** a browser that already holds a session identifier **When** it logs in or signs up **Then** the session identifier it holds afterwards is a new one, so an identifier planted earlier cannot be reused to inherit the authenticated session.
@@ -126,8 +131,9 @@ Cites: `backend/src/routes/auth.test.ts` "logs a user out and ends their session
 Cites: `backend/src/middleware/requireAuth.ts`
 
 ### AUTH-16 Protected screens redirect to login and return afterwards
-**Given** a logged-out visitor **When** they open any screen other than login and sign-up (for example a recipe link) **Then** they are sent to the login page, and after logging in they land on the path they first asked for. Only the path is kept: any query string or hash is lost (a logged-out tap on `/recipes/new?importId=5` lands on `/recipes/new`). If they came to login directly they land on the home page. An unknown address sends a logged-in owner to the home page.
-Cites: `frontend/src/auth/RequireAuth.test.tsx` "redirects to /login when there is no active session", `frontend/src/App.test.tsx` "redirects to /login when there is no active session", `frontend/src/pages/LoginPage.tsx`, `frontend/src/App.tsx`. See open question 5.
+**Given** a logged-out visitor **When** they open any screen other than login and sign-up (for example a recipe link) **Then** they are sent to the login page, and after logging in they land on the address they first asked for, with its path, query string and hash (a logged-out tap on `/recipes/new?importId=5` lands on `/recipes/new?importId=5`). If they came to login directly they land on the home page. An unknown address sends a logged-in owner to the home page.
+Decision: owner 2026-11-24, index Q20 (v1 kept only the path and dropped the query and hash)
+Cites: `frontend/src/auth/RequireAuth.test.tsx` "redirects to /login when there is no active session", `frontend/src/App.test.tsx` "redirects to /login when there is no active session", `frontend/src/pages/LoginPage.tsx`, `frontend/src/App.tsx`
 
 ### AUTH-17 Session check on load
 **Given** the app opens **When** it is still asking the server whether a session exists **Then** a loading indicator labelled "Loading" is shown, not protected content and not the login form. **When** the check says a session exists **Then** the requested protected screen appears. **When** the check fails for any reason, including the network being down **Then** the visitor is treated as logged out and sent to the login page.
@@ -142,11 +148,13 @@ Cites: `frontend/src/pages/LoginPage.test.tsx` "shows the server's error message
 Cites: `frontend/src/components/PasswordInput.test.tsx` "hides the value by default and reveals it when the toggle is clicked", "calls onChange as the user types"
 
 ### AUTH-20 Browser password-manager hints
-**Given** the login and sign-up forms **When** a password manager inspects them **Then** the login fields are marked as username and current password, and the sign-up fields as email, username and new password, so saving and autofill work.
+**Given** the login and sign-up forms **When** a password manager inspects them **Then** the login fields are marked as username and current password, and the sign-up fields as username and new password, so saving and autofill work.
+Decision: owner 2026-11-24, index Q19 (v1's sign-up form also had an email field)
 Cites: `frontend/src/pages/LoginPage.tsx`, `frontend/src/pages/SignupPage.tsx`
 
-### AUTH-21 The owner sees who is logged in and which build is running
-**Given** a logged-in owner **When** they open the place that holds their account entries (today a menu under their username in the header; in the new design the Settings screen, see PWA open question 3) **Then** they see their username (truncated if long on small screens), a "Log out" action (AUTH-14) and the app version: a short commit identifier in production builds, "dev" otherwise, with the full commit available on request (for example on hover). **Given** nobody is logged in **Then** none of this is shown.
+### AUTH-21 The Settings screen shows who is logged in and which build is running
+**Given** a logged-in owner **When** they open the Settings screen **Then** an Account section shows their username (truncated if long on small screens) and a "Log out" action (AUTH-14), and the app version appears at the bottom of the screen: a short commit identifier in production builds, "dev" otherwise, with the full commit available on request (for example on hover). **Given** nobody is logged in **Then** none of this is shown.
+Decision: owner 2026-11-24, index Q9 (v1 showed these in a menu under the username in the header)
 Cites: `frontend/src/components/UserMenu.test.tsx` "renders nothing while unauthenticated", "shows the username and opens the menu on click, with the version at the bottom", ADR 2026-08-19 (Header consolidated into a `UserMenu` dropdown)
 
 ### AUTH-22 ~~User menu behaviour~~
@@ -154,7 +162,8 @@ Struck in the consistency pass. The header user menu is replaced by the design �
 Cites: none (struck)
 
 ### AUTH-23 Stored account data
-**Given** the data model **When** an account exists **Then** it stores an id, a unique email, a unique username, a password hash, and the creation time, plus the per-user settings owned by other areas. Usernames that were missing when the username column was introduced were backfilled as the email's local part plus `_` plus the id; those placeholder names are valid logins only if they pass the login rules (see open question 1).
+**Given** the data model **When** an account exists **Then** it stores an id, an optional email (unique when present; accounts imported from v1 keep theirs, new accounts have none), a username that is unique ignoring letter case, a password hash, and the creation time, plus the per-user settings owned by other areas. Usernames that were missing when the username column was introduced were backfilled as the email's local part plus `_` plus the id; they stay valid logins (AUTH-10). The data import refuses to proceed if two v1 usernames differ only in letter case, so the owner can resolve the collision first.
+Decision: owner 2026-11-24, index Q1, Q2 and Q19 (v1 required a unique email and compared usernames case-sensitively)
 Cites: `backend/migrations/1700000000000_create-users.js`, `backend/migrations/1700000000007_add-username-to-users.js`, `backend/src/repositories/users.ts`, ADR 2026-08-05 (Multi-user-ready schema)
 
 ### AUTH-24 Home and Settings are one step away from every screen that shows the app nav
@@ -163,7 +172,7 @@ Cites: `frontend/src/components/Layout.tsx`, `frontend/src/App.tsx`, design §7
 
 ## Rationale
 - **AUTH-05:** the owner asked for no minimum so they can pick any password for their own instance (ADR 2026-08-06, No minimum password length). Empty is still refused so a form mistake can't create a passwordless account.
-- **AUTH-06:** the API tells a caller which of email or username is taken. That is acceptable only because sign-up is off by default and the app is single-owner.
+- **AUTH-06:** the API tells a caller that a username is taken. That is acceptable only because sign-up is off by default and the app is single-owner.
 - **AUTH-08:** the owner's real password hash comes across in the one-time data import. A forced reset would lock out the only user if email delivery or a reset flow were not built. The format is named here only because it is stored data the new login must verify (design §6, §11).
 - **AUTH-09:** same message and similar timing for both failures so usernames cannot be enumerated; the fixed delay makes each guess cost time even inside the rate limit.
 - **AUTH-11:** guards against session fixation.
@@ -173,6 +182,15 @@ Cites: `frontend/src/components/Layout.tsx`, `frontend/src/App.tsx`, design §7
 - **AUTH-23:** every table that belongs to a user carries its owner from the start, so the app stays multi-user-ready although it is single-user in practice (ADR 2026-08-05, Multi-user-ready schema). The ownership checks in every area (REC-08, COL-02, IMP-32) follow from it.
 - **Login by username, not email (AUTH-07):** ADR 2026-08-06 (Login switched from email to username). Real accounts rather than a shared passphrase: ADR 2026-08-05 (Full login instead of a shared passphrase). Server-side, revocable sessions rather than stateless tokens: ADR 2026-08-06 (Backend MVP).
 
+### Owner decisions (2026-11-24)
+The owner accepted every default in index.md on 2026-11-24.
+- Q1 old usernames that break the rules: login accepts any stored non-empty username; the format rules apply to sign-up only. AUTH-10, AUTH-23.
+- Q2 case-insensitive usernames: uniqueness and login ignore letter case; the importer stops on a case collision. AUTH-06, AUTH-07, AUTH-23.
+- Q9 user menu entries: username, "Log out" and the version move to an Account section on the Settings screen; the manual dark/light toggle is dropped. AUTH-21 (AUTH-22 stays struck).
+- Q19 email on sign-up: not asked any more; stored, optional and unique for imported accounts. AUTH-01, AUTH-04 (struck), AUTH-06, AUTH-07, AUTH-20, AUTH-23.
+- Q20 return after login: the full path, query and hash are kept. AUTH-16.
+- Q27 session length: a fixed week, as today. No criterion changed (AUTH-12).
+
 ## Tests not carried
 - `backend/src/app.test.ts` "returns ok status": tests the health check, not auth; the health endpoint is plumbing for SEC/ops
 - `frontend/src/App.test.tsx` "redirects the old /recipes page to the library, keeping its search": the legacy `/recipes` redirect is dropped (see Features).
@@ -180,11 +198,7 @@ Cites: `frontend/src/components/Layout.tsx`, `frontend/src/App.tsx`, design §7
 - `frontend/src/components/UserMenu.test.tsx` "closes when clicking outside": open and close mechanics of the header user menu, which design §7 replaces.
 - `frontend/src/components/UserMenu.test.tsx` "closes on Escape": same reason.
 - `frontend/src/components/UserMenu.test.tsx` "opens the settings page and closes the menu": reaching Settings is carried by AUTH-24; closing the menu has no successor.
+- `backend/src/routes/auth.test.ts` "rejects signup with a duplicate email": the sign-up form no longer takes an email (owner, index Q19), so there is no duplicate-email case.
 
 ## Open questions for the owner
-1. Old usernames that break the rules: the backfill produced names for rows that had none from the email's local part, and login applies the sign-up rules (only letters, digits and `_`, 3 to 32 characters), answering 400 otherwise. A name such as `john.doe_3`, or one with `+` or `-`, or longer than 32 characters, is locked out. Does your account have such a name? Recommendation: in the rewrite, let login accept any stored username (non-empty text) and apply the format rules to sign-up only, so no existing account can be locked out.
-2. Case sensitivity: `Alice` and `alice` are different accounts today. Recommendation: make usernames case-insensitive for both uniqueness and login; check your own import for collisions first.
-3. Should the new sign-up form keep asking for an email, given nothing uses it? Recommendation: keep it as an optional-looking stored field only if the importer needs it; otherwise ask for username and password only. It is currently unique and required.
-4. Remember-me or a longer or sliding session than a fixed week? Recommendation: keep the fixed week, since you log in rarely and it matches today.
-5. Return-to target after login keeps only the path today, dropping query and hash. Recommendation: the rewrite keeps the full path, query and hash.
-6. Where do your username, "Log out" and the app version go once the header user menu is gone? Merged with PWA open question 3 (notifications toggle). Recommendation: an Account section on the Settings screen.
+All answered by the owner on 2026-11-24 (accepted defaults); see Rationale, Owner decisions.
