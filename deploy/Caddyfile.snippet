@@ -1,0 +1,11 @@
+	# Nosh v2: one container on `proxy` under the alias nosh-v2. Caddy is its
+	# only proxy (TRUSTED_PROXIES names Caddy's pinned 172.28.255.2), and Caddy
+	# overwrites X-Forwarded-For with the real peer by default. flush_interval
+	# -1 so streamed responses (import progress, later) are not buffered.
+	# Rollback to v1: point this at nosh-frontend:8080 and start /opt/nosh.
+	@nosh host nosh.itsthomassito.com
+	handle @nosh {
+		reverse_proxy nosh-v2:3001 {
+			flush_interval -1
+		}
+	}

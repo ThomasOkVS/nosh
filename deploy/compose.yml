@@ -1,0 +1,76 @@
+# Production stack for the homelab: Dockge stack `nosh-v2`, copied to
+# /opt/nosh-v2/compose.yaml on the box. See docs/deployment.md.
+#
+# Secrets live in /opt/nosh-v2/.env (never in this file):
+#   POSTGRES_PASSWORD  hex only, so it needs no escaping inside DATABASE_URL
+#   SESSION_SECRET     long random string
+# Every other setting is a literal here on purpose: a wrong ALLOWED_ORIGINS or
+# TRUSTED_PROXIES stops the server from booting, and a literal is easy to review.
+
+services:
+  nosh:
+    image: ghcr.io/thomasokvs/nosh:${TAG:-main}
+    restart: unless-stopped
+    labels:
+      # Watchtower pulls :main nightly at 04:00. The server migrates on start,
+      # so a merged migration goes live unattended. Owner's call, 2026-11-24,
+      # while v2 holds no real data; revisit before the v1 import.
+      - com.centurylinklabs.watchtower.enable=true
+    environment:
+      TZ: Europe/Brussels
+      PORT: "3001"
+      DATABASE_URL: postgres://nosh:${POSTGRES_PASSWORD:?required}@postgres:5432/nosh
+      SESSION_SECRET: ${SESSION_SECRET:?required}
+      # SEC: the exact origin the browser app is served from.
+      ALLOWED_ORIGINS: https://nosh.itsthomassito.com
+      # SEC-13/SEC-53: Caddy's pinned IP on `proxy` (see /opt/proxy/compose.yaml),
+      # one exact address, never a subnet. Caddy is the only hop in front.
+      TRUSTED_PROXIES: 172.28.255.2
+      # SEC-15/SEC-58: exactly "true" opens signup. Set it briefly to create an
+      # account, then back.
+      ALLOW_SIGNUP: "false"
+    volumes:
+      # The image runs as `node` (uid 1000): the host directory must be 1000-owned.
+      - /opt/nosh-v2/uploads:/data/uploads
+    networks:
+      default: {}
+      proxy:
+        # Caddy reaches it as nosh-v2. Never the bare service name, which
+        # Compose also registers here and another stack could capture.
+        aliases:
+          - nosh-v2
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    # No Watchtower label: a Postgres image bump is done by hand.
+    environment:
+      TZ: Europe/Brussels
+      POSTGRES_USER: nosh
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?required}
+      POSTGRES_DB: nosh
+      # Unicode case folding needs a UTF-8 ctype. Applies only when the data
+      # directory is created, i.e. on a fresh volume.
+      POSTGRES_INITDB_ARGS: "--locale=en_US.utf8"
+    volumes:
+      # Under /opt so Kopia's backup of /opt covers it.
+      - /opt/nosh-v2/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nosh -d nosh"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    # Only on the stack's own network; never on `proxy`.
+
+networks:
+  default:
+    ipam:
+      config:
+        # Pinned next to v1's 10.101.0.0/24 so the host firewall's
+        # SANDBOX_NETS can name it once imports (outbound fetches) land.
+        - subnet: 10.102.0.0/24
+  proxy:
+    external: true
