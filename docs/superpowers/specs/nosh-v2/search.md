@@ -2,7 +2,7 @@
 
 ## Purpose
 Lets the owner find recipes in their library by typing words, and narrow any
-list of recipes by tag or by folder. One search box, available everywhere,
+list of recipes by tag or by folder. One search box on the library screen
 searches the current folder and everything below it, or the whole library from
 Home.
 
@@ -21,21 +21,23 @@ Home.
 ## Features
 | Feature | Verdict | Why |
 |---|---|---|
-| One search box in the header on every page | keep | Recipes can be found from anywhere; one box instead of a page box plus a header box (ADR 2026-09-23). |
+| One search box in the header on every page | drop | Design §7 replaces the old header search: the new nav is a bottom pill and the library screen has its own rounded search box. Searching from a recipe page now means going back to the library first. |
+| One search box on the library screen (Home and every folder) | keep | One box, not a page box plus a header box (ADR 2026-09-23); placed on the library as design §7 shows. |
 | Search scoped to the current folder and below, with "Search everywhere" | keep | Supports "I know it's somewhere in Baking" without losing whole-library search (ADR 2026-09-23). |
 | Search across title, description, ingredients, steps and tags | keep | Core of finding a recipe by what is in it. |
 | Relevance ranking (title above description and tags above ingredients above steps) | keep | Titles are the strongest signal. |
 | Tag filter via clicking a tag chip, combinable with a search | keep | Tag browsing without a separate tag list (ADR 2026-08-19). |
-| Matching of Dutch words, accents and partial words | owner? | Today only English word forms are understood. Dutch recipes match exact words only, accents must match exactly, and half-typed words match nothing. See open questions 1 and 2. |
+| Matching of Dutch word forms ("tomaten" finds "tomaat") | drop | Design §2 and §5 (decided): Dutch-aware search stays in the backlog for after cutover. Today Dutch recipes match exact words only (SRCH-17). |
+| Accent-insensitive and partial-word matching | owner? | Today accents must match exactly and half-typed words match nothing. A change to search behaviour, which design §6 keeps "same as today". See open question 2. |
 | Debounced search-as-you-type | keep | Results follow typing without a submit step. |
 | Folder filters on the recipe list (`collection`, `within`) | keep | The library page needs "direct contents" and "whole subtree" views. |
 | Search ignored when the query is blank | keep | A blank search is a browse, not an error in the UI. |
 
 ## Acceptance criteria
 
-### SRCH-01 Search box is on every page
-**Given** the owner is signed in **When** they view any page (library, a recipe, a settings page) **Then** a search box labelled "Search recipes" is available in the header with the placeholder "Search recipes…".
-Cites: `frontend/src/components/LibrarySearch.tsx`, ADR 2026-09-23
+### SRCH-01 Search box on the library screen
+**Given** the owner is signed in **When** they view Home or any folder **Then** a search box labelled "Search recipes" is shown with the placeholder "Search recipes…". (Today the box sits in the header of every page; design §7 moves it onto the library screen.)
+Cites: `frontend/src/components/LibrarySearch.tsx`, ADR 2026-09-23, design §7
 
 ### SRCH-02 Typing on a library page searches after a short pause
 **Given** the owner is on Home or a folder page **When** they type into the search box **Then** nothing changes while they type, and 300 ms after the last keystroke the page's search becomes the typed text with surrounding spaces trimmed (the search is kept in the page address as `q`, replacing the current history entry rather than adding one).
@@ -49,12 +51,12 @@ Cites: `frontend/src/components/LibrarySearch.tsx`
 **Given** the owner is on a library page with a search active **When** they clear the search box **Then**, after the same short pause, the search is removed from the address and the page shows the normal folder contents again.
 Cites: `frontend/src/components/LibrarySearch.test.tsx` "removes ?q when the box is cleared"
 
-### SRCH-05 Searching from outside the library jumps to Home's results
-**Given** the owner is on a page that is not Home or a folder (for example a recipe page) **When** they type a query and press Enter **Then** they are taken to Home with that query, searching the whole library. Typing alone never navigates them away, and pressing Enter with an empty box does nothing.
-Cites: `frontend/src/components/LibrarySearch.test.tsx` "jumps to a whole-library search from a non-library page on Enter"
+### SRCH-05 ~~Searching from outside the library jumps to Home's results~~
+Struck in the consistency pass: with the search box only on the library screen (SRCH-01, design §7) there is no search from outside the library. The test is listed under Tests not carried.
+Cites: none (struck)
 
 ### SRCH-06 The search box follows the page address
-**Given** the search box shows a query for the current folder **When** the page address changes from outside the box (Back/Forward, opening another folder, following "Search everywhere", leaving the library) **Then** the box shows the query now in the address, which is empty when there is none, and does not remove a trailing space the owner is partway through typing.
+**Given** the search box shows a query for the current folder **When** the page address changes from outside the box (Back/Forward, opening another folder, following "Search everywhere") **Then** the box shows the query now in the address, which is empty when there is none, and does not remove a trailing space the owner is partway through typing.
 Cites: `frontend/src/components/LibrarySearch.test.tsx` "follows the URL when it changes from elsewhere (e.g. opening another folder)"
 
 ### SRCH-07 A search covers the current folder and everything below it
@@ -67,15 +69,15 @@ Cites: `backend/src/routes/recipes.test.ts` "scopes a text search to a folder's 
 
 ### SRCH-09 "Search everywhere" widens a folder search
 **Given** a search is active inside a folder (not Home) **When** the owner follows "Search everywhere" **Then** they land on Home with the same query and the same tag filter, so the same search runs over the whole library. The link is not shown at Home.
-Cites: `frontend/src/components/LibrarySearch.tsx`, ADR 2026-09-23
+Cites: `frontend/src/pages/CollectionsPage.test.tsx` "offers a Search everywhere link that drops the folder scope", "filters the whole library by tag at Home, and the tag can be cleared", ADR 2026-09-23
 
 ### SRCH-10 Results heading shows count, query and scope
 **Given** a search or tag filter is active **When** results are shown **Then** a heading shows the number of results (singular or plural), the query in quotation marks when there is one, and the scope (the folder name, or "your whole library"). While a new search is loading, the previous results stay on screen with a small "Searching" indicator instead of being replaced by a skeleton.
-Cites: `backend/src/repositories/recipes.ts`, ADR 2026-09-23
+Cites: `frontend/src/pages/CollectionsPage.test.tsx` "searches this collection and everything below it, labelling where each result lives", `frontend/src/pages/CollectionsPage.tsx` (heading wording and the "Searching" indicator have no test), ADR 2026-09-23
 
 ### SRCH-11 Empty result states
 **Given** a search or tag filter matches nothing **When** the results show **Then** the page says "No recipes match". Inside a folder it adds that nothing is in the folder or its sub-collections and suggests searching everywhere; at Home it suggests a different term or clearing the filter.
-Cites: `backend/src/repositories/recipes.ts`
+Cites: `frontend/src/pages/CollectionsPage.test.tsx` "offers a Search everywhere link that drops the folder scope"
 
 ### SRCH-12 Searched fields
 **Given** the owner has a recipe **When** they search for a word that appears in its title, its description, the name of one of its ingredients, the text of one of its steps, or one of its tags **Then** the recipe is in the results. Words appearing only in an ingredient's quantity or unit, or in the source URL, do not match.
@@ -123,7 +125,7 @@ Cites: `backend/src/routes/recipes.test.ts` "combines a text search with a tag f
 
 ### SRCH-23 Clicking a tag on a recipe filters the library by it
 **Given** a recipe card shows tags **When** the owner clicks a tag **Then** they are taken to Home filtered by that tag across the whole library, shown with the same results heading, plus a removable chip showing the active tag. Removing the chip drops the tag but keeps any query and scope.
-Cites: `backend/src/repositories/recipes.ts`, ADR 2026-08-19
+Cites: `frontend/src/pages/CollectionsPage.test.tsx` "filters the whole library by tag at Home, and the tag can be cleared", ADR 2026-08-19
 
 ### SRCH-24 A blank tag filter is ignored
 **Given** a request whose tag filter is empty or only spaces **When** the list or search is requested **Then** the tag filter is ignored and the request succeeds as if no tag were given.
@@ -131,7 +133,7 @@ Cites: `backend/src/repositories/recipes.ts`
 
 ### SRCH-25 Browse versus search on library pages
 **Given** a library page **When** neither a query nor a tag is active **Then** the page browses: it shows the folder's sub-folders and only the recipes directly in that folder, newest first. **When** a query or a tag is active **Then** it shows one flat list of matching recipes from the folder and everything below it, with no sub-folders shown and no new-folder form.
-Cites: `backend/src/routes/recipes.test.ts` "lists only the recipes directly in one collection", ADR 2026-09-23
+Cites: `backend/src/routes/recipes.test.ts` "lists only the recipes directly in one collection", `frontend/src/pages/CollectionsPage.test.tsx` "shows top-level collections and the recipes filed directly at Home", "renders a collection's sub-collections and its direct recipes", "searches this collection and everything below it, labelling where each result lives", ADR 2026-09-23
 
 ### SRCH-26 Folder filters on the recipe list
 **Given** a library with recipes at Home, in a folder, and in a sub-folder of it **When** the list is requested with the folder filter set to Home **Then** only recipes directly at Home are returned. **When** it is set to one folder **Then** only recipes directly in that folder are returned. **When** the subtree filter is set to a folder **Then** recipes in that folder and all of its sub-folders are returned. Unfiltered lists return everything the owner has, newest first.
@@ -146,10 +148,10 @@ Cites: `backend/src/routes/recipes.test.ts` "rejects a malformed folder filter"
 Cites: `backend/src/routes/recipes.test.ts` "never returns another user's recipes through within", "rejects requests with no session"
 
 ## Rationale
-SRCH-02, SRCH-05, SRCH-06: the page address holds the query, so it survives
-reload, Back/Forward and sharing a link, and the box is only a view of it.
-Outside the library there is no results page to update, so Enter is needed to
-go there (ADR 2026-09-23).
+SRCH-02, SRCH-06: the page address holds the query, so it survives
+reload, Back/Forward and sharing a link, and the box is only a view of it
+(ADR 2026-09-23). SRCH-05 (Enter on a non-library page jumps to Home's
+results) only existed because the box was in the header of every page.
 
 SRCH-07 and SRCH-08: ADR 2026-09-23 chose "this folder and below" over "always
 everything" (which loses narrowing) and over "only this folder" (which hides
@@ -171,10 +173,10 @@ separate tag list; an early version with a chip row of all tags was cut as
 clutter (ADR 2026-08-19).
 
 ## Tests not carried
-- `frontend/src/components/LibrarySearch.test.tsx`: all four tests are carried (SRCH-02, SRCH-04, SRCH-05, SRCH-06).
+- `frontend/src/components/LibrarySearch.test.tsx` "jumps to a whole-library search from a non-library page on Enter": the header search on every page is dropped (design §7), so SRCH-05 is struck. The other three tests are carried (SRCH-02, SRCH-04, SRCH-06).
 
 ## Open questions for the owner
-1. Dutch support: should search understand Dutch word forms ("tomaten" finds "tomaat")? Recommendation: yes, since much recipe content is Dutch; choose the matching language per recipe from its language setting (see UNIT) or match both languages.
-2. Accents and partial words: should "creme" find "crème", and should "choc" find "chocolate" while typing? Recommendation: yes to accent-insensitive matching; yes to prefix matching on the last word typed, as it suits search-as-you-type.
-3. Tag matching: tags match by exact name, so "Dessert" and "dessert" are different tags. Recommendation: treat tag names case-insensitively when filtering and when saving.
+1. No answer needed: Dutch word forms ("tomaten" finds "tomaat") are decided by design §2 and §5, which keep Dutch-aware search in the backlog. When it is picked up, the matching language could follow the recipe language (UNIT) or match both languages.
+2. Accents and partial words: should "creme" find "crème", and should "choc" find "chocolate" while typing? Recommendation: keep today's matching for the first release (design §2: no new features; §6: same search behaviour as today) and put both in the backlog next to Dutch-aware search. If you want them now, accent-insensitive matching and prefix matching on the last word typed both suit search-as-you-type.
+3. Tag matching: tags match by exact name, so "Dessert" and "dessert" are different tags. Recommendation: treat tag names case-insensitively when filtering and when saving. (Merged with REC open question 2 in index.md.)
 4. Tie order: equally ranked matches have no defined order. Recommendation: break ties by newest first, matching the plain list.

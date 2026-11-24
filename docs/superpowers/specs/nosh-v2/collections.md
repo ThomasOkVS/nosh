@@ -169,6 +169,6 @@ Cites: `frontend/src/pages/CollectionsPage.tsx`
 1. Keep "deleting a folder deletes everything inside it"? Recommend keep, with the count warning, as decided in 2026-08-28. Optionally add an undo or a recently-deleted bin, but that is a new feature, so post-release.
 2. A duplicate sibling name currently produces a generic 500. Recommend the rewrite returns 409 with a clear message ("A collection with that name already exists here") and shows it in the form (`owner?` only if you would rather keep today's behaviour exactly).
 3. Drag and drop works with a mouse only, not on iPhone, which is the main device. Recommend keeping it for desktop, but making sure the dropdown move (COL-18) is also reachable from the folder view's recipe cards on touch devices. This is new UI, so it is the owner's call.
-4. Collection names have no length limit. Recommend a cap (for example 100 characters) in line with recipe titles. Check REC's cap and agree one number.
+4. Collection names have no length limit. Recommend a cap (for example 100 characters) in line with recipe titles. Check REC's cap and agree one number. (Merged in index.md with REC open question 6.)
 5. The rename form combines rename and move. Recommend keeping it, but allowing moving a sub-collection by dragging it onto another folder is a possible later feature, not in scope now.
 6. The library page heading reads "Library" while the root is called "Home" everywhere else (breadcrumb, selectors, captions). Recommend one name in the redesign; I suggest "Home" for the root crumb and page title.

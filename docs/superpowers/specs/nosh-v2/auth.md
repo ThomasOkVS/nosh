@@ -29,12 +29,16 @@ is not logged in.
 - `frontend/src/components/PasswordInput.test.tsx`
 - `frontend/src/components/UserMenu.tsx`
 - `frontend/src/components/UserMenu.test.tsx`
+- `frontend/src/components/Layout.tsx`
+- `frontend/src/App.tsx`
 
 ## ADRs
 - 2026-08-05: Full login instead of a shared passphrase
 - 2026-08-06: Backend MVP — DB access, auth mechanism, and supporting libraries
 - 2026-08-06: Login switched from email to username
 - 2026-08-06: No minimum password length
+- 2026-08-05: Multi-user-ready schema
+- 2026-08-19: Header consolidated into a `UserMenu` dropdown; app version shown via build-time commit SHA
 
 ## Features
 | Feature | Verdict | Why |
@@ -48,7 +52,13 @@ is not logged in.
 | Log out | keep | Parity. |
 | Route protection (redirect to login, return to the page asked for) | keep | Parity. |
 | Show/hide password toggle | keep | Small, useful, accessible. |
-| User menu (username, settings link, dark/light toggle, notifications toggle, version) | keep | The auth-related parts (username, log out, version) are criteria here; the other entries belong to their own areas. |
+| Header user menu dropdown | drop | Design §7 replaces the header user menu with a settings icon top-right and a bottom nav pill. Its entries are kept elsewhere (rows below); where they go is PWA open question 3. |
+| See who is logged in, log out, see the app version | keep | Parity (ADR 2026-08-19: the owner asked for a visible build identifier). New placement is PWA open question 3 (recommended: the Settings screen). |
+| Manual dark/light toggle remembered per device | drop | Design §7 decided dark mode follows the system setting (PWA-32). It can come back if the owner asks (PWA open question 3). |
+| Notifications on/off entry (today in the user menu) | keep | Owned by PWA (PWA-27 to PWA-30); placement is PWA open question 3. |
+| App shell: one step to Home and to Settings from every signed-in screen; import dialog available app-wide | keep | Today the "Nosh" logo links Home and the user menu links Settings. Design §7 replaces both with the bottom nav pill (Library + "+") and a settings icon. |
+| Header link to the weekly planner | drop | Planner dropped (design §5). |
+| Old `/recipes` address redirects to the library, keeping `q` and `tag` | drop | The separate all-recipes page was retired on 2026-09-23. The rewrite defines its own addresses, nosh is private, and an unknown address already lands on Home (AUTH-16). |
 | Email address on the account | owner? | Stored and unique, but never used to log in and nothing is ever sent to it. Recommend keeping it as a stored field (the importer carries it) but deciding whether the new sign-up form should still ask for it. |
 | Case-sensitive usernames | owner? | Today `Alice` and `alice` are two different accounts. Recommend case-insensitive uniqueness in the rewrite; see open questions. |
 | Password reset / change password / delete account | drop | Do not exist today. Out of scope for the restart. |
@@ -108,7 +118,7 @@ Cites: `backend/src/app.ts`; design §9. The full cookie requirements are owned 
 Cites: `backend/src/routes/auth.test.ts` "rejects /auth/me without a session", `backend/src/routes/auth.ts`
 
 ### AUTH-14 Log out
-**Given** a logged-in owner **When** they choose "Log out" in the user menu **Then** the server ends the session and clears the cookie (204), the menu closes, the browser goes to the login page, and the old session no longer works: asking for the current user returns 401. If the logout call fails, the owner stays on the current page and nothing is shown.
+**Given** a logged-in owner **When** they choose "Log out" **Then** the server ends the session and clears the cookie (204), the browser goes to the login page, and the old session no longer works: asking for the current user returns 401. If the logout call fails, the owner stays on the current page and nothing is shown.
 Cites: `backend/src/routes/auth.test.ts` "logs a user out and ends their session", `frontend/src/components/UserMenu.test.tsx` "logs out and navigates to /login"
 
 ### AUTH-15 Every data endpoint requires a session
@@ -117,7 +127,7 @@ Cites: `backend/src/middleware/requireAuth.ts`
 
 ### AUTH-16 Protected screens redirect to login and return afterwards
 **Given** a logged-out visitor **When** they open any screen other than login and sign-up (for example a recipe link) **Then** they are sent to the login page, and after logging in they land on the path they first asked for. Only the path is kept: any query string or hash is lost (a logged-out tap on `/recipes/new?importId=5` lands on `/recipes/new`). If they came to login directly they land on the home page. An unknown address sends a logged-in owner to the home page.
-Cites: `frontend/src/auth/RequireAuth.test.tsx` "redirects to /login when there is no active session", `frontend/src/pages/LoginPage.tsx`. See open question 5.
+Cites: `frontend/src/auth/RequireAuth.test.tsx` "redirects to /login when there is no active session", `frontend/src/App.test.tsx` "redirects to /login when there is no active session", `frontend/src/pages/LoginPage.tsx`, `frontend/src/App.tsx`. See open question 5.
 
 ### AUTH-17 Session check on load
 **Given** the app opens **When** it is still asking the server whether a session exists **Then** a loading indicator labelled "Loading" is shown, not protected content and not the login form. **When** the check says a session exists **Then** the requested protected screen appears. **When** the check fails for any reason, including the network being down **Then** the visitor is treated as logged out and sent to the login page.
@@ -135,17 +145,21 @@ Cites: `frontend/src/components/PasswordInput.test.tsx` "hides the value by defa
 **Given** the login and sign-up forms **When** a password manager inspects them **Then** the login fields are marked as username and current password, and the sign-up fields as email, username and new password, so saving and autofill work.
 Cites: `frontend/src/pages/LoginPage.tsx`, `frontend/src/pages/SignupPage.tsx`
 
-### AUTH-21 User menu shows who is logged in
-**Given** a logged-in owner **When** they look at the app header **Then** they see their username on a menu button (truncated if long on small screens). Pressing it opens a menu whose entries include Settings, a dark/light mode switch, "Log out", and the app version at the bottom (a short commit identifier in production builds, "dev" otherwise, with the full commit on hover). **Given** nobody is logged in **Then** the menu is not shown at all.
-Cites: `frontend/src/components/UserMenu.test.tsx` "renders nothing while unauthenticated", "shows the username and opens the menu on click, with the version at the bottom"
+### AUTH-21 The owner sees who is logged in and which build is running
+**Given** a logged-in owner **When** they open the place that holds their account entries (today a menu under their username in the header; in the new design the Settings screen, see PWA open question 3) **Then** they see their username (truncated if long on small screens), a "Log out" action (AUTH-14) and the app version: a short commit identifier in production builds, "dev" otherwise, with the full commit available on request (for example on hover). **Given** nobody is logged in **Then** none of this is shown.
+Cites: `frontend/src/components/UserMenu.test.tsx` "renders nothing while unauthenticated", "shows the username and opens the menu on click, with the version at the bottom", ADR 2026-08-19 (Header consolidated into a `UserMenu` dropdown)
 
-### AUTH-22 User menu behaviour
-**Given** the user menu is open **When** the owner clicks outside it, or presses Escape **Then** it closes. **When** they choose Settings **Then** the settings screen opens and the menu closes. **When** they toggle dark/light mode **Then** the theme switches at once, the choice is remembered on this device, the entry's label flips ("Dark mode" / "Light mode") and the menu stays open.
-Cites: `frontend/src/components/UserMenu.test.tsx` "toggles the dark class on <html> and updates the label without closing the menu", "closes when clicking outside", "closes on Escape", "opens the settings page and closes the menu"
+### AUTH-22 ~~User menu behaviour~~
+Struck in the consistency pass. The header user menu is replaced by the design §7 navigation, so its open and close behaviour has no successor. Reaching Settings is AUTH-24. The manual dark/light toggle is dropped because dark mode follows the system (PWA-32). Its tests are listed under Tests not carried.
+Cites: none (struck)
 
 ### AUTH-23 Stored account data
 **Given** the data model **When** an account exists **Then** it stores an id, a unique email, a unique username, a password hash, and the creation time, plus the per-user settings owned by other areas. Usernames that were missing when the username column was introduced were backfilled as the email's local part plus `_` plus the id; those placeholder names are valid logins only if they pass the login rules (see open question 1).
-Cites: `backend/migrations/1700000000000_create-users.js`, `backend/migrations/1700000000007_add-username-to-users.js`, `backend/src/repositories/users.ts`
+Cites: `backend/migrations/1700000000000_create-users.js`, `backend/migrations/1700000000007_add-username-to-users.js`, `backend/src/repositories/users.ts`, ADR 2026-08-05 (Multi-user-ready schema)
+
+### AUTH-24 Home and Settings are one step away from every signed-in screen
+**Given** a logged-in owner on any signed-in screen **When** they want the library or their settings **Then** one control takes them to Home and one takes them to the Settings screen. The import dialog and its completion and failure notices belong to the whole app, not to one screen, so an import that finishes while the owner is on a recipe or on Settings is still announced (IMP-41, IMP-42). Starting a new recipe or an import is offered on the library screens today (COL-21); design §7 moves it to the "+" of the bottom nav. Today Home is reached through the "Nosh" logo in the header and Settings through the user menu. Design §7 replaces both with the bottom nav pill and a settings icon top-right, and hides the nav on the recipe page, where the page's own back link returns to the library (REC-20).
+Cites: `frontend/src/components/Layout.tsx`, `frontend/src/App.tsx`, design §7
 
 ## Rationale
 - **AUTH-05:** the owner asked for no minimum so they can pick any password for their own instance (ADR 2026-08-06, No minimum password length). Empty is still refused so a form mistake can't create a passwordless account.
@@ -155,10 +169,17 @@ Cites: `backend/migrations/1700000000000_create-users.js`, `backend/migrations/1
 - **AUTH-11:** guards against session fixation.
 - **AUTH-02:** enforced in the API because the API is reachable directly; hiding the sign-up link alone would not be a control (design §9).
 - **AUTH-16:** the sign-up screen is reachable even when sign-ups are off; the server then answers 403. Not worth hiding the page.
+- **AUTH-21:** the owner asked for a visible way to tell which build is deployed. The short commit id is used because every published image is already tagged with it (ADR 2026-08-19).
+- **AUTH-23:** every table that belongs to a user carries its owner from the start, so the app stays multi-user-ready although it is single-user in practice (ADR 2026-08-05, Multi-user-ready schema). The ownership checks in every area (REC-08, COL-02, IMP-32) follow from it.
 - **Login by username, not email (AUTH-07):** ADR 2026-08-06 (Login switched from email to username). Real accounts rather than a shared passphrase: ADR 2026-08-05 (Full login instead of a shared passphrase). Server-side, revocable sessions rather than stateless tokens: ADR 2026-08-06 (Backend MVP).
 
 ## Tests not carried
 - `backend/src/app.test.ts` "returns ok status": tests the health check, not auth; the health endpoint is plumbing for SEC/ops
+- `frontend/src/App.test.tsx` "redirects the old /recipes page to the library, keeping its search": the legacy `/recipes` redirect is dropped (see Features).
+- `frontend/src/components/UserMenu.test.tsx` "toggles the dark class on <html> and updates the label without closing the menu": the manual theme toggle is dropped; dark mode follows the system (design §7, PWA-32).
+- `frontend/src/components/UserMenu.test.tsx` "closes when clicking outside": open and close mechanics of the header user menu, which design §7 replaces.
+- `frontend/src/components/UserMenu.test.tsx` "closes on Escape": same reason.
+- `frontend/src/components/UserMenu.test.tsx` "opens the settings page and closes the menu": reaching Settings is carried by AUTH-24; closing the menu has no successor.
 
 ## Open questions for the owner
 1. Old usernames that break the rules: the backfill produced names like `john.doe_3` for rows that had none, and login rejects names with a dot with a 400. Does your account have such a name? Recommendation: in the rewrite, let login accept any stored username (non-empty text) and apply the format rules to sign-up only, so no existing account can be locked out.
@@ -166,3 +187,4 @@ Cites: `backend/migrations/1700000000000_create-users.js`, `backend/migrations/1
 3. Should the new sign-up form keep asking for an email, given nothing uses it? Recommendation: keep it as an optional-looking stored field only if the importer needs it; otherwise ask for username and password only. It is currently unique and required.
 4. Remember-me or a longer or sliding session than a fixed week? Recommendation: keep the fixed week, since you log in rarely and it matches today.
 5. Return-to target after login keeps only the path today, dropping query and hash. Recommendation: the rewrite keeps the full path, query and hash.
+6. Where do your username, "Log out" and the app version go once the header user menu is gone? Merged with PWA open question 3 (notifications toggle). Recommendation: an Account section on the Settings screen.

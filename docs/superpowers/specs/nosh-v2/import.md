@@ -84,8 +84,8 @@ Cites: `backend/src/routes/import.test.ts` "rejects requests with no session"
 Cites: `backend/src/routes/import.test.ts` "refuses to file an import in another user's folder", "keeps the folder the import was started from on the job", `backend/migrations/1700000000014_create-import-jobs-and-push-subscriptions.js`
 
 ### IMP-06 Starting imports is capped per user
-**Given** an owner who has started 30 imports in the last hour **When** they start another **Then** the API answers 429. Polling a job, listing jobs, cancelling and marking reviewed never count towards the cap.
-Cites: `backend/src/routes/import.ts` (cap of 30 per hour per user; no test), ADR 2026-09-24
+**Given** an owner who has used up 30 import starts in the current one-hour window **When** they start another **Then** the API answers 429 with a `Retry-After` header (the window rules are SEC-16; an invalid start still counts, SEC-21). Polling a job, listing jobs, cancelling and marking reviewed never count towards the cap.
+Cites: `backend/src/routes/import.ts` (cap of 30 per hour per user), `backend/src/security.test.ts` "rejects imports past 30 an hour for one user" (owned by SEC), ADR 2026-09-24
 
 ### IMP-07 Settings are snapshotted when the import starts
 **Given** an owner with a saved import model, recipe language and unit preferences **When** they start an import **Then** the job uses the model, language and units they had at that moment, and changing settings while it runs does not affect it. A saved model that is no longer offered by the server is ignored and the automatic default is used (one default for web pages and one for video). With no saved language the recipe stays in its source language. Unit preferences always exist (defaults: metric, °C, keep spoons), so amounts and temperatures are always converted to them on import.
@@ -180,7 +180,7 @@ Cites: `backend/src/services/recipeExtraction.test.ts` "undoes a translation tha
 Cites: `backend/src/services/recipeExtraction.test.ts` "keeps the original and flags it when translation fails", "keeps the original when the translation doesn't validate", "flags a skipped translation when no translator is configured", "still rethrows when the user cancelled mid-translation", `backend/src/routes/import.test.ts` "flags a job whose translation couldn't happen"
 
 ### IMP-30 Units and oven temperatures are converted on import
-**Given** unit preferences (unit system, temperature unit, keep spoons) **When** the draft is produced **Then** ingredient amounts and oven temperatures in the steps are converted into those units and stored converted (1 cup becomes 236.59 ml, 8 oz becomes 226.8 g, 350°F becomes 177°C in the step text, 2 eggs stay `2` with no unit, 3 tl becomes 1 el labelled in Dutch for a Dutch recipe). Unit preferences always exist (defaults metric, °C, keep spoons), so conversion always applies; the service-level case of no preferences at all is not reachable in the app. The conversion rules themselves are specified in UNIT.
+**Given** unit preferences (unit system, temperature unit, keep spoons) **When** the draft is produced **Then** ingredient amounts and oven temperatures in the steps are converted into those units and stored converted (1 cup becomes 236.59 ml, 8 oz becomes 226.8 g, 350°F becomes 177°C in the step text, 2 eggs stay `2` with no unit, 3 tl becomes 1 el when the recipe language is Dutch, UNIT-19). Unit preferences always exist (defaults metric, °C, keep spoons), so conversion always applies; the service-level case of no preferences at all is not reachable in the app. The conversion rules themselves are specified in UNIT.
 Cites: `backend/src/services/recipeExtraction.test.ts` "converts amounts and oven temperatures into the user's units", "leaves amounts as written with no unit preferences", `backend/src/routes/import.test.ts` "imports in the language and units saved on the Settings page", ADR 2026-09-25
 
 ### IMP-31 Job state and progress stages
@@ -212,7 +212,7 @@ Cites: `backend/src/routes/import.test.ts` "marks jobs left running by a previou
 Cites: `backend/src/routes/import.test.ts` "notifies every subscribed device when an import finishes, linking to the review form", "notifies about failures too", "never sends to a stored endpoint that isn't a known push service, and deletes it", "forgets a subscription the push service reports as gone", ADR 2026-09-24
 
 ### IMP-38 Starting an import from the app
-**Given** the owner is on the library (Home or inside a folder) **When** they choose "Import from URL" **Then** a dialog opens with one required URL field (placeholder like `https://example.com/best-tomato-soup`) and the hint that they can paste a recipe page, Instagram Reel or TikTok link and will review the ingredients and steps before saving. Submitting trims the URL and starts the import. The import is filed in the folder it was started from, or Home. Reopening the dialog while an import is in progress shows that import's progress, not a blank field.
+**Given** the owner is on the library (Home or inside a folder) **When** they choose "Import" **Then** a dialog titled "Import a recipe" opens with one required URL field (placeholder like `https://example.com/best-tomato-soup`) and the hint that they can paste a recipe page, Instagram Reel or TikTok link and will review the ingredients and steps before saving. Submitting ("Import recipe") trims the URL and starts the import. The import is filed in the folder it was started from, or Home. Reopening the dialog while an import is in progress shows that import's progress, not a blank field.
 Cites: `frontend/src/import/ImportDialog.test.tsx` "shows the URL input when opened with nothing running", "reopening a backgrounded import shows its current progress, not a blank input", "hands the folder the import was started from on to the create form"
 
 ### IMP-39 Progress the owner sees
@@ -268,13 +268,13 @@ Cites: `backend/src/llm/geminiClient.test.ts` "reports token usage, counting thi
 ## Tests not carried
 - `backend/src/llm/geminiClient.test.ts` "sends the model, API key, and a JSON responseSchema": implementation detail (header names, URL shape, schema format); the observable parts are in IMP-11 and IMP-20.
 - `backend/src/llm/geminiClient.test.ts` "createGeminiVideoExtractor maps quota and outage responses to a retryable error": same as the text case, covered by IMP-24.
-- `backend/src/services/socialVideo.test.ts` "routes every yt-dlp invocation through the egress proxy": outbound-guard mechanics, carried by SEC.
-- `backend/src/services/socialVideo.test.ts` "drops every proxy variable, in either case, and keeps the rest": outbound-guard mechanics, carried by SEC.
-- `backend/src/services/socialVideo.runner.test.ts` "runs /usr/bin/yt-dlp with --proxy and an environment with no proxy variables": outbound-guard mechanics of the current downloader, carried by SEC.
+- `backend/src/services/socialVideo.test.ts` "routes every yt-dlp invocation through the egress proxy": outbound-guard mechanics, carried by SEC-48 (cited there).
+- `backend/src/services/socialVideo.test.ts` "drops every proxy variable, in either case, and keeps the rest": outbound-guard mechanics, carried by SEC-48 (cited there).
+- `backend/src/services/socialVideo.runner.test.ts` "runs /usr/bin/yt-dlp with --proxy and an environment with no proxy variables": outbound-guard mechanics of the current downloader, carried by SEC-48 (cited there).
 
 ## Open questions for the owner
 1. Import from pasted text, a photo or a screenshot is not in the app today and the brief for this area mentioned it. Recommendation: do not add it for the first release (design §2); keep it in the backlog.
-2. The import cap is per user (30 starts per hour), the design says import limits are keyed by client IP (§9). Recommendation: keep the per-user cap, because the real cost is paid AI calls, and also apply the IP limit.
+2. (Merged in index.md with SEC open question 1.) The import cap is per user (30 starts per hour), the design says import limits are keyed by client IP (§9). Recommendation: keep the per-user cap, because the real cost is paid AI calls, and also apply the IP limit.
 3. When the server restarts mid-import, today the job is marked failed with an "interrupted" message and the owner must retry. A queue-backed design could resume it. Recommendation: resume if the queue makes it free, otherwise keep the failure message (IMP-36 allows both).
 4. Some AI failure messages show the provider's wording to the owner (for example "Gemini returned 400"). Recommendation: replace them with one plain message (IMP-24 only requires that the raw response body is never shown).
 5. Imports that finish while the app was closed and were never opened: only the newest is announced on launch. Recommendation: keep; the older ones stay pending on the server for 7 days only if never reviewed, but nothing in the app lists them.

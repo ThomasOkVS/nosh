@@ -37,11 +37,13 @@ nosh is used mostly as an app installed on the owner's iPhone home screen. This 
 | No offline API/data caching | keep | Deliberate: never serve a stale auth response or an API URL as the app page. |
 | Push notification when an import finishes or fails | keep | Core to the "start an import, lock the phone" flow. |
 | Opt-in prompt in the import screen | keep | Asked at the moment it is useful; required to be a tap on iOS. |
-| Notifications toggle in settings or user menu | keep | Replaces the old user-menu toggle (the user menu is going away, design §7); needs a new home. |
+| Notifications on/off control outside the import screen | keep | Today it is an entry in the user menu, which design §7 removes. Its new home is open question 3 (recommended: the Settings screen). SET and AUTH defer to this row. |
 | Push off when server has no VAPID keys | keep | Same "feature off, app still works" pattern as a missing Gemini key. |
 | Push endpoint allowlist | keep | SSRF defence (design §9); see SEC. |
-| Push subscriptions kept across cutover | keep | Same origin and VAPID keys so existing devices keep working (design §10). |
-| Theme colour in manifest | owner? | Current brand colours are the old red/paper; new style is chalk/ink/mustard. |
+| Push subscriptions kept across cutover | keep | Same origin and VAPID keys so existing devices keep working (design §3, §11). |
+| Theme and background colour from the new palette | keep | Today's colours are the retired red/paper brand. Resolved against the style log (P4, design §7) in the consistency pass; see PWA-04 and Rationale. |
+| Light and dark appearance follow the device setting | keep | Design §7 (decided): dark mode is derived from P4 and follows the system setting. |
+| Manual dark/light override remembered per device | drop | Today a user-menu toggle overrides the system setting. Design §7 says dark mode follows the system; it can come back if the owner asks (open question 3). |
 | Icons | owner? | Current icons are old-brand art; the restyle probably wants new ones. |
 
 ## Acceptance criteria
@@ -59,11 +61,11 @@ Cites: `frontend/vite.config.ts`, `frontend/public/*`, ADR 2026-08-08 Design pol
 Cites: `frontend/index.html`, `frontend/public/*`
 
 ### PWA-04 Manifest colours
-**Given** the manifest and page head **When** the app is installed or opened **Then** the manifest provides a background colour (shown on the launch splash) and a theme colour (shown in the OS UI), and the page head also declares a theme colour. Today these are `#f6f1e7` background, `#b23a2e` manifest theme and `#1C1814` page theme (the two theme colours disagree, see open question 1).
-Cites: `frontend/vite.config.ts`, `frontend/index.html`, ADR 2026-08-26 Cookbook Editorial rolled out to the rest of the app
+**Given** the manifest and page head **When** the app is installed or opened **Then** the manifest provides a background colour (shown on the launch splash) and a theme colour (shown in the OS UI), and the page head declares a theme colour too. Both come from the locked P4 palette (design §7): the manifest's background and theme colours are both chalk paper; the page head declares chalk paper as the theme colour for light appearance (the same value as the manifest) and the dark-mode paper for dark appearance.
+Cites: `frontend/vite.config.ts`, `frontend/index.html`, design §7, `docs/restart/style-log.md` (Round 5, P4)
 
-### PWA-05 Manifest is always fresh
-**Given** a new deploy **When** a browser re-checks the manifest and service worker script **Then** those two files are never served from a stale cache, so a new release is noticed on the next visit, while content-hashed assets may be cached long-term.
+### PWA-05 Manifest, service worker and app page are always fresh
+**Given** a new deploy **When** a browser re-checks the manifest, the service worker script or the app's start page (the HTML shell every screen loads) **Then** none of these is ever served from a stale cache, so a new release is noticed on the next visit, while content-hashed assets may be cached long-term.
 Cites: ADR 2026-08-08 Deployment group finished
 
 ### PWA-06 Service worker registers on load
@@ -151,7 +153,7 @@ Cites: `frontend/src/sw.ts`
 Cites: `frontend/src/push/pushNotifications.ts`, `frontend/src/push/usePushNotifications.ts`, `frontend/src/api/push.ts`
 
 ### PWA-27 Four notification states
-**Given** push can work here **When** the owner views a notification control **Then** it reflects one of: off (not subscribed, not yet asked, offers to enable), on (subscribed and permission granted, offers to disable), or denied (permission refused; the control is replaced by a message that notifications are blocked and must be allowed in device settings).
+**Given** push can work here **When** the owner views a notification control **Then** it reflects one of three states (the fourth, "unsupported", is PWA-26): on (this device has a push subscription and notification permission is granted; offers to disable); denied (permission refused; the control is replaced by a message that notifications are blocked and must be allowed in device settings); off (every other case: permission never asked, the permission prompt dismissed without an answer, or permission granted but this device has no subscription; offers to enable).
 Cites: `frontend/src/push/pushNotifications.ts`, `frontend/src/components/UserMenu.tsx`
 
 ### PWA-28 Enabling is a tap-driven opt-in
@@ -168,7 +170,11 @@ Cites: `frontend/src/push/pushNotifications.ts`, `frontend/src/push/usePushNotif
 
 ### PWA-31 Existing subscriptions survive cutover
 **Given** devices subscribed before the rewrite **When** the new app is deployed on the same origin with the same push keys **Then** their stored subscriptions still receive notifications without re-subscribing. Subscriptions belong to a user and are deleted with that user.
-Cites: `backend/migrations/1700000000014_create-import-jobs-and-push-subscriptions.js`, design §10
+Cites: `backend/migrations/1700000000014_create-import-jobs-and-push-subscriptions.js`, design §3, §11
+
+### PWA-32 Light and dark follow the device
+**Given** the device is set to light or dark appearance **When** the app opens, or the device setting changes while it is open **Then** the app shows the matching appearance (the P4 palette or its dark derivative, design §7) without any setting in the app. Today a choice stored on the device overrides the system setting; that override is dropped (see Features).
+Cites: `frontend/index.html` (today: stored choice, else the system setting), design §7
 
 ## Rationale
 - PWA-05/06/08/09: these four came from the 2026-08-08 deploy work and the 2026-09-24 hardening: a stale manifest or worker hides new deploys; a navigation fallback or runtime cache would answer `/api/...` page loads with the app shell or serve a stale auth response.
@@ -178,6 +184,7 @@ Cites: `backend/migrations/1700000000014_create-import-jobs-and-push-subscriptio
 - PWA-28: iOS only shows the permission prompt in response to a tap; asking inside the import flow also puts the question where the owner is deciding whether to wait or leave.
 - PWA-12: runtime public key lets keys be rotated with a config change only.
 - PWA-31: the same origin and keys are required because a subscription is bound to the origin and the key it was created with.
+- PWA-04: today the manifest says `#f6f1e7` background and `#b23a2e` theme, and the page head says `#1C1814`; the two theme colours disagree and both belong to the retired brand. The style log fixes the palette but not the OS-chrome colour, so the consistency pass chose the paper colour: it keeps the top of the screen as clean as the page (style log round 3) and gives one value in both places for light appearance. The manifest takes a single theme and a single background colour, so both are chalk paper and the splash is chalk paper in either appearance; only the page head can vary by appearance, so it adds the dark-mode paper for dark. The owner can override this at spec review. Exact dark values are the builder's (design §13).
 
 ## Tests not carried
 - `backend/src/routes/push.test.ts` "rejects an endpoint that isn't a real push service (the Docker host's dockge port)" and "(an internal URL over plain http)": folded into PWA-15 as "internal addresses"; the specific Docker addresses are deployment detail.
@@ -185,9 +192,9 @@ Cites: `backend/migrations/1700000000014_create-import-jobs-and-push-subscriptio
 - No sibling tests exist for `frontend/src/sw.ts`, `frontend/src/push/*` or `frontend/vite.config.ts`; their behaviour above comes from the code and ADRs, so the rewrite needs new tests for PWA-07 to PWA-09 and PWA-24 to PWA-30.
 
 ## Open questions for the owner
-1. Theme and background colours: the manifest says `#b23a2e` theme / `#f6f1e7` background, but the page head says `#1C1814`, and the new style is chalk paper `oklch(0.985 0.004 90)` with ink text and mustard accents (design §7, which has no OS-chrome colour). Recommend chalk paper for background and ink for the theme colour, and one theme colour in both places; dark mode could use a second theme-colour tag.
+1. Resolved in the consistency pass, no answer needed: theme and background colours come from the P4 palette (PWA-04). The style log does not name an OS-chrome colour, so the paper colour was chosen; say so if you want ink instead.
 2. Icons and splash: the current icons are old-brand art. Recommend new icons (SVG, 192, 512, maskable 512, Apple touch) in the new style at cutover. Note an installed iPhone app only refreshes its home-screen icon on reinstall.
-3. Where does the notifications toggle live once the user menu is gone (design §7: settings is an icon top-right)? Recommend the settings page, plus keeping the import-screen prompt.
+3. Where do the user menu's entries live once it is gone (design §7: settings is an icon top-right)? It holds the notifications toggle, your username, "Log out", the app version and a dark/light override. Recommend an Account section on the Settings screen with the username, "Log out" and the version at the bottom, a Notifications toggle on the same screen, and keeping the "Notify me" prompt in the import screen. The dark/light override is dropped because dark mode follows the device (design §7, PWA-32); say if you want it back. (Merged with AUTH open question 6 and SET open question 3.)
 4. Notification wording and icon: "Recipe ready" / "Import failed" and the 192 icon. Keep as is?
 5. Should tapping a failed-import notification open the failed job directly (today it opens `/` and the app restores it on launch)?
 6. If the job queue changes (design §6), who sends the notification when a job finishes is an implementation detail, but the criteria (PWA-20 to PWA-23) must still hold, including for jobs that finish while the app is closed.

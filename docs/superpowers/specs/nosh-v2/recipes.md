@@ -57,6 +57,7 @@ Recipes are the heart of nosh: the owner creates, views, edits and deletes recip
 | Image gallery (multiple images per recipe) | owner? | Stored and uploadable today, but the UI only uses the first as the cover and shows the rest as small unclickable thumbnails with no reorder. The design (§11) says to keep every image on migration; whether the owner wants a real gallery, or a single photo per recipe, is their call. Recommend: keep migrating all images, ship the new UI with a single cover photo plus the ability to replace it, and revisit a gallery later. |
 | Drag-and-drop photo upload on the edit form | keep | Cheap on desktop; harmless on phone. |
 | Confirm before deleting a recipe or photo | keep | Destructive actions are irreversible. |
+| New-recipe form seeded from a finished import, opened from the dialog, a toast or a notification tap | keep | The owner always reviews an import before anything is saved (REC-36, REC-37; the import side is IMP-41 to IMP-45). |
 | Tag names normalised to one case | owner? | Today "Soup" and "soup" are two different tags. Recommend lower-casing on save. |
 | HEIC/HEIF photos (iPhone default) | owner? | Rejected today. Recommend accepting and converting, since the owner uses an iPhone. |
 
@@ -274,10 +275,10 @@ Cites: `frontend/src/components/Skeleton.tsx`, `frontend/src/components/EmptySta
 
 ## Open questions for the owner
 1. Image gallery: keep several photos per recipe, or one cover photo? Recommend: migrate all images, ship with one cover photo (replaceable) and revisit a gallery later.
-2. Tag case: should "Soup" and "soup" be the same tag? Recommend lower-casing on save and merging on migration.
+2. Tag case: should "Soup" and "soup" be the same tag? Recommend lower-casing on save and merging on migration. (Merged in index.md with SRCH open question 3.)
 3. iPhone photos (HEIC) are rejected today. Recommend accepting them and converting to JPEG on upload.
 4. After saving a new recipe the owner lands on its edit form (to add photos), not the recipe. Recommend: let the create form take a photo directly and land on the recipe page.
 5. A prep or cook time of 0 can be saved but is never displayed (the detail page and card hide a zero). Recommend refusing 0 in the form, or showing it.
-6. There are no length or count limits on titles, text, ingredients, steps, tags or photos per recipe. Recommend sane caps (for example 200 characters for a title, 100 ingredients and steps, 30 tags, 20 photos).
+6. There are no length or count limits on titles, text, ingredients, steps, tags or photos per recipe. Recommend sane caps (for example 200 characters for a title, 100 ingredients and steps, 30 tags, 20 photos). (Merged in index.md with COL open question 4.)
 7. Upload failures all show the same "Failed to upload image" message even though the server says why (wrong type, too large). Recommend showing the server's reason.
 8. Recipes cannot be duplicated. Out of scope for the first release unless wanted.

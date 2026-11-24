@@ -36,7 +36,7 @@ and see, and how those choices are stored.
 | Allowed-model list with optional daily limits comes from server configuration | keep | Model ids go into outbound request addresses, so they cannot be free text. |
 | Recipe preferences: recipe language, units, oven temperature, keep spoons as spoons | keep | Controls live here; their meaning is in UNIT. |
 | Optimistic save with revert and toast on failure, per control | keep | Each control saves on its own, with no Save button. |
-| Push "notify me" toggle on this screen | drop | It is not on this page today (it is in the user menu and the import dialog). Cross-reference PWA, which owns it. |
+| Push "notify me" toggle on this screen | keep | Owned by PWA (PWA-27 to PWA-30). Today it lives in the user menu, which design §7 removes; PWA open question 3 decides its new home (recommended: this screen). |
 | Separate text-model and video-model pickers | owner? | Today one choice overrides both import paths. A single picker loses little; separate pickers are a later option (ADR 2026-09-24). |
 
 ## Acceptance criteria
@@ -141,10 +141,6 @@ Cites: `backend/src/routes/settings.test.ts` "keeps each user's preferences sepa
 **Given** the settings screen **When** the owner opens it **Then** the Language and units section shows the saved values for: recipe language (Keep original, Nederlands, English), units (Metric, US), oven temperature (°C, °F) and a "Keep spoons as spoons" checkbox, each with a short hint, plus notes that imported recipes are translated into the chosen language (which can use one extra AI request) and that recipes are shown, and imports saved, in these units.
 Cites: `frontend/src/pages/SettingsPage.test.tsx` "shows the saved preferences"
 
-### SET-29 Imports use the settings in force when they start
-**Given** a user's saved model choice, recipe language, unit system, temperature unit and keep-spoons setting **When** they start an import **Then** the import uses those values as read at the moment it starts (a saved model no longer on the allowed list counts as Automatic, SET-07); changing a setting afterwards does not affect an import already running. See IMP-07 and UNIT-35.
-Cites: `backend/src/routes/import.ts` (no test in this area)
-
 ### SET-26 Saving a preference from the screen
 **Given** the preferences section **When** the owner changes one control **Then** only that field is sent, the control moves immediately and is disabled while saving, and the server's returned preferences replace the local ones. **If** the save fails, the control snaps back and a toast says "Couldn't save your preference".
 Cites: `frontend/src/pages/SettingsPage.test.tsx` "saves just the changed field", "snaps back and says so when saving fails"
@@ -153,9 +149,13 @@ Cites: `frontend/src/pages/SettingsPage.test.tsx` "saves just the changed field"
 **Given** the settings screen is opening **When** the model settings or the preferences are still loading **Then** that section shows a loading placeholder, and **if** one fails to load, that section shows an error alert while the other still renders.
 Cites: `frontend/src/pages/SettingsPage.tsx` (no automated test)
 
-### SET-28 Push "notify me" is not a setting here
-**Given** the settings screen **When** the owner looks for the import-done notification toggle **Then** it is not on this screen; it is controlled from the user menu and where imports are started. See PWA.
-Cites: `frontend/src/pages/SettingsPage.tsx` (absence)
+### SET-28 ~~Push "notify me" is not a setting here~~
+Struck in the consistency pass: it recorded where the toggle is not, and the user menu that holds it today goes away (design §7). The toggle's behaviour is PWA-27 to PWA-30; its placement is PWA open question 3.
+Cites: none (struck)
+
+### SET-29 Imports use the settings in force when they start
+**Given** a user's saved model choice, recipe language, unit system, temperature unit and keep-spoons setting **When** they start an import **Then** the import uses those values as read at the moment it starts (a saved model no longer on the allowed list counts as Automatic, SET-07); changing a setting afterwards does not affect an import already running. See IMP-07 and UNIT-35.
+Cites: `backend/src/routes/import.ts` (no test in this area)
 
 ## Rationale
 - **SET-07, SET-19:** the allowed list is runtime configuration, not schema, so a stored id can outlive its place on the list. Model ids go into the outbound request address, so they are checked when saved, when parsed, and when an import reads them back (ADR 2026-09-24).
@@ -172,5 +172,5 @@ Cites: `frontend/src/pages/SettingsPage.tsx` (absence)
 ## Open questions for the owner
 1. Keep the usage estimate in the new screen at all? Recommendation: keep, since 20 requests/day on the standard model is easy to hit.
 2. Separate model pickers for web pages and videos? Recommendation: no, keep one override with Automatic as default.
-3. Should the push notification toggle also be reachable from settings? Recommendation: yes, one place for per-user preferences; it is new placement, so decide before the PWA spec is final.
+3. Moved: where the push notification toggle lives is PWA open question 3 (merged in index.md).
 4. Is a usage figure shared across users still right? Recommendation: yes; nosh is single-user in practice and the AI project quota is shared anyway.

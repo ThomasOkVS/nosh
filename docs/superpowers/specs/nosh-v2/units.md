@@ -29,6 +29,7 @@ Ingredient amounts are free text ("1 1/2", "2-3", "2 x 400"). This area turns th
 ## ADRs
 - 2026-08-11: Ingredient lines are split into quantity/unit/name on import
 - 2026-09-25: Recipe scaling, unit conversion and auto-translated imports
+- 2026-08-05: Region — Belgium
 
 ## Features
 | Feature | Verdict | Why |
@@ -180,7 +181,7 @@ Cites: `frontend/src/hooks/useRecipePreferences.ts`
 
 ### UNIT-33 Recipe preferences default and are read per user
 **Given** a user who never changed them **When** their recipe preferences are fetched **Then** they are: language none (keep the original), metric, °C, keep spoons on. An unauthenticated request gets 401. Each user's preferences are separate.
-Cites: `backend/src/routes/settings.test.ts` "requires a session", "defaults to original language, metric, °C and keeping spoons", "keeps each user's preferences separate", `backend/migrations/1700000000015_recipe-preferences.js`
+Cites: `backend/src/routes/settings.test.ts` "requires a session", "defaults to original language, metric, °C and keeping spoons", "keeps each user's preferences separate", `backend/migrations/1700000000015_recipe-preferences.js`, ADR 2026-08-05 (Region — Belgium: metric by default)
 
 ### UNIT-34 Recipe preferences update field by field and reject anything else
 **Given** a signed-in user **When** they save any subset of language (nl, en or none), unit system (metric, us), temperature unit (C, F) and keep spoons (true or false) **Then** only the sent fields change and the full result is returned; sending a null language clears the language. Any other value or field ("fr", "imperial", "K", "yes", an unknown field) gets 400 and changes nothing.
@@ -245,7 +246,7 @@ Cites: `backend/src/services/ingredientLine.test.ts` "splits unparsed lines", "l
 ## Tests not carried
 - `packages/units/src/units.test.ts` "parseNumber" `it.each` rows are grouped into UNIT-01 and UNIT-02 rather than one criterion each; nothing is dropped.
 - `backend/src/services/ingredientLine.test.ts` "splits %s" rows are grouped into UNIT-41; nothing is dropped.
-- `frontend/src/pages/RecipeDetailPage.test.tsx`: the unit and scaling cases are carried (UNIT-24 to UNIT-31); this file has no other cases.
+- `frontend/src/pages/RecipeDetailPage.test.tsx`: all eight cases are unit and scaling cases and are carried (UNIT-24 to UNIT-31). REC, which also lists the file, cites two of them for the page itself (REC-06, REC-20).
 
 ## Open questions for the owner
 1. Keep the lossy convert-and-store on import? Recommendation: keep for parity. A more faithful alternative is to also keep the source line text so nothing is irreversibly lost; it adds a column and UI, so do it after cutover if wanted.
