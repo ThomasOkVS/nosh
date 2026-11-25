@@ -33,7 +33,26 @@ describe("processImage", () => {
     expect(r.contentType).toBe("image/jpeg");
     expect(r.ext).toBe("jpg");
     expect([...r.original.subarray(0, 3)]).toEqual([0xff, 0xd8, 0xff]);
+    const meta = await sharp(r.card).metadata();
+    expect(meta.height).toBeGreaterThan(meta.width ?? 0); // iPhone portrait: irot applied
   }, 60_000);
+
+  it("Review Focus 2: refuses a HEIC declaring more than MAX_INPUT_PIXELS without decoding it", async () => {
+    const bytes = Buffer.from(await fx("photo.heic"));
+    let patched = 0;
+    for (let i = bytes.indexOf("ispe"); i !== -1; i = bytes.indexOf("ispe", i + 4)) {
+      // ispe: 4 bytes type, 4 bytes version/flags, then 32-bit width and height.
+      bytes.writeUInt32BE(20_000, i + 8);
+      bytes.writeUInt32BE(20_000, i + 12);
+      patched++;
+    }
+    expect(patched).toBeGreaterThan(0);
+    const started = Date.now();
+    const r = await processImage(bytes, "image/heic", { allowHeic: true });
+    expect(r).toEqual({ ok: false, reason: "too-many-pixels" });
+    // The real photo takes seconds to decode; a header-only refusal is fast.
+    expect(Date.now() - started).toBeLessThan(2_000);
+  }, 30_000);
 
   it("REC-14: HEIC is refused when not allowed", async () => {
     const r = await processImage(await fx("photo.heic"), "image/heic", { allowHeic: false });
@@ -55,6 +74,17 @@ describe("processImage", () => {
     expect(r).toEqual({ ok: false, reason: "type" });
   });
 
+  it("design §6.2: shrinks a 1600 x 900 source to an 800 x 450 card", async () => {
+    const src = await sharp({
+      create: { width: 1600, height: 900, channels: 3, background: "#888" },
+    })
+      .png()
+      .toBuffer();
+    const r = expectOk(await processImage(src, "image/png", { allowHeic: false }));
+    const meta = await sharp(r.card).metadata();
+    expect([meta.width, meta.height]).toEqual([800, 450]);
+  });
+
   it("design §6.2: never enlarges the card copy", async () => {
     const src = await sharp({
       create: { width: 100, height: 80, channels: 3, background: "#888" },
@@ -66,7 +96,7 @@ describe("processImage", () => {
     expect([meta.width, meta.height]).toEqual([100, 80]);
   });
 
-  it("Review Focus 2: refuses a 9000 x 9000 PNG without decoding it", async () => {
+  it("Review Focus 2: refuses a 9000 x 9000 PNG over the pixel limit", async () => {
     const src = await sharp({
       create: { width: 9000, height: 9000, channels: 3, background: "#000" },
     })
