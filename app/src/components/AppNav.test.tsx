@@ -21,7 +21,7 @@ describe("app navigation", () => {
     expect(linksTo("/")[0]).toHaveAccessibleName("Library");
     expect(linksTo("/settings")).toHaveLength(1);
     expect(linksTo("/settings")[0]).toHaveAccessibleName("Settings");
-    expect(screen.getByRole("button", { name: "New recipe or import" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "New recipe or import" })).toBeInTheDocument();
   });
 
   it("AUTH-24 marks the Library as the current screen only on the library", async () => {

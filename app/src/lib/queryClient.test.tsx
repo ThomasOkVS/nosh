@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/api";
 import { createQueryClient, setOnUnauthorized } from "@/lib/queryClient";
 import { recipesQuery } from "@/recipes/api";
-import { owner, server } from "../../test/msw";
+import { deferred, owner, server } from "../../test/msw";
 import { renderApp } from "../../test/render";
 
 const me = () => server.use(http.get("/api/auth/me", () => HttpResponse.json(owner)));
@@ -89,9 +89,16 @@ describe("query client", () => {
   });
 
   it("AUTH-07 AUTH-14: a successful login empties what an earlier account left in the cache", async () => {
+    // The library asks for the new account's recipes; hold that answer so the
+    // cache shows only whether the earlier account's list survived the login.
+    const answer = deferred();
     server.use(
       http.get("/api/auth/me", () => HttpResponse.json(owner)),
       http.post("/api/auth/login", () => HttpResponse.json(owner)),
+      http.get("/api/recipes", async () => {
+        await answer.promise;
+        return HttpResponse.json([]);
+      }),
     );
     const { queryClient, user } = renderApp("/login");
     queryClient.setQueryData(["recipes"], [{ id: 1 }]);
@@ -100,5 +107,6 @@ describe("query client", () => {
     await user.click(screen.getByRole("button", { name: "Log in" }));
     await screen.findByRole("heading", { name: "Library" });
     expect(queryClient.getQueryData(["recipes"])).toBeUndefined();
+    answer.resolve();
   });
 });

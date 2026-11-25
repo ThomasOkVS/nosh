@@ -46,7 +46,8 @@ export function App({ router, queryClient }: AppProps) {
     <QueryClientProvider client={queryClient}>
       <MotionConfig reducedMotion="user">
         <RouterProvider router={router} />
-        <Toaster />
+        {/* Top: the floating nav owns the bottom of the screen. */}
+        <Toaster position="top-center" />
       </MotionConfig>
     </QueryClientProvider>
   );
