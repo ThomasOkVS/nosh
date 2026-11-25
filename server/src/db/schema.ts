@@ -35,7 +35,7 @@ export const sessions = pgTable("sessions", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-/** Recipes (design ง6.1). Integer ids so the importer can keep v1 ids; whoever inserts
+/** Recipes (design ยง6.1). Integer ids so the importer can keep v1 ids; whoever inserts
  * explicit ids resets the sequence afterwards. `collection_id` has no FK until COL. */
 export const recipes = pgTable(
   "recipes",
