@@ -1,6 +1,6 @@
 # Recipes group: design
 
-**Date:** 2026-11-25 · **Status:** draft for the owner's review
+**Date:** 2026-11-25 · **Status:** draft for the owner's review (builder-checked)
 **Inputs:** [restart design](2026-11-24-nosh-restart-design.md) (§7 look, §8
 order) · [recipes spec](nosh-v2/recipes.md) (REC) ·
 [security spec](nosh-v2/security.md) (SEC) ·
@@ -109,6 +109,7 @@ Decided in the brainstorm (**Owner**: "go with your picks").
 | Ingredient and step storage | Child tables, one row each, with a position | A JSON column on `recipes` | Matches REC-02 and REC-05 (each row has an id and a position) and maps one-to-one from v1. JSON would need invented ids, and the search group would have to index inside JSON. |
 | Form state | react-hook-form with `useFieldArray`, validated by zod | TanStack Form; plain React state | Boring and popular. Field arrays fit the ingredient and step rows. Plain state means hand-written row and error handling. |
 | Photo sniffing and HEIC | `file-type` for magic bytes, `heic-convert` for HEIC to JPEG | sharp with a custom libheif build | sharp's prebuilt binaries can't decode HEVC-based HEIC. A custom native build is friction on Windows and in Docker. Both picks are pure JS or WASM. |
+| Card-sized copies | Store a copy about 800 px wide per photo, made with sharp (prebuilt binaries) | Serve originals only; shrink in the browser before upload | **Owner** (after the builder check). Library cards on an iPhone would otherwise load originals of up to 5 MB each. Shrinking in the browser can't decode HEIC outside Safari. sharp's prebuilt binaries handle JPEG, PNG and WebP, and `heic-convert` runs first for HEIC. |
 | Scope | Standalone core | Every REC criterion with temporary stand-ins | **Owner.** Less rework, and each later group owns its own criteria. |
 | Delivery | Two PRs, the second gated on the firewall | One PR | **Owner.** The core doesn't wait on a `sudo` change on the box. |
 
@@ -133,7 +134,11 @@ Decided in the brainstorm (**Owner**: "go with your picks").
   both.
 - `recipe_images`: `id` integer identity, `recipe_id` FK on delete cascade,
   `file_name` (random, unguessable, with the stored type's extension),
-  `content_type`, `position`, `is_cover` boolean, `created_at`.
+  `content_type`, `card_file_name` (the card copy, §6.2), `position`,
+  `is_cover` boolean, `created_at`.
+  - `card_file_name` is nullable so the importer can fill it after copying
+    the v1 files. The image route falls back to the original when it's
+    missing. **My call.**
   - A partial unique index allows at most one cover per recipe.
   - The cover is **marked, never worked out from position** (REC-15), so
     hidden v1 photos keep their positions and are never promoted. **My call**
@@ -174,10 +179,17 @@ Decided in the brainstorm (**Owner**: "go with your picks").
   - its sniffed type matches the declared type (`file-type`);
   - if it's HEIC or HEIF, it's converted to JPEG.
 
-  Only then is the file written. In one transaction, the new image becomes
+  Only then is the file written, together with its card copy: sharp resizes
+  to about 800 px on the long side (never enlarging), applies the EXIF
+  orientation, and saves it as WebP under its own random name. If the card
+  copy fails, the upload fails and nothing is kept. **My call** (width and
+  format). In one transaction, the new image becomes
   the cover and the old cover's row is deleted. The old cover's file is
-  removed after the commit (a missing file is fine), so a refused upload
-  leaves the old cover in place (REC-15).
+  removed after the commit, along with its card copy (a missing file is
+  fine), so a refused upload leaves the old cover in place (REC-15).
+- **Card copies are served** by the same owner-checked route with
+  `?size=card` (SEC-24 applies unchanged). Every file deletion in REC-13 and
+  REC-17 also removes the card copy.
 - **Image responses:** sent with their stored `Content-Type` and
   `Cache-Control: private, max-age=31536000, immutable`. A replaced cover has
   a new id and so a new URL. **My call.**
@@ -215,7 +227,8 @@ dark.
   - Below it: a "N recipes" kicker, then the "Library" display title.
   - Tag chips follow, built from the owner's own tags with "all" first. The
     active chip is the ink pill with the §7 spring.
-  - Then 2-column recipe cards (REC-38): a 4:5 cover or a letter placeholder,
+  - Then 2-column recipe cards (REC-38): a 4:5 cover (the card copy) or a
+    letter placeholder,
     the title in DM Serif, "Serves N · Prep N min · Cook N min" (each only
     when set), and the tags. Newest first.
   - There is no search box and there are no collection tiles; SRCH and COL
@@ -318,18 +331,26 @@ dark.
 
 - File and module layout inside `server/`, `app/` and `shared/`.
 - `undici` versus `node:http(s)` for the guard.
-- The HEIC JPEG quality, and whether EXIF orientation needs handling (check
+- The HEIC JPEG quality, and whether the stored original needs EXIF handling (check
   with a real iPhone photo).
 - The exact illustration drawing, within the mockup's direction.
 - The skeleton shapes.
 
 ## 9. Carry into the plan
 
-- **An early spike:** convert a real iPhone HEIC with `heic-convert` inside
-  the built Alpine Docker image, not only on Windows (memory and WASM
-  loading). The owner can supply a photo.
+- **An early spike:** convert a real iPhone HEIC with `heic-convert`, then
+  make its card copy with sharp, inside the built Alpine Docker image, not
+  only on Windows (memory, WASM loading, sharp's musl binary). The owner can
+  supply a photo. Also record what Safari's file input really sends from the
+  iPhone (HEIC or JPEG) and how big it is, against the 5 MB cap.
+- **The v1 importer** must make card copies for the photos it carries over
+  (design §11).
+- **Mockups** (git-ignored, in the main checkout only):
+  `C:\Users\Thoma\dev\nosh\.superpowers\brainstorm\1170-1795594147\content\empty-state.html`
+  (direction A is the pick) and `screens.html` (library, recipe with and
+  without a photo).
 - **Add to `docs/decisions.md`:** the image model (cover flag, hidden v1
-  photos), the libraries (`file-type`, `heic-convert`, react-hook-form,
-  Sonner), the upload route's own body limit, and the two-PR firewall gate.
+  photos, card copies), the libraries (`file-type`, `heic-convert`, sharp,
+  react-hook-form, Sonner), the upload route's own body limit, and the two-PR firewall gate.
 - **`docs/backlog.md`:** move "empty state" to Completed when PR1 merges.
   Keep the firewall item open until PR2's gate is done.
