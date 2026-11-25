@@ -1,7 +1,13 @@
 import { RECIPE_MESSAGES, type RecipeDto } from "@nosh/shared";
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { Toaster } from "@/components/ui/sonner";
+import { ApiError } from "@/lib/api";
+import { createQueryClient } from "@/lib/queryClient";
+import { RecipeForm } from "./RecipeForm";
 import { deferred, owner, server } from "../../test/msw";
 import { recipeDto } from "../../test/recipes";
 import { renderApp } from "../../test/render";
@@ -227,6 +233,15 @@ describe("recipe form", () => {
     expect(await screen.findByText(RECIPE_MESSAGES.servings)).toBeInTheDocument();
     expect(screen.getByText(RECIPE_MESSAGES.prepTime)).toBeInTheDocument();
     expect(bodies).toHaveLength(0);
+    // Each message is tied to its field, and shown full width below the row.
+    const servings = screen.getByRole("textbox", { name: "Servings" });
+    const prep = screen.getByRole("textbox", { name: "Prep time" });
+    expect(servings).toHaveAttribute("aria-invalid", "true");
+    expect(servings).toHaveAccessibleDescription(RECIPE_MESSAGES.servings);
+    expect(prep).toHaveAccessibleDescription(RECIPE_MESSAGES.prepTime);
+    expect(screen.getByRole("textbox", { name: "Cook time" })).not.toHaveAttribute("aria-invalid");
+    const row = screen.getByTestId("numbers-row");
+    expect(within(row).queryByText(RECIPE_MESSAGES.prepTime)).not.toBeInTheDocument();
   });
 
   it("REC-29: the POST body is trimmed and filtered", async () => {
@@ -401,6 +416,110 @@ describe("recipe form", () => {
     await screen.findByRole("heading", { level: 1, name: "New recipe" });
     expect(screen.getByRole("textbox", { name: "Title" })).toHaveValue("");
     expect(screen.getByRole("textbox", { name: "Description" })).toHaveValue("");
+  });
+
+  it("REC-32: from one edit form to another, the form shows and saves the new recipe", async () => {
+    const other = recipeDto({
+      id: 6,
+      title: "Waterzooi",
+      servings: 4,
+      ingredients: [{ id: 31, position: 0, quantity: "1", unit: null, name: "chicken" }],
+      steps: [{ id: 41, position: 0, instruction: "Poach it." }],
+    });
+    signedIn(stoverij, other);
+    const puts: { id: string; body: unknown }[] = [];
+    server.use(
+      http.put("/api/recipes/:id", async ({ params, request }) => {
+        const body = await request.json();
+        puts.push({ id: String(params.id), body });
+        return HttpResponse.json(params.id === "6" ? other : stoverij);
+      }),
+    );
+    // Recipe 6 is cached, so its edit form has its data on the first render.
+    const { router, user } = renderApp("/recipes/6");
+    await screen.findByRole("heading", { level: 1, name: "Waterzooi" });
+    await router.navigate({ to: "/recipes/$id/edit", params: { id: "5" } });
+    await screen.findByDisplayValue("Vlaamse Stoverij");
+
+    await router.navigate({ to: "/recipes/$id/edit", params: { id: "6" } });
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Title" })).toHaveValue("Waterzooi"));
+    expect(screen.getByRole("textbox", { name: "Ingredient 1" })).toHaveValue("chicken");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(router.state.location.pathname).toBe("/recipes/6"));
+    expect(puts).toEqual([
+      {
+        id: "6",
+        body: {
+          title: "Waterzooi",
+          description: null,
+          servings: 4,
+          prepTimeMinutes: null,
+          cookTimeMinutes: null,
+          sourceUrl: null,
+          ingredients: [{ quantity: "1", unit: null, name: "chicken" }],
+          steps: [{ instruction: "Poach it." }],
+          tags: [],
+        },
+      },
+    ]);
+  });
+
+  it("REC-30 REC-33: an onCreated failure is shown as a toast and the owner still lands on the recipe", async () => {
+    signedIn();
+    acceptCreate();
+    const onSaved = vi.fn();
+    const onCreated = vi.fn(async () => {
+      throw new ApiError("Image must be 5 MB or smaller", 400);
+    });
+    const user = userEvent.setup();
+    render(
+      <QueryClientProvider client={createQueryClient({ test: true })}>
+        <RecipeForm mode="create" onCreated={onCreated} onSaved={onSaved} />
+        <Toaster />
+      </QueryClientProvider>,
+    );
+    await user.type(screen.getByRole("textbox", { name: "Title" }), "Toast");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByText("Image must be 5 MB or smaller")).toBeInTheDocument();
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith(42));
+    expect(onCreated).toHaveBeenCalledWith(expect.objectContaining({ id: 42 }));
+    // Not the form's banner: the recipe is saved.
+    expect(screen.queryByRole("alert", { name: /Image/ })).not.toBeInTheDocument();
+  });
+
+  it("REC-30: a server banner goes away when the next save is refused by the form", async () => {
+    signedIn();
+    server.use(
+      http.post("/api/recipes", () =>
+        HttpResponse.json({ error: "Collection not found" }, { status: 404 }),
+      ),
+    );
+    const { user } = await openNew();
+    const title = screen.getByRole("textbox", { name: "Title" });
+    await user.type(title, "Toast");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await screen.findByText("Collection not found");
+
+    await user.clear(title);
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText(RECIPE_MESSAGES.titleRequired)).toBeInTheDocument();
+    expect(screen.queryByText("Collection not found")).not.toBeInTheDocument();
+  });
+
+  it("REC-28: an over-cap list's message is announced", async () => {
+    signedIn(
+      recipeDto({
+        id: 8,
+        title: "Huge",
+        steps: Array.from({ length: 101 }, (_, i) => ({ id: i + 1, position: i, instruction: `do ${i}` })),
+      }),
+    );
+    const { user } = renderApp("/recipes/8/edit");
+    await screen.findByDisplayValue("Huge");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(RECIPE_MESSAGES.tooManySteps);
   });
 
   it("Review Focus 4: double-clicking Save sends one POST", async () => {

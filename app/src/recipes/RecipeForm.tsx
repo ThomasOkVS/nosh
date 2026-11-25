@@ -3,6 +3,7 @@ import { RECIPE_LIMITS, type RecipeDto } from "@nosh/shared";
 import { Link, type LinkProps } from "@tanstack/react-router";
 import { ChevronLeft, Plus, X } from "lucide-react";
 import { motion } from "motion/react";
+import { toast } from "sonner";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import {
   Controller,
@@ -35,9 +36,10 @@ type RecipeFormProps = (
       recipe?: undefined;
       /**
        * Awaited after the recipe is created and before `onSaved`, so the
-       * photo chosen on the form can be uploaded (Task 11, REC-33). The
-       * recipe is saved by then: errors it throws are swallowed and the owner
-       * still lands on the recipe, so it must report its own failures.
+       * photo chosen on the form can be uploaded (Task 11, REC-33). Throw to
+       * report: the recipe is saved by then, so an error it throws is shown
+       * as a toast (its ApiError message, or "Something went wrong") and the
+       * owner still lands on the recipe.
        */
       onCreated?: (recipe: RecipeDto) => Promise<void>;
     }
@@ -110,8 +112,9 @@ export function RecipeForm(props: RecipeFormProps) {
     if (onCreated !== undefined) {
       try {
         await onCreated(saved);
-      } catch {
-        // The recipe is saved; onCreated reports its own failures (REC-33).
+      } catch (error) {
+        // The recipe is saved: say what failed, then go on to it (REC-33).
+        toast.error(errorMessage(error));
       }
     }
     // Still "Saving…" until the route has navigated away.
@@ -124,7 +127,12 @@ export function RecipeForm(props: RecipeFormProps) {
   const stepsError = errors.steps?.root?.message ?? errors.steps?.message;
 
   return (
-    <form noValidate onSubmit={handleSubmit(save)} className="flex flex-1 flex-col">
+    <form
+      noValidate
+      // A refusal by the form itself replaces any earlier server message.
+      onSubmit={handleSubmit(save, () => setServerError(null))}
+      className="flex flex-1 flex-col"
+    >
       <div className="flex flex-col gap-8 px-5 pt-6 pb-8">
         {serverError !== null && (
           <motion.div
@@ -157,7 +165,8 @@ export function RecipeForm(props: RecipeFormProps) {
               {...register("description")}
             />
           </Field>
-          <div className="grid grid-cols-3 gap-3">
+          {/* The messages go full width below the row; the columns are too narrow. */}
+          <div data-testid="numbers-row" className="grid grid-cols-3 gap-3">
             <NumberField
               id={fieldId("servings")}
               label="Servings"
@@ -179,6 +188,13 @@ export function RecipeForm(props: RecipeFormProps) {
               field={register("cookTimeMinutes")}
             />
           </div>
+          {(errors.servings || errors.prepTimeMinutes || errors.cookTimeMinutes) && (
+            <div className="-mt-2 flex flex-col gap-1">
+              <FieldMessage id={`${fieldId("servings")}-error`} message={errors.servings?.message} />
+              <FieldMessage id={`${fieldId("prep")}-error`} message={errors.prepTimeMinutes?.message} />
+              <FieldMessage id={`${fieldId("cook")}-error`} message={errors.cookTimeMinutes?.message} />
+            </div>
+          )}
         </section>
 
         <section aria-labelledby={fieldId("ingredients")} className="flex flex-col gap-3">
@@ -189,7 +205,6 @@ export function RecipeForm(props: RecipeFormProps) {
             <ol role="list" className="flex flex-col gap-2">
               {ingredients.fields.map((row, index) => {
                 const n = index + 1;
-                const nameError = errors.ingredients?.[index]?.name;
                 return (
                   <li key={row.id} className="flex items-start gap-2">
                     <Input
@@ -208,7 +223,6 @@ export function RecipeForm(props: RecipeFormProps) {
                     />
                     <Input
                       aria-label={`Ingredient ${n}`}
-                      aria-invalid={nameError !== undefined || undefined}
                       placeholder="Ingredient"
                       autoComplete="off"
                       className={cn(fieldInput, "flex-1")}
@@ -227,7 +241,7 @@ export function RecipeForm(props: RecipeFormProps) {
               })}
             </ol>
           )}
-          <FieldMessage message={ingredientsError} />
+          <FieldMessage alert message={ingredientsError} />
           <AddRow
             label="Add ingredient"
             disabled={ingredients.fields.length >= RECIPE_LIMITS.ingredients}
@@ -271,7 +285,7 @@ export function RecipeForm(props: RecipeFormProps) {
               })}
             </ol>
           )}
-          <FieldMessage message={stepsError} />
+          <FieldMessage alert message={stepsError} />
           <AddRow
             label="Add step"
             disabled={steps.fields.length >= RECIPE_LIMITS.steps}
@@ -288,7 +302,7 @@ export function RecipeForm(props: RecipeFormProps) {
             name="tags"
             render={({ field }) => <TagInput value={field.value} onChange={field.onChange} />}
           />
-          <FieldMessage message={errors.tags?.message} />
+          <FieldMessage alert message={errors.tags?.message} />
         </section>
 
         {photo}
@@ -325,7 +339,8 @@ function Field({
 }: {
   id: string;
   label: string;
-  error: FieldError | undefined;
+  /** Shown below the field; leave out when the caller shows it elsewhere. */
+  error?: FieldError | undefined;
   children: ReactNode;
 }) {
   return (
@@ -354,7 +369,8 @@ function NumberField({
   field: UseFormRegisterReturn;
 }) {
   return (
-    <Field id={id} label={label} error={error}>
+    // The message is shown below the whole row by the form, under `${id}-error`.
+    <Field id={id} label={label}>
       <div className="relative">
         <Input
           id={id}
@@ -377,10 +393,11 @@ function NumberField({
   );
 }
 
-function FieldMessage({ id, message }: { id?: string; message: string | undefined }) {
+/** `alert` announces a message that has no field to focus (the list caps). */
+function FieldMessage({ id, message, alert }: { id?: string; message: string | undefined; alert?: boolean }) {
   if (message === undefined) return null;
   return (
-    <p id={id} className="text-xs font-medium text-destructive">
+    <p id={id} role={alert ? "alert" : undefined} className="text-xs font-medium text-destructive">
       {message}
     </p>
   );
