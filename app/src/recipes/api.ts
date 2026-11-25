@@ -54,14 +54,22 @@ export function useUpdateRecipe(id: number) {
   });
 }
 
+/**
+ * REC-24: the deleted recipe leaves the cache rather than being refetched
+ * (a 404, retried in production), and the library refresh is not awaited, so
+ * the caller's navigation never waits on either.
+ */
 export function useDeleteRecipe(id: number) {
-  const invalidate = useInvalidateRecipes();
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (): Promise<void> => {
       const res = await api.api.recipes[":id"].$delete({ param: { id: String(id) } });
       if (!res.ok) throw await toApiError(res);
     },
-    onSuccess: invalidate,
+    onSuccess: () => {
+      queryClient.removeQueries({ queryKey: recipeQuery(id).queryKey, exact: true });
+      void queryClient.invalidateQueries({ queryKey: RECIPES_KEY });
+    },
   });
 }
 

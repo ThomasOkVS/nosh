@@ -41,8 +41,7 @@ const stoverij = recipeDto({
 async function openPage(recipe: RecipeDto = stoverij) {
   serve(recipe);
   const app = renderApp(`/recipes/${recipe.id}`);
-  // The first render also loads the code-split route; be patient on a busy machine.
-  await screen.findByRole("heading", { level: 1, name: recipe.title }, { timeout: 3000 });
+  await screen.findByRole("heading", { level: 1, name: recipe.title });
   return app;
 }
 
@@ -94,6 +93,32 @@ describe("recipe page", () => {
       "2Add the ale and simmer.",
     ]);
     expect(screen.queryByText("beef cheek")).not.toBeInTheDocument();
+  });
+
+  it("REC-20 design §7: the section pill moves with the arrow keys (wrapping), Home and End", async () => {
+    const { user } = await openPage();
+    const ingredients = screen.getByRole("tab", { name: "Ingredients" });
+    const method = screen.getByRole("tab", { name: "Method" });
+    // Roving focus: only the selected tab is in the Tab order.
+    expect(ingredients).toHaveAttribute("tabindex", "0");
+    expect(method).toHaveAttribute("tabindex", "-1");
+
+    ingredients.focus();
+    const expectSelected = (tab: HTMLElement) => {
+      expect(tab).toHaveAttribute("aria-selected", "true");
+      expect(tab).toHaveFocus();
+      expect(screen.getByRole("tabpanel", { name: tab.textContent! })).toBeInTheDocument();
+    };
+    await user.keyboard("{ArrowRight}");
+    expectSelected(method);
+    await user.keyboard("{ArrowRight}");
+    expectSelected(ingredients);
+    await user.keyboard("{ArrowLeft}");
+    expectSelected(method);
+    await user.keyboard("{Home}");
+    expectSelected(ingredients);
+    await user.keyboard("{End}");
+    expectSelected(method);
   });
 
   it("REC-20: an empty ingredient list hides its section; the steps show", async () => {
@@ -235,6 +260,36 @@ describe("recipe page", () => {
     expect(router.state.location.pathname).toBe("/");
     expect(router.history.length).toBe(historyLength);
     expect(screen.queryByText("Recipe not found")).not.toBeInTheDocument();
+  });
+
+  it("REC-24: after the delete the page goes to the library at once, never refetching the deleted recipe", async () => {
+    // Production retries a failed query once, so a refetch of the deleted
+    // recipe would hold the page for a 404 and its retry. Here such a refetch
+    // never answers: the navigation must not wait for it, and must not cause it.
+    let deleted = false;
+    let getsAfterDelete = 0;
+    const { user, router } = await openPage();
+    server.use(
+      http.get("/api/recipes/5", async () => {
+        if (!deleted) return HttpResponse.json(stoverij);
+        getsAfterDelete++;
+        await new Promise(() => {});
+        return notFound();
+      }),
+      http.delete("/api/recipes/5", () => {
+        deleted = true;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+
+    await user.click(screen.getByRole("button", { name: "More actions" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Delete" }));
+    const dialog = await screen.findByRole("alertdialog");
+    await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+
+    await screen.findByRole("heading", { level: 1, name: "Library" });
+    expect(router.state.location.pathname).toBe("/");
+    expect(getsAfterDelete).toBe(0);
   });
 
   it('REC-24: a failed delete shows "Failed to delete recipe" and stays on the page', async () => {

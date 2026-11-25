@@ -167,7 +167,7 @@ const byPosition = <T extends { position: number }>(a: T, b: T) => a.position - 
 /** Amounts as stored ("2-3", "a pinch"); scaling and units come with UNIT. */
 function IngredientList({ ingredients }: { ingredients: IngredientDto[] }) {
   return (
-    <ol className="text-sm leading-relaxed">
+    <ol role="list" className="text-sm leading-relaxed">
       {[...ingredients].sort(byPosition).map((ingredient, index) => {
         const amount = [ingredient.quantity, ingredient.unit].filter((part) => part !== null).join(" ");
         return (
@@ -187,7 +187,7 @@ function IngredientList({ ingredients }: { ingredients: IngredientDto[] }) {
 /** Steps with mustard numbers (design §7). */
 function StepList({ steps }: { steps: StepDto[] }) {
   return (
-    <ol className="space-y-4">
+    <ol role="list" className="space-y-4">
       {[...steps].sort(byPosition).map((step, index) => (
         <li key={step.id} className="flex gap-3">
           <span aria-hidden className="w-6 shrink-0 font-display text-xl leading-6 text-highlight">

@@ -111,6 +111,19 @@ describe("library", () => {
     expect(within(chips).getByRole("link", { name: "all" })).toHaveAttribute("aria-current", "page");
   });
 
+  it('REC-10: under a tag filter the kicker reads "N of M"; without one, "M recipes"', async () => {
+    signedIn([library[0]!, library[2]!, library[3]!]); // one of them is soup
+    const { user } = renderApp("/?tag=soup");
+
+    expect(await screen.findByText("1 of 3")).toBeInTheDocument();
+    expect(screen.queryByText("3 recipes")).not.toBeInTheDocument();
+
+    const chips = screen.getByRole("navigation", { name: "Tags" });
+    await user.click(within(chips).getByRole("link", { name: "all" }));
+    expect(await screen.findByText("3 recipes")).toBeInTheDocument();
+    expect(screen.queryByText("1 of 3")).not.toBeInTheDocument();
+  });
+
   it("REC-10 REC-38: a tag on a card filters the library", async () => {
     signedIn(library);
     const { router, user } = renderApp("/");

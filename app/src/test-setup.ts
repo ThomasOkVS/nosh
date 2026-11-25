@@ -1,7 +1,11 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup } from "@testing-library/react";
+import { cleanup, configure } from "@testing-library/react";
 import { afterAll, afterEach, beforeAll } from "vitest";
 import { server } from "../test/msw";
+
+// findBy* and waitFor wait up to 3 s (default 1 s): the first render of a
+// screen also loads its code-split route, which is slow under load.
+configure({ asyncUtilTimeout: 3000 });
 
 // jsdom has no scrolling; the router's scroll restoration calls it.
 window.scrollTo = () => {};

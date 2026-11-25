@@ -31,6 +31,15 @@ function newestFirst(a: RecipeDto, b: RecipeDto): number {
   return Date.parse(b.createdAt) - Date.parse(a.createdAt) || b.id - a.id;
 }
 
+const hasTag = (recipe: RecipeDto, tag: string | undefined) =>
+  tag === undefined || recipe.tags.some((t) => normaliseTag(t) === tag);
+
+/** "3 recipes" ("1 recipe"); under a tag filter "1 of 3": shown of all (owner, 2026-11-25). */
+function kicker(recipes: RecipeDto[], tag: string | undefined): string {
+  if (tag !== undefined) return `${recipes.filter((r) => hasTag(r, tag)).length} of ${recipes.length}`;
+  return recipes.length === 1 ? "1 recipe" : `${recipes.length} recipes`;
+}
+
 /** The owner's own tags, once each, in alphabetical order. */
 function ownTags(recipes: RecipeDto[]): string[] {
   const tags = new Set(recipes.flatMap((r) => r.tags.map(normaliseTag)));
@@ -54,7 +63,7 @@ function LibraryPage() {
         {data === undefined ? (
           error === null && <Skeleton className="h-3.5 w-20" />
         ) : (
-          <p className={kickerClass}>{data.length === 1 ? "1 recipe" : `${data.length} recipes`}</p>
+          <p className={kickerClass}>{kicker(data, tag)}</p>
         )}
         <h1 className="mt-2 text-[2.6rem] leading-none">Library</h1>
       </div>
@@ -75,7 +84,7 @@ function LibraryPage() {
 
 function Library({ recipes, tag }: { recipes: RecipeDto[]; tag: string | undefined }) {
   const shown = recipes
-    .filter((r) => tag === undefined || r.tags.some((t) => normaliseTag(t) === tag))
+    .filter((r) => hasTag(r, tag))
     .sort(newestFirst);
   return (
     <>
