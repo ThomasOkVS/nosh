@@ -14,7 +14,8 @@ type RecipeRow = typeof recipes.$inferSelect;
 
 /** Distinct, normalised tag names (REC-07), computed in JS so accents fold the same way on write and filter. */
 function tagNames(raw: string[]): string[] {
-  return [...new Set(raw.map(normaliseTag))];
+  // Sorted so two transactions always lock tag rows in the same order (no deadlock).
+  return [...new Set(raw.map(normaliseTag))].sort();
 }
 
 function imageDto(recipeId: number, row: typeof recipeImages.$inferSelect): RecipeImageDto {
@@ -48,11 +49,12 @@ async function hydrate(db: Db, rows: RecipeRow[]): Promise<RecipeDto[]> {
       .from(recipeTags)
       .innerJoin(tags, eq(tags.id, recipeTags.tagId))
       .where(inArray(recipeTags.recipeId, ids)),
-    // Only the cover is ever shown; hidden v1 photos stay stored (REC-15, design §6.1).
+    // Every stored image, by position (design §6.2); the UI shows only the cover (REC-15, REC-21).
     db
       .select()
       .from(recipeImages)
-      .where(and(inArray(recipeImages.recipeId, ids), eq(recipeImages.isCover, true))),
+      .where(inArray(recipeImages.recipeId, ids))
+      .orderBy(asc(recipeImages.position)),
   ]);
 
   const ingredientsBy = group(ingredientRows);
@@ -61,7 +63,8 @@ async function hydrate(db: Db, rows: RecipeRow[]): Promise<RecipeDto[]> {
   const imagesBy = group(imageRows);
 
   return rows.map((r) => {
-    const cover = imagesBy.get(r.id)?.[0];
+    const stored = imagesBy.get(r.id) ?? [];
+    const cover = stored.find((i) => i.isCover);
     return {
       id: r.id,
       userId: r.userId,
@@ -89,7 +92,7 @@ async function hydrate(db: Db, rows: RecipeRow[]): Promise<RecipeDto[]> {
       tags: (tagsBy.get(r.id) ?? [])
         .map((t) => t.name)
         .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)),
-      images: cover ? [imageDto(r.id, cover)] : [],
+      images: stored.map((i) => imageDto(r.id, i)),
       coverImageId: cover?.id ?? null,
     };
   });

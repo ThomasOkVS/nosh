@@ -2,7 +2,7 @@ import { count } from "drizzle-orm";
 import { RECIPE_MESSAGES, type RecipeDto } from "@nosh/shared";
 import { describe, expect, it, vi } from "vitest";
 import { createRecipe, makeRecipeApp, signedInHeaders } from "../../test/recipes.js";
-import { recipes, tags } from "../db/schema.js";
+import { recipeImages, recipes, tags } from "../db/schema.js";
 import { parseRecipeId } from "./ids.js";
 
 const { app, db } = await makeRecipeApp();
@@ -245,14 +245,70 @@ describe("list", () => {
     expect(list[0]?.images).toEqual([]);
   });
 
-  it("REC-09: a list takes five queries however many recipes there are", async () => {
+  it("REC-09 REC-10: a list takes six selects (seven with a tag filter: its exists subquery) (session, recipes, ingredients, steps, tags, images) however many recipes there are, filtered or not", async () => {
     const headers = await signedInHeaders(db);
-    for (let i = 0; i < 4; i++) await createRecipe(app, headers, { title: `r${i}`, tags: ["t"] });
-    const spy = vi.spyOn(db, "select");
-    await get("/api/recipes", headers);
-    // session lookup (auth) + recipes + ingredients + steps + tags + images
-    expect(spy.mock.calls.length).toBeLessThanOrEqual(6);
-    spy.mockRestore();
+    const selects = async (path: string) => {
+      const spy = vi.spyOn(db, "select");
+      await get(path, headers);
+      const n = spy.mock.calls.length;
+      spy.mockRestore();
+      return n;
+    };
+    const add = (n: number) =>
+      Promise.all(
+        Array.from({ length: n }, (_, i) =>
+          createRecipe(app, headers, {
+            title: `r${i}`,
+            tags: ["t"],
+            ingredients: [{ name: "i" }],
+            steps: [{ instruction: "s" }],
+          }),
+        ),
+      );
+    await add(2);
+    const few = [await selects("/api/recipes"), await selects("/api/recipes?tag=t")];
+    await add(3);
+    const many = [await selects("/api/recipes"), await selects("/api/recipes?tag=t")];
+    // Unfiltered: session + recipes + 4 child tables. Filtered: the same plus the
+    // builder for the exists() subquery, which is not a round trip of its own.
+    expect(few).toEqual([6, 7]);
+    expect(many).toEqual([6, 7]);
+  });
+
+  it("REC-15 REC-09: images lists every stored image by position and coverImageId is the cover's id", async () => {
+    const headers = await signedInHeaders(db);
+    const created = await json(await createRecipe(app, headers, { title: "p" }));
+    const [hidden, cover] = await db
+      .insert(recipeImages)
+      .values([
+        { recipeId: created.id, fileName: "a.jpg", contentType: "image/jpeg", position: 0, isCover: false },
+        { recipeId: created.id, fileName: "b.jpg", contentType: "image/jpeg", position: 1, isCover: true },
+      ])
+      .returning({ id: recipeImages.id });
+    if (!hidden || !cover) throw new Error("seed failed");
+    for (const dto of [
+      await json(await get(`/api/recipes/${created.id}`, headers)),
+      (await json<RecipeDto[]>(await get("/api/recipes", headers)))[0],
+    ]) {
+      expect(dto?.coverImageId).toBe(cover.id);
+      expect(dto?.images.map((i) => [i.id, i.position])).toEqual([
+        [hidden.id, 0],
+        [cover.id, 1],
+      ]);
+      expect(dto?.images[1]?.url).toBe(`/api/recipes/${created.id}/images/${cover.id}`);
+      expect(dto?.images[1]?.cardUrl).toBe(`/api/recipes/${created.id}/images/${cover.id}?size=card`);
+    }
+  });
+
+  it("REC-07: concurrent creates with the same tags in opposite order do not deadlock", async () => {
+    const headers = await signedInHeaders(db);
+    const names = Array.from({ length: 20 }, (_, i) => `tag${i}`);
+    const results = await Promise.all(
+      Array.from({ length: 6 }, (_, i) =>
+        createRecipe(app, headers, { title: `c${i}`, tags: i % 2 ? names : [...names].reverse() }),
+      ),
+    );
+    expect(results.map((r) => r.status)).toEqual([201, 201, 201, 201, 201, 201]);
   });
 
   it("REC-10: tag= filters ignoring case; a recipe with two tags appears once; an empty tag is ignored", async () => {
