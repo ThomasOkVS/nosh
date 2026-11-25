@@ -479,6 +479,27 @@ describe("delete", () => {
     expect(await read.json()).toEqual({ error: "Recipe not found" });
   });
 
+  it("REC-13: a file that cannot be removed (not ENOENT) is logged and the delete still answers 204 with the recipe gone", async () => {
+    const headers = await signedInHeaders(db);
+    const created = await json(await createRecipe(app, headers, { title: "stuck" }));
+    // A directory where the file should be: unlink fails with EISDIR/EPERM, not ENOENT.
+    await mkdir(join(uploadsDir, "stuck.jpg"), { recursive: true });
+    await db
+      .insert(recipeImages)
+      .values({ recipeId: created.id, fileName: "stuck.jpg", contentType: "image/jpeg", position: 0, isCover: true });
+    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      const res = await del(created.id, headers);
+      expect(res.status).toBe(204);
+      expect(log).toHaveBeenCalledTimes(1);
+    } finally {
+      log.mockRestore();
+    }
+    expect((await get(`/api/recipes/${created.id}`, headers)).status).toBe(404);
+    const [row] = await db.select({ n: count() }).from(recipes);
+    expect(row?.n).toBe(0);
+  });
+
   it("REC-07: removing a recipe leaves its tag names in the tags table", async () => {
     const headers = await signedInHeaders(db);
     const created = await json(await createRecipe(app, headers, { title: "t", tags: ["soup", "quick"] }));

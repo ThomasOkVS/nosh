@@ -18,6 +18,20 @@ function tagNames(raw: string[]): string[] {
   return [...new Set(raw.map(normaliseTag))].sort();
 }
 
+type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+
+/** REC-07: upserts the tag names (sorted, so concurrent writers lock in one order) and links them to the recipe. */
+async function linkTags(tx: Tx, recipeId: number, raw: string[]): Promise<void> {
+  const names = tagNames(raw);
+  if (names.length === 0) return;
+  await tx
+    .insert(tags)
+    .values(names.map((name) => ({ name })))
+    .onConflictDoNothing({ target: tags.name });
+  const tagRows = await tx.select({ id: tags.id }).from(tags).where(inArray(tags.name, names));
+  await tx.insert(recipeTags).values(tagRows.map((t) => ({ recipeId, tagId: t.id })));
+}
+
 function imageDto(recipeId: number, row: typeof recipeImages.$inferSelect): RecipeImageDto {
   const url = `/api/recipes/${recipeId}/images/${row.id}`;
   return { id: row.id, position: row.position, url, cardUrl: `${url}?size=card` };
@@ -171,18 +185,7 @@ export function createRecipeRepository(db: Db) {
             );
         }
 
-        const names = tagNames(body.tags);
-        if (names.length > 0) {
-          await tx
-            .insert(tags)
-            .values(names.map((name) => ({ name })))
-            .onConflictDoNothing({ target: tags.name });
-          const tagRows = await tx
-            .select({ id: tags.id })
-            .from(tags)
-            .where(inArray(tags.name, names));
-          await tx.insert(recipeTags).values(tagRows.map((t) => ({ recipeId, tagId: t.id })));
-        }
+        await linkTags(tx, recipeId, body.tags);
         return recipeId;
       });
       const created = await get(userId, id);
@@ -242,20 +245,7 @@ export function createRecipeRepository(db: Db) {
             );
         }
 
-        const names = tagNames(body.tags);
-        if (names.length > 0) {
-          await tx
-            .insert(tags)
-            .values(names.map((name) => ({ name })))
-            .onConflictDoNothing({ target: tags.name });
-          const tagRows = await tx
-            .select({ id: tags.id })
-            .from(tags)
-            .where(inArray(tags.name, names));
-          await tx
-            .insert(recipeTags)
-            .values(tagRows.map((t) => ({ recipeId: id, tagId: t.id })));
-        }
+        await linkTags(tx, id, body.tags);
         return true;
       });
       return found ? get(userId, id) : null;
