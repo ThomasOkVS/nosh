@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 import { recipeQuery, useDeleteRecipe } from "@/recipes/api";
 import { factsLine, sourceHost } from "@/recipes/facts";
 import { RecipeCover } from "@/recipes/RecipeCover";
+import { parseRecipeId, RECIPE_NOT_FOUND } from "@/recipes/recipeId";
 import { panelId, SectionPill, tabId, type Section } from "@/recipes/SectionPill";
 
 export const Route = createFileRoute("/_app/recipes/$id")({
@@ -24,16 +25,6 @@ export const Route = createFileRoute("/_app/recipes/$id")({
   staticData: { fullBleed: true },
   component: RecipePage,
 });
-
-const MAX_ID = 2147483647;
-const NOT_FOUND = "Recipe not found";
-
-/** Recipe ids are positive 32-bit integers; anything else can't be a recipe. */
-function parseId(raw: string): number | null {
-  if (!/^[1-9]\d*$/.test(raw)) return null;
-  const id = Number(raw);
-  return id <= MAX_ID ? id : null;
-}
 
 const floatButton =
   "grid size-9.5 place-items-center rounded-full bg-card/90 text-foreground shadow-[0_6px_20px_-10px_rgb(0_0_0/0.45)] backdrop-blur outline-none focus-visible:ring-3 focus-visible:ring-ring";
@@ -48,7 +39,7 @@ const kicker = "text-[0.6875rem] font-semibold tracking-[0.2em] text-highlight u
  */
 function RecipePage() {
   const { id: rawId } = Route.useParams();
-  const id = parseId(rawId);
+  const id = parseRecipeId(rawId);
   // An impossible id never reaches the API (REC-25); the query stays idle.
   const { data, error } = useQuery({ ...recipeQuery(id ?? 0), enabled: id !== null });
 
@@ -59,7 +50,7 @@ function RecipePage() {
         <ChevronLeft aria-hidden className="size-5" />
       </Link>
       {id === null ? (
-        <PageError message={NOT_FOUND} />
+        <PageError message={RECIPE_NOT_FOUND} />
       ) : data !== undefined ? (
         <Recipe recipe={data} />
       ) : error !== null ? (

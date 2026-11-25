@@ -30,27 +30,40 @@ function useInvalidateRecipes() {
   return () => queryClient.invalidateQueries({ queryKey: RECIPES_KEY });
 }
 
+/**
+ * REC-30: the saved recipe goes straight into its page's cache and the
+ * library refresh is not awaited, so the caller's navigation never waits on a
+ * refetch and the recipe page shows what was just saved.
+ */
+function useStoreSaved() {
+  const queryClient = useQueryClient();
+  return (saved: RecipeDto) => {
+    queryClient.setQueryData(recipeQuery(saved.id).queryKey, saved);
+    void queryClient.invalidateQueries({ queryKey: RECIPES_KEY });
+  };
+}
+
 export function useCreateRecipe() {
-  const invalidate = useInvalidateRecipes();
+  const storeSaved = useStoreSaved();
   return useMutation({
     mutationFn: async (body: RecipeBody): Promise<RecipeDto> => {
       const res = await api.api.recipes.$post({ json: body });
       if (!res.ok) throw await toApiError(res);
       return await res.json();
     },
-    onSuccess: invalidate,
+    onSuccess: storeSaved,
   });
 }
 
 export function useUpdateRecipe(id: number) {
-  const invalidate = useInvalidateRecipes();
+  const storeSaved = useStoreSaved();
   return useMutation({
     mutationFn: async (body: RecipeBody): Promise<RecipeDto> => {
       const res = await api.api.recipes[":id"].$put({ param: { id: String(id) }, json: body });
       if (!res.ok) throw await toApiError(res);
       return await res.json();
     },
-    onSuccess: invalidate,
+    onSuccess: storeSaved,
   });
 }
 
