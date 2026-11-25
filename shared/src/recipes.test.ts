@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normaliseTag, RECIPE_LIMITS, RECIPE_MESSAGES, recipeBody } from "./recipes.js";
+import { MAX_INT4, normaliseTag, RECIPE_LIMITS, RECIPE_MESSAGES, recipeBody } from "./recipes.js";
 
 const firstError = (input: unknown): string | undefined => {
   const result = recipeBody.safeParse(input);
@@ -79,6 +79,14 @@ describe("recipeBody", () => {
     expect(recipeBody.parse({ title: "x", cookTimeMinutes: 30 }).cookTimeMinutes).toBe(30);
   });
 
+  it("REC-03 Review Focus 1: whole-number fields above the Postgres integer range are refused", () => {
+    const tooBig = MAX_INT4 + 1;
+    expect(firstError({ title: "x", servings: tooBig })).toBe(RECIPE_MESSAGES.servings);
+    expect(firstError({ title: "x", prepTimeMinutes: 99999999999 })).toBe(RECIPE_MESSAGES.prepTime);
+    expect(firstError({ title: "x", cookTimeMinutes: tooBig })).toBe(RECIPE_MESSAGES.cookTime);
+    expect(recipeBody.parse({ title: "x", servings: MAX_INT4 }).servings).toBe(MAX_INT4);
+  });
+
   it("REC-03: 100 ingredients are fine, 101 are refused", () => {
     const make = (n: number) => Array.from({ length: n }, () => ({ name: "salt" }));
     expect(firstError({ title: "x", ingredients: make(100) })).toBeUndefined();
@@ -156,7 +164,7 @@ describe("recipeBody", () => {
     );
   });
 
-  it("REC-03: collectionId is a positive integer, null, or left out", () => {
+  it("REC-03 REC-11 REC-12: collectionId is a positive integer, null, or left out", () => {
     expect(recipeBody.parse({ title: "x", collectionId: 3 }).collectionId).toBe(3);
     expect(recipeBody.parse({ title: "x", collectionId: null }).collectionId).toBeNull();
     expect(recipeBody.parse({ title: "x" }).collectionId).toBeUndefined();

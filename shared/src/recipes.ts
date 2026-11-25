@@ -22,6 +22,9 @@ export const RECIPE_MESSAGES = {
   unitBlank: "Unit can't be blank",
 } as const;
 
+/** The largest value a Postgres integer column holds. */
+export const MAX_INT4 = 2147483647;
+
 const M = RECIPE_MESSAGES;
 
 /** A whole number of at least 1, or null when omitted. */
@@ -30,6 +33,7 @@ const positiveInt = (message: string) =>
     .number({ error: message })
     .int(message)
     .min(1, message)
+    .max(MAX_INT4, message)
     .nullish()
     .transform((v) => v ?? null);
 
