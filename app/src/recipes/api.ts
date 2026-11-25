@@ -1,6 +1,6 @@
 import type { RecipeBody, RecipeDto, RecipeImageDto } from "@nosh/shared";
 import { queryOptions, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, toApiError } from "@/lib/api";
+import { api, ApiError, GENERIC_ERROR, toApiError } from "@/lib/api";
 
 const RECIPES_KEY = ["recipes"] as const;
 
@@ -86,19 +86,48 @@ export function useDeleteRecipe(id: number) {
   });
 }
 
-/** Sends the file as multipart field "file"; the browser sets the Content-Type. */
+export const UPLOAD_FAILED = "Failed to upload image";
+
+/**
+ * Sends the file as multipart field "file"; the browser sets the Content-Type.
+ * REC-33: the server's reason is kept; with none (or no answer at all) the
+ * error says "Failed to upload image".
+ */
+async function postCover(recipeId: number, file: File): Promise<RecipeImageDto> {
+  // The route reads the multipart body itself, so the typed client has no form input.
+  const body = new FormData();
+  body.append("file", file);
+  const url = new URL(`/api/recipes/${recipeId}/images`, window.location.origin);
+  let res: Response;
+  try {
+    res = await fetch(url, { method: "POST", body });
+  } catch {
+    throw new ApiError(UPLOAD_FAILED, 0);
+  }
+  if (!res.ok) {
+    const error = await toApiError(res);
+    throw error.message === GENERIC_ERROR ? new ApiError(UPLOAD_FAILED, error.status) : error;
+  }
+  return (await res.json()) as RecipeImageDto;
+}
+
+/**
+ * The cache refresh is part of the mutation (it is returned, so awaited): the
+ * form shows the new cover as soon as the upload settles.
+ */
 export function useUploadCover(recipeId: number) {
   const invalidate = useInvalidateRecipes();
   return useMutation({
-    mutationFn: async (file: File): Promise<RecipeImageDto> => {
-      // The route reads the multipart body itself, so the typed client has no form input.
-      const body = new FormData();
-      body.append("file", file);
-      const url = new URL(`/api/recipes/${recipeId}/images`, window.location.origin);
-      const res = await fetch(url, { method: "POST", body });
-      if (!res.ok) throw await toApiError(res);
-      return (await res.json()) as RecipeImageDto;
-    },
+    mutationFn: (file: File) => postCover(recipeId, file),
+    onSuccess: invalidate,
+  });
+}
+
+/** The create form's upload: the id is only known once the recipe is saved. */
+export function useUploadNewCover() {
+  const invalidate = useInvalidateRecipes();
+  return useMutation({
+    mutationFn: ({ recipeId, file }: { recipeId: number; file: File }) => postCover(recipeId, file),
     onSuccess: invalidate,
   });
 }

@@ -3,6 +3,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Skeleton } from "@/components/Skeleton";
 import { errorMessage } from "@/lib/api";
 import { recipeQuery } from "@/recipes/api";
+import { PhotoField } from "@/recipes/PhotoField";
 import { RecipeForm, RecipeFormFrame } from "@/recipes/RecipeForm";
 import { parseRecipeId, RECIPE_NOT_FOUND } from "@/recipes/recipeId";
 
@@ -34,6 +35,8 @@ function EditRecipePage() {
           key={`edit-${id}`}
           mode="edit"
           recipe={data}
+          // The photo follows the live query; the form's fields keep their draft.
+          photo={<PhotoField mode="edit" recipe={data} pending={null} onPendingChange={noPending} />}
           onSaved={(savedId) =>
             void navigate({ to: "/recipes/$id", params: { id: String(savedId) }, replace: true })
           }
@@ -46,6 +49,9 @@ function EditRecipePage() {
     </RecipeFormFrame>
   );
 }
+
+/** The edit form never holds a pending file: it uploads at once. */
+function noPending() {}
 
 function LoadError({ message }: { message: string }) {
   return (
