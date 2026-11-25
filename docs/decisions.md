@@ -106,3 +106,103 @@ side-by-side name (v1's features are gone until the importer runs). Caddy
 already had a pinned IP, so SEC-13 needed no proxy change. Caddy overwrites
 `X-Forwarded-For` (no `trusted_proxies`), confirmed in v2's request log; the
 rightmost-entry rule is right either way. Details: `docs/deployment.md`.
+
+## 2026-11-25: The recipe image model
+
+**Decision:** a recipe has one cover photo: the `recipe_images` row with
+`is_cover`, enforced by a partial unique index (one cover per recipe). Hidden
+v1 photos stay stored and are listed in the DTO's `images`, but are never
+shown and never promoted; removing the cover leaves the recipe with no photo.
+Each photo has a card copy (about 800 px on the long side, WebP, never
+enlarged, EXIF orientation applied), served with `?size=card`. When
+`card_file_name` is null, as it is for v1 rows, the original is served
+instead. Files are stored under random 32-hex names and served only by the
+names in the database; `store.path` refuses any name that isn't a plain
+basename (defence for migrated rows).
+
+**Why:** the library shows small cards on a phone, so a light copy matters,
+yet migrated v1 rows must keep working before the importer makes their copies.
+
+## 2026-11-25: Image libraries: file-type, heic-decode, sharp
+
+**Decision:** `file-type` sniffs the bytes. HEIC goes through `heic-decode`,
+not `heic-convert` (the builder ruled this today), then sharp writes the JPEG
+at q90. sharp handles every other format and the card copies, using the
+prebuilt `@img/sharp-*` binaries (`allowBuilds: sharp: false`). HEIC decodes
+run one at a time. The 5 MB cap (REC-14) applies to the upload; a converted
+HEIC may be larger. Docker numbers (musl image, the owner's 4.16 MB iPhone
+HEIC): the first spike with heic-convert took RSS ~747 MB, ~13.5 s, JPEG
+6.77 MB; the final heic-decode + sharp took RSS ~654 MB, ~7.5 s, JPEG
+5.80 MB, card ~39 KB. The WASM decode still blocks the event loop for those
+seconds; accepted for a single-user app. A worker thread is a possible later
+improvement.
+
+**Why:** heic-decode is the decoder heic-convert wraps. It lets the server
+read width × height first and refuse anything over 60 MP without decoding it,
+which closes a decompression bomb. It was also lighter and faster.
+
+## 2026-11-25: Stored originals keep their EXIF
+
+**Decision:** JPEG, PNG and WebP uploads are stored byte for byte, so any GPS
+data in them stays. Only the owner can fetch them (owner-checked route,
+`Cache-Control: private`).
+
+**Why:** stripping means re-encoding, with some quality loss. Re-encoding is
+the fix if this ever changes.
+
+## 2026-11-25: react-hook-form, the zod resolver and Sonner
+
+**Decision:** the recipe form uses react-hook-form with the zod resolver, and
+toasts use Sonner. `zod` is also a direct dependency of `app/`, at the same
+range as `shared/`. The form schema mirrors `recipeBody`, using
+`RECIPE_LIMITS`, `RECIPE_MESSAGES` and `MAX_INT4`.
+
+**Why:** pnpm's isolated `node_modules` requires the direct `zod` dependency;
+mirroring `recipeBody` keeps the client and server rules in one place.
+
+## 2026-11-25: The upload route has its own body limit
+
+**Decision:** the global API body limit is 100 KiB (SEC-27). It is skipped
+only for `POST /api/recipes/:id/images`, matched by an anchored path regex.
+That route has its own `bodyLimit` of 5 MB + 64 KiB, which answers 400
+"Image must be 5 MB or smaller" instead of 413. The limit runs before the
+ownership check, so an oversize body sent to someone else's recipe gets 400,
+not 404.
+
+**Why:** a 400 with a message lets the form show the reason; a bare 413 would
+not.
+
+## 2026-11-25: Upload error copy
+
+**Decision:** the messages are "No image file was sent", "Only JPEG, PNG, WEBP
+or HEIC images are allowed", "The file's contents don't match its type",
+"Image must be 5 MB or smaller", "That image is too large to process" and
+"That image couldn't be read". The client shows "Failed to upload image" when
+the server sent no message.
+
+**Why:** REC-14 only says "a message saying which"; the wording is the plan's
+choice.
+
+## 2026-11-25: Integer bounds
+
+**Decision:** `MAX_INT4` (2147483647) bounds the whole-number fields and path
+ids. A path id above it answers 404 before any query. A tag upsert sorts the
+names before inserting.
+
+**Why:** an out-of-range id would otherwise reach Postgres and fail as a 500;
+sorted inserts avoid deadlocks between concurrent saves.
+
+## 2026-11-25: Library kicker under a tag filter
+
+**Decision:** when a tag filter is on, the kicker reads "N of M", for example
+"1 of 3": recipes shown of all recipes.
+
+**Why:** the owner's decision.
+
+## 2026-11-25: Recipes PR2 waits on the firewall
+
+**Decision:** photo from URL and the SSRF guard (plan Tasks 13 to 16) merge
+only after the host firewall covers `10.102.0.0/24` (Task 16).
+
+**Why:** the server will fetch user-supplied URLs; the guard is not enough
+while the container's network can still reach the host's internal ranges.

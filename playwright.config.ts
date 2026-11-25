@@ -1,6 +1,9 @@
+import { resolve } from "node:path";
 import { defineConfig, devices } from "@playwright/test";
 
 const PORT = 4173;
+// Uploaded photos land under test-results/ (git-ignored), not in the repo's uploads.
+const uploadsDir = resolve("test-results", "uploads");
 const databaseUrl =
   process.env.TEST_DATABASE_URL ?? "postgres://nosh:nosh@localhost:5433/nosh_test";
 
@@ -26,6 +29,7 @@ export default defineConfig({
     env: {
       PORT: String(PORT),
       DATABASE_URL: databaseUrl,
+      UPLOADS_DIR: uploadsDir,
       ALLOW_SIGNUP: "true",
       ALLOWED_ORIGINS: `http://localhost:${PORT}`,
     },
