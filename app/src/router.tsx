@@ -1,7 +1,10 @@
 import { QueryClientProvider, type QueryClient } from "@tanstack/react-query";
 import { createRouter, RouterProvider, type RouterHistory } from "@tanstack/react-router";
 import { MotionConfig } from "motion/react";
+import { useEffect } from "react";
 import { Loading } from "@/components/Loading";
+import { Toaster } from "@/components/ui/sonner";
+import { setOnUnauthorized } from "@/lib/queryClient";
 import { routeTree } from "./routeTree.gen";
 
 interface AppRouterOptions {
@@ -37,10 +40,13 @@ interface AppProps {
 }
 
 export function App({ router, queryClient }: AppProps) {
+  // AUTH-12: a 401 from any data call re-runs the guards, which redirect to login.
+  useEffect(() => setOnUnauthorized(() => void router.invalidate()), [router]);
   return (
     <QueryClientProvider client={queryClient}>
       <MotionConfig reducedMotion="user">
         <RouterProvider router={router} />
+        <Toaster />
       </MotionConfig>
     </QueryClientProvider>
   );

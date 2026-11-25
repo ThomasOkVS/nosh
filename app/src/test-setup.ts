@@ -13,3 +13,16 @@ afterEach(() => {
   server.resetHandlers();
 });
 afterAll(() => server.close());
+
+// jsdom has no matchMedia; Sonner reads the system colour scheme through it.
+window.matchMedia = (query: string) =>
+  ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    addListener: () => {},
+    removeListener: () => {},
+    dispatchEvent: () => false,
+  }) as MediaQueryList;

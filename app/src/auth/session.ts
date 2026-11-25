@@ -38,6 +38,7 @@ async function confirmSession(queryClient: QueryClient): Promise<AuthUserDto> {
 export function useLogIn() {
   const queryClient = useQueryClient();
   return useMutation({
+    meta: { authRequest: true }, // a 401 here is a wrong password (AUTH-09), not a lost session
     mutationFn: async (body: LogInBody): Promise<AuthUserDto> => {
       const res = await api.api.auth.login.$post({ json: body });
       if (!res.ok) throw await toApiError(res);
@@ -50,6 +51,7 @@ export function useLogIn() {
 export function useSignUp() {
   const queryClient = useQueryClient();
   return useMutation({
+    meta: { authRequest: true },
     mutationFn: async (body: SignUpBody): Promise<AuthUserDto> => {
       const res = await api.api.auth.signup.$post({ json: body });
       if (!res.ok) throw await toApiError(res);
@@ -66,6 +68,10 @@ export function useLogOut() {
       const res = await api.api.auth.logout.$post();
       if (!res.ok) throw await toApiError(res);
     },
-    onSuccess: () => queryClient.setQueryData(sessionQuery.queryKey, null),
+    // Drop every cached answer, then record "logged out" for the guard.
+    onSuccess: () => {
+      queryClient.clear();
+      queryClient.setQueryData(sessionQuery.queryKey, null);
+    },
   });
 }
