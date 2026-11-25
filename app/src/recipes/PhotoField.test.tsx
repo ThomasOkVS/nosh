@@ -1,6 +1,7 @@
 import type { RecipeDto } from "@nosh/shared";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
+import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 import { deferred, owner, server } from "../../test/msw";
 import { imageDto, recipeDto } from "../../test/recipes";
@@ -30,6 +31,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // Sonner's toast store is global; clear it so a toast never leaks into the next test.
+  toast.dismiss();
   vi.restoreAllMocks();
 });
 
@@ -87,6 +90,14 @@ function uploadedNames(): string[] {
   return fetchSpy.mock.calls
     .filter(([url, init]) => String(url).endsWith("/images") && init?.method === "POST")
     .map(([, init]) => ((init?.body as FormData).get("file") as File).name);
+}
+
+/** One toast is one node with its text; this fails on none and on a duplicate. */
+async function expectOneToast(text: string) {
+  await screen.findByText(text);
+  // Let a second toast, if any, land before counting.
+  await new Promise((r) => setTimeout(r, 150));
+  expect(screen.getAllByText(text)).toHaveLength(1);
 }
 
 describe("form photo section", () => {
@@ -171,8 +182,7 @@ describe("form photo section", () => {
   });
 
   it("REC-33: on the edit form with a cover, it asks before replacing; Cancel uploads nothing", async () => {
-    const state = serve(covered);
-    acceptUpload(state);
+    serve(covered);
     const { user } = await openEdit(covered);
 
     await user.upload(fileInput(), png("new.png"));
@@ -219,7 +229,7 @@ describe("form photo section", () => {
     await user.upload(fileInput(), png("big.png"));
     await user.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Replace" }));
 
-    expect((await screen.findAllByText("Image must be 5 MB or smaller")).length).toBeGreaterThan(0);
+    await expectOneToast("Image must be 5 MB or smaller");
     expect(screen.getByRole("img", { name: "Cover photo" })).toHaveAttribute(
       "src",
       "/api/recipes/5/images/9",
@@ -234,7 +244,7 @@ describe("form photo section", () => {
 
     await user.upload(fileInput(), png("a.png"));
 
-    expect((await screen.findAllByText("Failed to upload image")).length).toBeGreaterThan(0);
+    await expectOneToast("Failed to upload image");
     expect(screen.queryByRole("img", { name: "Cover photo" })).not.toBeInTheDocument();
   });
 
@@ -249,6 +259,26 @@ describe("form photo section", () => {
     expect(await screen.findByRole("img", { name: "Chosen photo" })).toHaveAttribute("src", "blob:two.png");
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
     expect(revoked).toContain("blob:one.png");
+  });
+
+  it("REC-33: on the create form, Remove photo clears the preview, revokes its URL and a save uploads nothing", async () => {
+    const state = serve(recipeDto({ id: 42, title: "Soup" }));
+    server.use(http.post("/api/recipes", () => HttpResponse.json(state.recipe, { status: 201 })));
+    acceptUpload(state, 42);
+    const { user, router } = await openNew();
+
+    await user.upload(fileInput(), png("gone.png"));
+    await screen.findByRole("img", { name: "Chosen photo" });
+    await user.click(screen.getByRole("button", { name: "Remove photo" }));
+
+    expect(screen.queryByRole("img", { name: "Chosen photo" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Remove photo" })).not.toBeInTheDocument();
+    expect(revoked).toContain("blob:gone.png");
+
+    await user.type(screen.getByRole("textbox", { name: "Title" }), "Soup");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/recipes/42"));
+    expect(uploadedNames()).toEqual([]);
   });
 
   it("REC-33: a HEIC choice shows the Photo selected tile instead of a preview", async () => {
@@ -287,7 +317,7 @@ describe("form photo section", () => {
     server.use(
       http.post("/api/recipes", () => HttpResponse.json(state.recipe, { status: 201 })),
       http.post("/api/recipes/42/images", () =>
-        HttpResponse.json({ error: "Image must be 5 MB or smaller" }, { status: 400 }),
+        HttpResponse.json({ error: "Unsupported image type" }, { status: 400 }),
       ),
     );
     const { user, router } = await openNew();
@@ -296,7 +326,7 @@ describe("form photo section", () => {
     await user.upload(fileInput(), png("big.png"));
     await user.click(screen.getByRole("button", { name: "Save" }));
 
-    expect((await screen.findAllByText("Image must be 5 MB or smaller")).length).toBeGreaterThan(0);
+    await expectOneToast("Unsupported image type");
     await waitFor(() => expect(router.state.location.pathname).toBe("/recipes/42"));
   });
 
@@ -368,7 +398,7 @@ describe("form photo section", () => {
     await user.click(screen.getByRole("button", { name: "Remove photo" }));
     await user.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Remove" }));
 
-    expect((await screen.findAllByText("Failed to delete image")).length).toBeGreaterThan(0);
+    await expectOneToast("Failed to delete image");
     expect(screen.getByRole("img", { name: "Cover photo" })).toBeInTheDocument();
   });
 });

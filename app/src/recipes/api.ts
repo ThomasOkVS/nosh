@@ -125,10 +125,13 @@ export function useUploadCover(recipeId: number) {
 
 /** The create form's upload: the id is only known once the recipe is saved. */
 export function useUploadNewCover() {
-  const invalidate = useInvalidateRecipes();
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ recipeId, file }: { recipeId: number; file: File }) => postCover(recipeId, file),
-    onSuccess: invalidate,
+    // Not awaited, like useStoreSaved: the owner's navigation never waits on a refetch.
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: RECIPES_KEY });
+    },
   });
 }
 

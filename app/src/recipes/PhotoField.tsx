@@ -132,7 +132,6 @@ export function PhotoField(props: PhotoFieldProps) {
 
       <label
         data-testid="photo-drop"
-        aria-disabled={busy}
         onDragEnter={(event) => {
           event.preventDefault();
           if (!busy) setDragging(true);
