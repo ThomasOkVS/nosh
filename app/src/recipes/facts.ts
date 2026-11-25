@@ -25,3 +25,23 @@ export function coverCardUrl(recipe: Pick<RecipeDto, "images" | "coverImageId">)
   if (recipe.coverImageId === null) return null;
   return recipe.images.find((image) => image.id === recipe.coverImageId)?.cardUrl ?? null;
 }
+
+/** The cover at full size for the recipe page, or null. Hidden v1 photos are never shown (REC-21). */
+export function coverUrl(recipe: Pick<RecipeDto, "images" | "coverImageId">): string | null {
+  if (recipe.coverImageId === null) return null;
+  return recipe.images.find((image) => image.id === recipe.coverImageId)?.url ?? null;
+}
+
+/**
+ * REC-22: the hostname of a stored source URL, or null when it isn't a valid
+ * http(s) URL, so a bad value never shows a link or breaks the page.
+ */
+export function sourceHost(sourceUrl: string | null): string | null {
+  if (sourceUrl === null) return null;
+  try {
+    const url = new URL(sourceUrl);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.hostname : null;
+  } catch {
+    return null;
+  }
+}
