@@ -1,4 +1,4 @@
-import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, writeFile, type FileHandle } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { MAX_INT4, type RecipeDto, type RecipeImageDto } from "@nosh/shared";
@@ -9,6 +9,20 @@ import { appWith, createRecipe, makeRecipeApp, signedInHeaders, type Headers } f
 import { recipeImages, recipes } from "../db/schema.js";
 import { MAX_IMAGE_BYTES } from "../images/process.js";
 import { createImageStore, type ImageStore } from "../images/store.js";
+
+// Records every file the routes open, so a test can check each one was closed (REC-16 HEAD).
+const opened = vi.hoisted(() => [] as FileHandle[]);
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  return {
+    ...actual,
+    open: async (...args: Parameters<typeof actual.open>) => {
+      const handle = await actual.open(...args);
+      opened.push(handle);
+      return handle;
+    },
+  };
+});
 
 const { app, db, uploadsDir } = await makeRecipeApp();
 
@@ -120,6 +134,23 @@ describe("upload", () => {
     }
     expect(await imageRowCount()).toBe(0);
     expect(await filesOnDisk()).toEqual([]);
+  });
+
+  it("REC-14: a declared Content-Length over 5 MB plus the multipart margin is 400 \"Image must be 5 MB or smaller\" before the body is read", async () => {
+    const headers = await signedInHeaders(db);
+    const recipe = await newRecipe(headers);
+    const res = await app.request(`/api/recipes/${recipe.id}/images`, {
+      method: "POST",
+      headers: {
+        ...headers,
+        "content-type": "multipart/form-data; boundary=xyz",
+        "content-length": String(MAX_IMAGE_BYTES + 64 * 1024 + 1),
+      },
+      body: "--xyz--",
+    });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "Image must be 5 MB or smaller" });
+    expect(await imageRowCount()).toBe(0);
   });
 
   it("REC-14: a JSON body instead of multipart is 400 \"No image file was sent\"", async () => {
@@ -375,6 +406,51 @@ describe("serving", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("image/jpeg");
     expect(Buffer.from(await res.arrayBuffer()).equals(jpg)).toBe(true);
+  });
+
+  it("REC-16: HEAD answers 200 with the image headers and closes the file", async () => {
+    const headers = await signedInHeaders(db);
+    const recipe = await newRecipe(headers);
+    const png = await fx("tiny.png");
+    const image = await json<RecipeImageDto>(await upload(recipe.id, headers, fileOf(png, "image/png")));
+    opened.length = 0;
+    const res = await app.request(image.url, { method: "HEAD", headers });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("image/png");
+    expect(res.headers.get("content-length")).toBe(String(png.length));
+    expect(res.headers.get("cache-control")).toBe("private, max-age=31536000, immutable");
+    expect(await res.text()).toBe("");
+    // Every file the HEAD opened is already closed (a closed FileHandle reports fd -1).
+    expect(opened.map((h) => h.fd)).toEqual(opened.map(() => -1));
+  });
+
+  it("SEC-24: a stored file name that is not a plain name is 404 \"Image not found\" and is never touched", async () => {
+    const headers = await signedInHeaders(db);
+    const recipe = await newRecipe(headers);
+    const [row] = await db
+      .insert(recipeImages)
+      .values({
+        recipeId: recipe.id,
+        fileName: "../outside.jpg",
+        cardFileName: "../outside.webp",
+        contentType: "image/jpeg",
+        position: 0,
+        isCover: true,
+      })
+      .returning({ id: recipeImages.id });
+    const url = `/api/recipes/${recipe.id}/images/${row?.id}`;
+    for (const suffix of ["", "?size=card"]) {
+      const res = await app.request(`${url}${suffix}`, { headers });
+      expect(res.status, suffix).toBe(404);
+      expect(await res.json()).toEqual({ error: "Image not found" });
+    }
+    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const del = await app.request(url, { method: "DELETE", headers });
+    const logged = log.mock.calls.map((call) => String(call[0]));
+    log.mockRestore();
+    expect(del.status).toBe(204);
+    expect(logged.some((line) => line.includes("unsafe image file name"))).toBe(true);
+    expect(await imageRowCount()).toBe(0);
   });
 
   it("REC-16: a stored row whose file is missing on disk is 404 \"Image not found\", not 500", async () => {

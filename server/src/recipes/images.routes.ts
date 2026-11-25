@@ -5,7 +5,7 @@ import { bodyLimit } from "hono/body-limit";
 import type { Db } from "../db/client.js";
 import type { AppEnv } from "../http/context.js";
 import { MAX_IMAGE_BYTES, processImage, type Refused } from "../images/process.js";
-import type { ImageStore } from "../images/store.js";
+import { UnsafeFileNameError, type ImageStore } from "../images/store.js";
 import { parseImageId, parseRecipeId } from "./ids.js";
 import { createRecipeRepository } from "./repository.js";
 
@@ -147,7 +147,15 @@ export function imageRoutes(deps: { db: Db; images: ImageStore }) {
       const card = c.req.query("size") === "card" && image.cardFileName !== null;
       // SEC-24: only names stored in the database reach the file system, never URL input.
       const fileName = card && image.cardFileName !== null ? image.cardFileName : image.fileName;
-      const handle = await openStored(deps.images.path(fileName));
+      let filePath: string;
+      try {
+        filePath = deps.images.path(fileName);
+      } catch (err) {
+        // A stored name that is not a plain file name (a bad v1 row) is never opened.
+        if (err instanceof UnsafeFileNameError) return c.json({ error: "Image not found" }, 404);
+        throw err;
+      }
+      const handle = await openStored(filePath);
       if (!handle) return c.json({ error: "Image not found" }, 404);
 
       let size: number;
@@ -157,13 +165,20 @@ export function imageRoutes(deps: { db: Db; images: ImageStore }) {
         await handle.close();
         throw err;
       }
-      const stream = Readable.toWeb(handle.createReadStream()) as ReadableStream<Uint8Array>;
-      // X-Content-Type-Options: nosniff comes from the global securityHeaders (SEC-60).
-      return c.body(stream, 200, {
+      const imageHeaders = {
         "Content-Type": card ? "image/webp" : image.contentType,
         "Content-Length": String(size),
         "Cache-Control": CACHE_CONTROL,
-      });
+      };
+      // Hono answers HEAD through this handler and drops the body: a stream would never
+      // be read, so its handle would stay open until garbage collection.
+      if (c.req.method === "HEAD") {
+        await handle.close();
+        return c.body(null, 200, imageHeaders);
+      }
+      const stream = Readable.toWeb(handle.createReadStream()) as ReadableStream<Uint8Array>;
+      // X-Content-Type-Options: nosniff comes from the global securityHeaders (SEC-60).
+      return c.body(stream, 200, imageHeaders);
     })
     .delete("/:id/images/:imageId", async (c) => {
       const user = c.get("user");
