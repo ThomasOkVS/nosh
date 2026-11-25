@@ -28,6 +28,7 @@ export function setOnUnauthorized(handler: () => void): () => void {
 export function createQueryClient(opts: { test?: boolean } = {}): QueryClient {
   const handle = (error: unknown, authRequest: boolean | undefined) => {
     if (authRequest || !(error instanceof ApiError) || error.status !== 401) return;
+    queryClient.clear(); // no data of this session may outlive it
     queryClient.setQueryData(sessionQuery.queryKey, null);
     onUnauthorized?.();
   };

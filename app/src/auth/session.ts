@@ -29,6 +29,8 @@ export const SESSION_NOT_KEPT =
  * TRUSTED_PROXIES). Ask the server afresh; that answer also fills the session.
  */
 async function confirmSession(queryClient: QueryClient): Promise<AuthUserDto> {
+  // Nothing from an earlier account may survive into this one.
+  queryClient.getQueryCache().clear();
   const user = await queryClient.fetchQuery({ ...sessionQuery, staleTime: 0 });
   if (user === null) throw new ApiError(SESSION_NOT_KEPT, 401);
   return user;
