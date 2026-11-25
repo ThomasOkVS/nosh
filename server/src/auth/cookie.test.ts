@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createApp } from "../app.js";
+import { unusedDeps } from "../../test/unusedDeps.js";
 import { loadConfig } from "../config/env.js";
 import { sessionCookieName } from "./cookie.js";
 import { SESSION_TTL_MS, type AuthService } from "./service.js";
@@ -42,6 +43,7 @@ function makeApp(production: boolean, auth = fakeAuth()) {
   return createApp({
     config: production ? prodConfig : devConfig,
     auth,
+    ...unusedDeps,
     getPeer: (c) => c.req.header("x-test-peer") ?? "127.0.0.1",
     failureDelayMs: 0,
   });

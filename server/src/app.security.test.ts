@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 import { createApp } from "./app.js";
+import { unusedDeps } from "../test/unusedDeps.js";
 import type { AuthService } from "./auth/service.js";
 import { loadConfig } from "./config/env.js";
 
@@ -28,6 +29,7 @@ function makeApp() {
   return createApp({
     config,
     auth,
+    ...unusedDeps,
     getPeer: (c) => c.req.header("x-test-peer") ?? "127.0.0.1",
     failureDelayMs: 0,
   });

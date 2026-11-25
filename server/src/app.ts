@@ -5,6 +5,7 @@ import { requireAuth } from "./auth/requireAuth.js";
 import { authRoutes } from "./auth/routes.js";
 import type { AuthService } from "./auth/service.js";
 import type { Config } from "./config/env.js";
+import type { Db } from "./db/client.js";
 import { resolveClient } from "./http/clientInfo.js";
 import type { AppEnv } from "./http/context.js";
 import { bodyTooLarge, notFound, onError } from "./http/errors.js";
@@ -12,10 +13,14 @@ import { originCheck } from "./http/originCheck.js";
 import { requestLog } from "./http/requestLog.js";
 import { securityHeaders } from "./http/securityHeaders.js";
 import { mountSpa } from "./http/spa.js";
+import type { ImageStore } from "./images/store.js";
+import { recipeRoutes } from "./recipes/routes.js";
 
 export interface AppDeps {
   config: Config;
   auth: AuthService;
+  db: Db;
+  images: ImageStore;
   /** The TCP peer address. Tests inject one: app.request() has no socket. */
   getPeer?: (c: Context) => string;
   /** Delay before answering a failed login; 1 s unless a test sets it (SEC-19). */
@@ -59,7 +64,8 @@ export function createApp(deps: AppDeps) {
       "/api/auth",
       authRoutes({ auth: deps.auth, config: deps.config, failureDelayMs: deps.failureDelayMs }),
     )
-    .use("/api/*", requireAuth({ auth: deps.auth, config: deps.config }));
+    .use("/api/*", requireAuth({ auth: deps.auth, config: deps.config }))
+    .route("/api/recipes", recipeRoutes({ db: deps.db, images: deps.images }));
 
   if (deps.webDistDir) mountSpa(app, deps.webDistDir);
   app.onError(onError);

@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createApp } from "../app.js";
+import { unusedDeps } from "../../test/unusedDeps.js";
 import type { AuthService } from "../auth/service.js";
 import { loadConfig } from "../config/env.js";
 
@@ -36,7 +37,14 @@ afterAll(() => {
 
 const html = { accept: "text/html,application/xhtml+xml" };
 const makeApp = (dir = distDir) =>
-  createApp({ config, auth, getPeer: () => "127.0.0.1", failureDelayMs: 0, webDistDir: dir });
+  createApp({
+    config,
+    auth,
+    ...unusedDeps,
+    getPeer: () => "127.0.0.1",
+    failureDelayMs: 0,
+    webDistDir: dir,
+  });
 
 describe("SPA serving (SEC-28, SEC-60)", () => {
   it.each(["/", "/recipes/abc"])("serves index.html for an HTML GET of %s", async (path) => {
