@@ -6,7 +6,7 @@ import {
   type RecipeImageDto,
   type StepDto,
 } from "@nosh/shared";
-import { and, asc, desc, eq, exists, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, exists, inArray, max, sql } from "drizzle-orm";
 import type { Db } from "../db/client.js";
 import { ingredients, recipeImages, recipes, recipeTags, steps, tags } from "../db/schema.js";
 
@@ -265,11 +265,116 @@ export function createRecipeRepository(db: Db) {
           .from(recipeImages)
           .where(eq(recipeImages.recipeId, id));
         await tx.delete(recipes).where(eq(recipes.id, id));
-        const fileNames = images.flatMap((i) =>
-          i.cardFileName === null ? [i.fileName] : [i.fileName, i.cardFileName],
+        return { fileNames: fileNamesOf(images) };
+      });
+    },
+
+    /** REC-14, REC-16, REC-17: whether the recipe exists and is the user's; reads only its id. */
+    async owns(userId: string, id: number): Promise<boolean> {
+      const [row] = await db
+        .select({ id: recipes.id })
+        .from(recipes)
+        .where(and(eq(recipes.id, id), eq(recipes.userId, userId)));
+      return row !== undefined;
+    },
+
+    /**
+     * REC-14, REC-15: the new image becomes the cover, positioned after every stored one.
+     * The recipe row lock serialises racing uploads (Review Focus 5). The old cover's row
+     * is deleted in the same transaction (before the insert, for the one-cover index); its
+     * files are returned for the caller to remove after the commit. Hidden v1 rows are
+     * never touched. Null when the recipe is not the user's.
+     */
+    async addCover(
+      userId: string,
+      recipeId: number,
+      file: { fileName: string; cardFileName: string; contentType: string },
+    ): Promise<{ image: RecipeImageDto; replaced: string[] } | null> {
+      return db.transaction(async (tx) => {
+        const [locked] = await tx
+          .select({ id: recipes.id })
+          .from(recipes)
+          .where(and(eq(recipes.id, recipeId), eq(recipes.userId, userId)))
+          .for("update");
+        if (!locked) return null;
+
+        const [top] = await tx
+          .select({ max: max(recipeImages.position) })
+          .from(recipeImages)
+          .where(eq(recipeImages.recipeId, recipeId));
+        const position = (top?.max ?? -1) + 1;
+
+        const oldCovers = await tx
+          .delete(recipeImages)
+          .where(and(eq(recipeImages.recipeId, recipeId), eq(recipeImages.isCover, true)))
+          .returning({ fileName: recipeImages.fileName, cardFileName: recipeImages.cardFileName });
+
+        const [row] = await tx
+          .insert(recipeImages)
+          .values({
+            recipeId,
+            fileName: file.fileName,
+            cardFileName: file.cardFileName,
+            contentType: file.contentType,
+            position,
+            isCover: true,
+          })
+          .returning();
+        if (!row) throw new Error("image insert returned no row");
+        return { image: imageDto(recipeId, row), replaced: fileNamesOf(oldCovers) };
+      });
+    },
+
+    /** REC-16: the stored names and type of one image of one of the user's recipes. */
+    async getImage(
+      userId: string,
+      recipeId: number,
+      imageId: number,
+    ): Promise<{ fileName: string; cardFileName: string | null; contentType: string } | null> {
+      const [row] = await db
+        .select({
+          fileName: recipeImages.fileName,
+          cardFileName: recipeImages.cardFileName,
+          contentType: recipeImages.contentType,
+        })
+        .from(recipeImages)
+        .innerJoin(recipes, eq(recipes.id, recipeImages.recipeId))
+        .where(
+          and(
+            eq(recipeImages.id, imageId),
+            eq(recipeImages.recipeId, recipeId),
+            eq(recipes.userId, userId),
+          ),
         );
-        return { fileNames };
+      return row ?? null;
+    },
+
+    /**
+     * REC-17: deletes one image row under the recipe row lock, promoting nothing (REC-15).
+     * Returns its file names for the caller to remove; null when it is not on that recipe.
+     */
+    async removeImage(
+      userId: string,
+      recipeId: number,
+      imageId: number,
+    ): Promise<{ fileNames: string[] } | null> {
+      return db.transaction(async (tx) => {
+        const [locked] = await tx
+          .select({ id: recipes.id })
+          .from(recipes)
+          .where(and(eq(recipes.id, recipeId), eq(recipes.userId, userId)))
+          .for("update");
+        if (!locked) return null;
+        const deleted = await tx
+          .delete(recipeImages)
+          .where(and(eq(recipeImages.id, imageId), eq(recipeImages.recipeId, recipeId)))
+          .returning({ fileName: recipeImages.fileName, cardFileName: recipeImages.cardFileName });
+        return deleted.length === 0 ? null : { fileNames: fileNamesOf(deleted) };
       });
     },
   };
+}
+
+function fileNamesOf(rows: { fileName: string; cardFileName: string | null }[]): string[] {
+  return rows.flatMap((i) => (i.cardFileName === null ? [i.fileName] : [i.fileName, i.cardFileName]));
 }

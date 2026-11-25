@@ -8,7 +8,7 @@ import { createAuthService } from "../src/auth/service.js";
 import { loadConfig } from "../src/config/env.js";
 import type { Db } from "../src/db/client.js";
 import { sessions, users } from "../src/db/schema.js";
-import { createImageStore } from "../src/images/store.js";
+import { createImageStore, type ImageStore } from "../src/images/store.js";
 import { getTestDb, resetDb } from "./db.js";
 
 const SECRET = "test-session-secret-test-session-secret";
@@ -25,21 +25,25 @@ export async function makeRecipeApp() {
   const handle = await getTestDb();
   const { db } = handle;
   const uploadsDir = await mkdtemp(join(tmpdir(), "nosh-recipes-"));
-  const config = loadConfig({ DATABASE_URL: "postgres://unused" });
-  const app = createApp({
-    config,
-    auth: createAuthService({ db, sessionSecret: SECRET }),
-    db,
-    images: createImageStore(uploadsDir),
-    getPeer: () => "127.0.0.1",
-    failureDelayMs: 0,
-  });
+  const app = appWith(db, createImageStore(uploadsDir));
   beforeEach(() => resetDb(db));
   afterAll(async () => {
     await handle.close();
     await rm(uploadsDir, { recursive: true, force: true });
   });
   return { app, db, uploadsDir };
+}
+
+/** An app on `db` with the given image store; sessions from signedInHeaders work on it. */
+export function appWith(db: Db, images: ImageStore) {
+  return createApp({
+    config: loadConfig({ DATABASE_URL: "postgres://unused" }),
+    auth: createAuthService({ db, sessionSecret: SECRET }),
+    db,
+    images,
+    getPeer: () => "127.0.0.1",
+    failureDelayMs: 0,
+  });
 }
 
 /** Inserts a user with a live session and returns the cookie header for it (no argon2 cost). */

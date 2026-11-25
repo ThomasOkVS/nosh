@@ -5,6 +5,7 @@ import type { AppEnv } from "../http/context.js";
 import { jsonBody } from "../http/validate.js";
 import type { ImageStore } from "../images/store.js";
 import { parseRecipeId } from "./ids.js";
+import { imageRoutes } from "./images.routes.js";
 import { createRecipeRepository } from "./repository.js";
 
 /** Mounted behind requireAuth, which sets `user` (REC-01, SEC-23). */
@@ -75,5 +76,6 @@ export function recipeRoutes(deps: { db: Db; images: ImageStore }) {
         console.error(`recipe ${parsed.id} deleted but image files remain`, err);
       }
       return c.body(null, 204);
-    });
+    })
+    .route("/", imageRoutes(deps));
 }

@@ -13,3 +13,6 @@ export function parseRecipeId(raw: string): RecipeIdResult {
   if (id > MAX_INT4) return { ok: false, status: 404 };
   return { ok: true, id };
 }
+
+/** REC-16, REC-17: an image id follows the same rules as a recipe id. */
+export const parseImageId = parseRecipeId;
