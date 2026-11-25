@@ -10,7 +10,7 @@ Start the next session here. This file replaces
 | Brainstorm | Done. Design [2026-11-25-recipes-design.md](../superpowers/specs/2026-11-25-recipes-design.md), **approved by the owner 2026-11-25**. |
 | Plan | [2026-11-25-recipes.md](../superpowers/plans/2026-11-25-recipes.md): 16 tasks, reviewed, **no task started**. |
 | Execution method | **Subagent-driven** (owner's choice): `superpowers:subagent-driven-development`, using the project's `nosh-dev` and `nosh-reviewer` agents. |
-| Branch | `claude/recipes` in the worktree `.claude/worktrees/recipes`. It holds the design, the plan and this handover. **Local only, never pushed.** Continue in this worktree; don't make a new one. |
+| Branch | `claude/recipes` in the worktree `.claude/worktrees/recipes`. It holds the design, the plan and this handover. Pushed to `origin/claude/recipes` (no PR yet). Continue in this worktree; don't make a new one. |
 | Production | Unchanged since the skeleton deploy. v2 is live at `https://nosh.itsthomassito.com`. |
 
 ## What the owner decided (don't reopen)
