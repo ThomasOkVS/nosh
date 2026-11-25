@@ -1,6 +1,6 @@
 # Recipes group: design
 
-**Date:** 2026-11-25 · **Status:** draft for the owner's review (builder-checked)
+**Date:** 2026-11-25 · **Status:** approved by the owner 2026-11-25
 **Inputs:** [restart design](2026-11-24-nosh-restart-design.md) (§7 look, §8
 order) · [recipes spec](nosh-v2/recipes.md) (REC) ·
 [security spec](nosh-v2/security.md) (SEC) ·
