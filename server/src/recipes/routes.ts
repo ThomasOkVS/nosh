@@ -42,5 +42,38 @@ export function recipeRoutes(deps: { db: Db; images: ImageStore }) {
       const recipe = await repo.get(user.id, parsed.id);
       if (!recipe) return c.json({ error: "Recipe not found" }, 404);
       return c.json(recipe);
+    })
+    .put("/:id", jsonBody(recipeBody), async (c) => {
+      const user = c.get("user");
+      if (!user) return c.json({ error: "Not authenticated" }, 401);
+      const parsed = parseRecipeId(c.req.param("id"));
+      if (!parsed.ok) {
+        return parsed.status === 400
+          ? c.json({ error: "Invalid recipe id" }, 400)
+          : c.json({ error: "Recipe not found" }, 404);
+      }
+      // REC-12: the collection is never changed by an update, so body.collectionId is ignored.
+      const recipe = await repo.update(user.id, parsed.id, c.req.valid("json"));
+      if (!recipe) return c.json({ error: "Recipe not found" }, 404);
+      return c.json(recipe);
+    })
+    .delete("/:id", async (c) => {
+      const user = c.get("user");
+      if (!user) return c.json({ error: "Not authenticated" }, 401);
+      const parsed = parseRecipeId(c.req.param("id"));
+      if (!parsed.ok) {
+        return parsed.status === 400
+          ? c.json({ error: "Invalid recipe id" }, 400)
+          : c.json({ error: "Recipe not found" }, 404);
+      }
+      const removed = await repo.remove(user.id, parsed.id);
+      if (!removed) return c.json({ error: "Recipe not found" }, 404);
+      // The rows are already gone; a file that cannot be removed is logged, not a failed delete.
+      try {
+        await deps.images.remove(removed.fileNames);
+      } catch (err) {
+        console.error(`recipe ${parsed.id} deleted but image files remain`, err);
+      }
+      return c.body(null, 204);
     });
 }

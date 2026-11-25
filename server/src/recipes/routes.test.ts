@@ -1,11 +1,13 @@
-import { count } from "drizzle-orm";
+import { access, mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { count, eq } from "drizzle-orm";
 import { RECIPE_MESSAGES, type RecipeDto } from "@nosh/shared";
 import { describe, expect, it, vi } from "vitest";
 import { createRecipe, makeRecipeApp, signedInHeaders } from "../../test/recipes.js";
-import { recipeImages, recipes, tags } from "../db/schema.js";
+import { ingredients, recipeImages, recipes, recipeTags, steps, tags } from "../db/schema.js";
 import { parseRecipeId } from "./ids.js";
 
-const { app, db } = await makeRecipeApp();
+const { app, db, uploadsDir } = await makeRecipeApp();
 
 const get = (path: string, headers: Record<string, string>) => app.request(path, { headers });
 const json = async <T = RecipeDto>(res: Response) => (await res.json()) as T;
@@ -330,5 +332,175 @@ describe("list", () => {
     await createRecipe(app, headers, { title: "dessert", tags: ["Crème"] });
     const res = await json<RecipeDto[]>(await get(`/api/recipes?tag=${encodeURIComponent("CRÈME")}`, headers));
     expect(res.map((r) => r.title)).toEqual(["dessert"]);
+  });
+});
+
+const put = (id: number | string, headers: Record<string, string>, body: unknown) =>
+  app.request(`/api/recipes/${id}`, {
+    method: "PUT",
+    headers: { "content-type": "application/json", ...headers },
+    body: JSON.stringify(body),
+  });
+const del = (id: number | string, headers: Record<string, string>) =>
+  app.request(`/api/recipes/${id}`, { method: "DELETE", headers });
+const fileExists = (path: string) =>
+  access(path).then(
+    () => true,
+    () => false,
+  );
+
+describe("update", () => {
+  it("REC-12: replaces fields, ingredients, steps and tags; keeps the collection and images; updatedAt moves forward", async () => {
+    const headers = await signedInHeaders(db);
+    const created = await json(
+      await createRecipe(app, headers, {
+        title: "old",
+        description: "d",
+        servings: 2,
+        prepTimeMinutes: 5,
+        cookTimeMinutes: 6,
+        ingredients: [{ name: "a" }, { name: "b" }, { name: "c" }],
+        steps: [{ instruction: "one" }, { instruction: "two" }],
+        tags: ["x", "y"],
+      }),
+    );
+    await db.update(recipes).set({ collectionId: 7 }).where(eq(recipes.id, created.id));
+    const [img] = await db
+      .insert(recipeImages)
+      .values({ recipeId: created.id, fileName: "a.jpg", contentType: "image/jpeg", position: 0, isCover: true })
+      .returning({ id: recipeImages.id });
+    await new Promise((r) => setTimeout(r, 20));
+
+    const res = await put(created.id, headers, {
+      title: "new",
+      servings: 4,
+      ingredients: [{ quantity: "1", name: "z" }],
+      steps: [{ instruction: "only" }],
+      tags: ["Y", "w"],
+      collectionId: null,
+    });
+    expect(res.status).toBe(200);
+    const body = await json(res);
+    expect(body).toMatchObject({
+      id: created.id,
+      title: "new",
+      description: null,
+      servings: 4,
+      prepTimeMinutes: null,
+      cookTimeMinutes: null,
+      tags: ["w", "y"],
+      collectionId: 7,
+      coverImageId: img?.id,
+    });
+    expect(body.images.map((i) => i.id)).toEqual([img?.id]);
+    expect(body.ingredients.map((i) => [i.position, i.name, i.quantity])).toEqual([[0, "z", "1"]]);
+    expect(body.steps.map((s) => [s.position, s.instruction])).toEqual([[0, "only"]]);
+    expect(body.createdAt).toBe(created.createdAt);
+    expect(Date.parse(body.updatedAt)).toBeGreaterThan(Date.parse(created.updatedAt));
+    expect(await json(await get(`/api/recipes/${created.id}`, headers))).toEqual(body);
+    const [ing] = await db.select({ n: count() }).from(ingredients);
+    const [st] = await db.select({ n: count() }).from(steps);
+    expect([ing?.n, st?.n]).toEqual([1, 1]);
+  });
+
+  it("REC-03 REC-12: an invalid body is 400 with the message and changes nothing", async () => {
+    const headers = await signedInHeaders(db);
+    const created = await json(await createRecipe(app, headers, { title: "keep", tags: ["t"] }));
+    const res = await put(created.id, headers, { title: " " });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "Title is required" });
+    expect(await json(await get(`/api/recipes/${created.id}`, headers))).toEqual(created);
+  });
+
+  it("REC-12 REC-08: PUT with a bad id is 400, a missing or oversized id is 404", async () => {
+    const headers = await signedInHeaders(db);
+    const bad = await put("abc", headers, { title: "x" });
+    expect(bad.status).toBe(400);
+    expect(await bad.json()).toEqual({ error: "Invalid recipe id" });
+    for (const id of [9999, "99999999999"]) {
+      const res = await put(id, headers, { title: "x" });
+      expect(res.status).toBe(404);
+      expect(await res.json()).toEqual({ error: "Recipe not found" });
+    }
+  });
+
+  it("REC-12: another user's recipe is 404 and unchanged", async () => {
+    const alice = await signedInHeaders(db, "alice");
+    const bob = await signedInHeaders(db, "bobby");
+    const created = await json(
+      await createRecipe(app, alice, { title: "mine", tags: ["t"], steps: [{ instruction: "s" }] }),
+    );
+    const res = await put(created.id, bob, { title: "stolen" });
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "Recipe not found" });
+    expect(await json(await get(`/api/recipes/${created.id}`, alice))).toEqual(created);
+  });
+
+  it("REC-04: updating sourceUrl to null clears it", async () => {
+    const headers = await signedInHeaders(db);
+    const created = await json(await createRecipe(app, headers, { title: "a", sourceUrl: "https://example.com/r" }));
+    const kept = await json(await put(created.id, headers, { title: "a", sourceUrl: " https://example.com/s " }));
+    expect(kept.sourceUrl).toBe("https://example.com/s");
+    const cleared = await json(await put(created.id, headers, { title: "a", sourceUrl: null }));
+    expect(cleared.sourceUrl).toBeNull();
+    expect((await put(created.id, headers, { title: "a", sourceUrl: "ftp://x" })).status).toBe(400);
+  });
+});
+
+describe("delete", () => {
+  it("REC-13: deletes the recipe, its rows and its files (original and card); a missing file is fine; a later read is 404", async () => {
+    const headers = await signedInHeaders(db);
+    const created = await json(
+      await createRecipe(app, headers, {
+        title: "gone",
+        tags: ["t"],
+        ingredients: [{ name: "i" }],
+        steps: [{ instruction: "s" }],
+      }),
+    );
+    await mkdir(uploadsDir, { recursive: true });
+    for (const f of ["one.jpg", "one-card.jpg"]) await writeFile(join(uploadsDir, f), "x");
+    await db.insert(recipeImages).values([
+      { recipeId: created.id, fileName: "one.jpg", cardFileName: "one-card.jpg", contentType: "image/jpeg", position: 0, isCover: true },
+      { recipeId: created.id, fileName: "missing.jpg", cardFileName: "missing-card.jpg", contentType: "image/jpeg", position: 1, isCover: false },
+    ]);
+
+    const res = await del(created.id, headers);
+    expect(res.status).toBe(204);
+    expect(await res.text()).toBe("");
+    for (const table of [recipes, ingredients, steps, recipeTags, recipeImages]) {
+      const [row] = await db.select({ n: count() }).from(table);
+      expect(row?.n).toBe(0);
+    }
+    expect(await fileExists(join(uploadsDir, "one.jpg"))).toBe(false);
+    expect(await fileExists(join(uploadsDir, "one-card.jpg"))).toBe(false);
+    const read = await get(`/api/recipes/${created.id}`, headers);
+    expect(read.status).toBe(404);
+    expect(await read.json()).toEqual({ error: "Recipe not found" });
+  });
+
+  it("REC-07: removing a recipe leaves its tag names in the tags table", async () => {
+    const headers = await signedInHeaders(db);
+    const created = await json(await createRecipe(app, headers, { title: "t", tags: ["soup", "quick"] }));
+    expect((await del(created.id, headers)).status).toBe(204);
+    const names = (await db.select({ name: tags.name }).from(tags)).map((t) => t.name);
+    expect(names.sort()).toEqual(["quick", "soup"]);
+  });
+
+  it("REC-13: another user's recipe is 404 and nothing is deleted", async () => {
+    const alice = await signedInHeaders(db, "alice");
+    const bob = await signedInHeaders(db, "bobby");
+    const created = await json(await createRecipe(app, alice, { title: "mine", tags: ["t"] }));
+    await mkdir(uploadsDir, { recursive: true });
+    await writeFile(join(uploadsDir, "keep.jpg"), "x");
+    await db
+      .insert(recipeImages)
+      .values({ recipeId: created.id, fileName: "keep.jpg", contentType: "image/jpeg", position: 0, isCover: true });
+    const res = await del(created.id, bob);
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "Recipe not found" });
+    expect(await fileExists(join(uploadsDir, "keep.jpg"))).toBe(true);
+    expect((await json(await get(`/api/recipes/${created.id}`, alice))).images).toHaveLength(1);
+    expect((await del("abc", alice)).status).toBe(400);
   });
 });

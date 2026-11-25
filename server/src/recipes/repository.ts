@@ -189,5 +189,97 @@ export function createRecipeRepository(db: Db) {
       if (!created) throw new Error("created recipe not found");
       return created;
     },
+
+    /**
+     * REC-12: replaces the fields, ingredients, steps and tags in one transaction under a
+     * row lock; the collection and the images are not touched. Null when not the owner's.
+     */
+    async update(userId: string, id: number, body: RecipeBody): Promise<RecipeDto | null> {
+      const found = await db.transaction(async (tx) => {
+        const [locked] = await tx
+          .select({ id: recipes.id })
+          .from(recipes)
+          .where(and(eq(recipes.id, id), eq(recipes.userId, userId)))
+          .for("update");
+        if (!locked) return false;
+
+        await tx
+          .update(recipes)
+          .set({
+            title: body.title,
+            description: body.description,
+            servings: body.servings,
+            prepTimeMinutes: body.prepTimeMinutes,
+            cookTimeMinutes: body.cookTimeMinutes,
+            sourceUrl: body.sourceUrl,
+            updatedAt: sql`now()`,
+          })
+          .where(eq(recipes.id, id));
+
+        await tx.delete(ingredients).where(eq(ingredients.recipeId, id));
+        await tx.delete(steps).where(eq(steps.recipeId, id));
+        await tx.delete(recipeTags).where(eq(recipeTags.recipeId, id));
+        if (body.ingredients.length > 0) {
+          await tx.insert(ingredients).values(
+            body.ingredients.map((i, position) => ({
+              recipeId: id,
+              position,
+              quantity: i.quantity,
+              unit: i.unit,
+              name: i.name,
+            })),
+          );
+        }
+        if (body.steps.length > 0) {
+          await tx
+            .insert(steps)
+            .values(
+              body.steps.map((s, position) => ({
+                recipeId: id,
+                position,
+                instruction: s.instruction,
+              })),
+            );
+        }
+
+        const names = tagNames(body.tags);
+        if (names.length > 0) {
+          await tx
+            .insert(tags)
+            .values(names.map((name) => ({ name })))
+            .onConflictDoNothing({ target: tags.name });
+          const tagRows = await tx
+            .select({ id: tags.id })
+            .from(tags)
+            .where(inArray(tags.name, names));
+          await tx
+            .insert(recipeTags)
+            .values(tagRows.map((t) => ({ recipeId: id, tagId: t.id })));
+        }
+        return true;
+      });
+      return found ? get(userId, id) : null;
+    },
+
+    /** REC-13: rows go in one statement (cascades); the caller removes the files after the commit. */
+    async remove(userId: string, id: number): Promise<{ fileNames: string[] } | null> {
+      return db.transaction(async (tx) => {
+        const [row] = await tx
+          .select({ id: recipes.id })
+          .from(recipes)
+          .where(and(eq(recipes.id, id), eq(recipes.userId, userId)))
+          .for("update");
+        if (!row) return null;
+        const images = await tx
+          .select({ fileName: recipeImages.fileName, cardFileName: recipeImages.cardFileName })
+          .from(recipeImages)
+          .where(eq(recipeImages.recipeId, id));
+        await tx.delete(recipes).where(eq(recipes.id, id));
+        const fileNames = images.flatMap((i) =>
+          i.cardFileName === null ? [i.fileName] : [i.fileName, i.cardFileName],
+        );
+        return { fileNames };
+      });
+    },
   };
 }
