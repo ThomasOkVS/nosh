@@ -1,7 +1,14 @@
 import { z } from "zod";
 
 /** REC-03: the caps on a recipe (owner decision Q12). */
-export const RECIPE_LIMITS = { title: 200, ingredients: 100, steps: 100, tags: 30 } as const;
+export const RECIPE_LIMITS = {
+  title: 200,
+  ingredients: 100,
+  steps: 100,
+  tags: 30,
+  /** Characters per tag: keeps a tag name well inside the btree index entry limit. */
+  tagLength: 50,
+} as const;
 
 /** The exact messages the API returns and the form shows for REC-03 and REC-04. */
 export const RECIPE_MESSAGES = {
@@ -17,6 +24,7 @@ export const RECIPE_MESSAGES = {
   ingredientName: "Every ingredient needs a name",
   stepInstruction: "Every step needs an instruction",
   tagBlank: "Tags can't be blank",
+  tagTooLong: "Tags must be at most 50 characters",
   sourceUrl: "Source URL must be an http or https link",
   quantityBlank: "Quantity can't be blank",
   unitBlank: "Unit can't be blank",
@@ -83,14 +91,18 @@ export const recipeBody = z.object({
   ingredients: z.array(ingredientBody).max(RECIPE_LIMITS.ingredients, M.tooManyIngredients).default([]),
   steps: z.array(stepBody).max(RECIPE_LIMITS.steps, M.tooManySteps).default([]),
   tags: z
-    .array(z.string().trim().min(1, M.tagBlank))
+    .array(z.string().trim().min(1, M.tagBlank).max(RECIPE_LIMITS.tagLength, M.tagTooLong))
     .max(RECIPE_LIMITS.tags, M.tooManyTags)
     .default([]),
 });
 export type RecipeBody = z.output<typeof recipeBody>;
 
-/** REC-07: a tag is stored trimmed and lower-cased. */
-export const normaliseTag = (raw: string): string => raw.trim().toLocaleLowerCase("en");
+/**
+ * REC-07: a tag is stored trimmed and lower-cased, in Unicode NFC so a decomposed
+ * "crème" (e + combining grave) and a precomposed one are the same tag.
+ */
+export const normaliseTag = (raw: string): string =>
+  raw.normalize("NFC").trim().toLocaleLowerCase("en");
 
 export type IngredientDto = {
   id: number;

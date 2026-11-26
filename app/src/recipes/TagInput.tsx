@@ -16,10 +16,12 @@ interface TagInputProps {
  * REC-35: tags as removable chips. Enter, a comma or leaving the field adds
  * the typed tag trimmed and lower-cased; blanks and tags already there (in any
  * case) are ignored; Backspace in an empty field removes the last chip; at 30
- * tags nothing more is added.
+ * tags nothing more is added. A tag over 50 characters is refused with its
+ * message and the typed text stays, so it can be shortened (REC-03).
  */
 export function TagInput({ value, onChange, label = "Tags", className }: TagInputProps) {
   const [draft, setDraft] = useState("");
+  const [tooLong, setTooLong] = useState(false);
   const hintId = useId();
   const full = value.length >= RECIPE_LIMITS.tags;
 
@@ -35,15 +37,24 @@ export function TagInput({ value, onChange, label = "Tags", className }: TagInpu
     return next;
   }
 
+  const overLength = (entries: string[]) =>
+    entries.some((entry) => normaliseTag(entry).length > RECIPE_LIMITS.tagLength);
+
   function commit(entries: string[], rest = "") {
     // At the cap nothing is added and the typed text stays, so none of it is lost.
     if (full) return;
+    // Nothing of an entry list with an over-long tag is added; the text stays as typed.
+    if (overLength(entries)) {
+      setTooLong(true);
+      return;
+    }
     const next = add(value, entries);
     if (next.length !== value.length) onChange(next);
     setDraft(rest);
   }
 
   function changed(text: string) {
+    setTooLong(false);
     // A comma, typed or pasted, ends a tag; mobile keyboards may not send a
     // key event for it, so the text itself is checked.
     if (!text.includes(",")) {
@@ -56,6 +67,11 @@ export function TagInput({ value, onChange, label = "Tags", className }: TagInpu
     }
     const parts = text.split(",");
     const rest = parts.pop() ?? "";
+    if (overLength(parts)) {
+      setDraft(text);
+      setTooLong(true);
+      return;
+    }
     commit(parts, rest);
   }
 
@@ -114,6 +130,7 @@ export function TagInput({ value, onChange, label = "Tags", className }: TagInpu
       <p id={hintId} className="mt-1.5 text-xs text-muted-foreground">
         Press Enter or comma to add a tag.
         {full && <span className="ml-1 font-medium text-destructive">{RECIPE_MESSAGES.tooManyTags}</span>}
+        {tooLong && <span className="ml-1 font-medium text-destructive">{RECIPE_MESSAGES.tagTooLong}</span>}
       </p>
     </div>
   );

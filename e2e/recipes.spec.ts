@@ -10,7 +10,7 @@ test.beforeAll(async () => {
   await resetAccounts();
 });
 
-test("REC-02 REC-14 REC-20 REC-23 REC-24 REC-40: empty library → create with a photo → recipe page → edit → tag filter → delete → empty again", async ({
+test("REC-02 REC-10 REC-14 REC-20 REC-23 REC-24 REC-40: empty library → create with a photo → recipe page → edit → tag chip filter → tag link on the recipe page → delete → empty again", async ({
   page,
 }) => {
   await page.goto("/signup");
@@ -61,11 +61,23 @@ test("REC-02 REC-14 REC-20 REC-23 REC-24 REC-40: empty library → create with a
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page.getByRole("heading", { name: "Pancakes" })).toBeVisible();
 
-  // Tag filter: the tag link on the recipe page opens the filtered library.
+  // REC-10: the "soup" chip in the library filters it.
   await page.getByRole("link", { name: "Back to library" }).click();
   await expect(page.getByText("2 recipes")).toBeVisible();
   await page.getByRole("navigation", { name: "Tags" }).getByRole("link", { name: "soup" }).click();
   await expect(page).toHaveURL(/\?tag=soup/);
+  await expect(page.getByText("1 of 2")).toBeVisible();
+  await expect(page.getByText("Roasted tomato soup")).toBeVisible();
+  await expect(page.getByText("Pancakes")).toHaveCount(0);
+
+  // REC-23: the tag link on the recipe page opens the library filtered by it.
+  await page.goto("/");
+  await expect(page.getByText("2 recipes")).toBeVisible();
+  await page.getByText("Roasted tomato soup").click();
+  await expect(page.getByRole("heading", { name: "Roasted tomato soup" })).toBeVisible();
+  await page.getByTestId("recipe-tags").getByRole("link", { name: "soup" }).click();
+  await expect(page).toHaveURL(/\?tag=soup/);
+  await expect(page.getByRole("heading", { name: "Library", exact: true })).toBeVisible();
   await expect(page.getByText("1 of 2")).toBeVisible();
   await expect(page.getByText("Roasted tomato soup")).toBeVisible();
   await expect(page.getByText("Pancakes")).toHaveCount(0);

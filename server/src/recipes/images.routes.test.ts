@@ -453,6 +453,52 @@ describe("serving", () => {
     expect(await imageRowCount()).toBe(0);
   });
 
+  it("REC-16 SEC-25 SEC-60: a stored content type that is not JPEG, PNG or WebP is served as application/octet-stream; the card stays WebP", async () => {
+    const headers = await signedInHeaders(db);
+    const recipe = await newRecipe(headers);
+    await mkdir(uploadsDir, { recursive: true });
+    await writeFile(join(uploadsDir, "odd.html"), "<script>alert(1)</script>");
+    await writeFile(join(uploadsDir, "odd.webp"), await fx("tiny.png"));
+    const [row] = await db
+      .insert(recipeImages)
+      .values({
+        recipeId: recipe.id,
+        fileName: "odd.html",
+        cardFileName: "odd.webp",
+        contentType: "text/html",
+        position: 0,
+        isCover: true,
+      })
+      .returning({ id: recipeImages.id });
+    const url = `/api/recipes/${recipe.id}/images/${row?.id}`;
+    for (const method of ["GET", "HEAD"]) {
+      const res = await app.request(url, { method, headers });
+      expect(res.status, method).toBe(200);
+      expect(res.headers.get("content-type"), method).toBe("application/octet-stream");
+      expect(res.headers.get("x-content-type-options"), method).toBe("nosniff");
+      await res.arrayBuffer();
+    }
+    const card = await app.request(`${url}?size=card`, { headers });
+    expect(card.headers.get("content-type")).toBe("image/webp");
+    await card.arrayBuffer();
+  });
+
+  it("REC-16: each stored image type (JPEG, PNG, WebP) is served as itself", async () => {
+    const headers = await signedInHeaders(db);
+    const recipe = await newRecipe(headers);
+    await mkdir(uploadsDir, { recursive: true });
+    for (const [position, type] of ["image/jpeg", "image/png", "image/webp"].entries()) {
+      await writeFile(join(uploadsDir, `f${position}`), await fx("tiny.png"));
+      const [row] = await db
+        .insert(recipeImages)
+        .values({ recipeId: recipe.id, fileName: `f${position}`, contentType: type, position })
+        .returning({ id: recipeImages.id });
+      const res = await app.request(`/api/recipes/${recipe.id}/images/${row?.id}`, { headers });
+      expect(res.headers.get("content-type"), type).toBe(type);
+      await res.arrayBuffer();
+    }
+  });
+
   it("REC-16: a stored row whose file is missing on disk is 404 \"Image not found\", not 500", async () => {
     const headers = await signedInHeaders(db);
     const recipe = await newRecipe(headers);

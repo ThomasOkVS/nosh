@@ -43,7 +43,7 @@ export function RecipeCard({ recipe, caption }: RecipeCardProps) {
               loading="lazy"
               decoding="async"
               draggable={false}
-              className="size-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+              className="size-full object-cover motion-safe:transition-transform motion-safe:duration-500 motion-safe:group-hover:scale-[1.03]"
             />
           )}
         </div>

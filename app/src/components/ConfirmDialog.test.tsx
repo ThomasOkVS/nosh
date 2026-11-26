@@ -83,11 +83,7 @@ describe("ConfirmDialog", () => {
   it("REC-39: the page behind cannot scroll while open", async () => {
     setup();
     await screen.findByRole("alertdialog");
-    const locked =
-      document.body.style.overflow === "hidden" ||
-      document.documentElement.style.overflow === "hidden" ||
-      document.body.hasAttribute("data-base-ui-scroll-locked") ||
-      document.documentElement.hasAttribute("data-base-ui-scroll-locked");
-    expect(locked).toBe(true);
+    // Base UI's scroll lock sets overflow: hidden on the body.
+    expect(document.body.style.overflow).toBe("hidden");
   });
 });

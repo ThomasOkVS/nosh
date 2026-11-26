@@ -38,7 +38,15 @@ export function createQueryClient(opts: { test?: boolean } = {}): QueryClient {
       onError: (error, _vars, _ctx, mutation) => handle(error, mutation.meta?.authRequest),
     }),
     defaultOptions: {
-      queries: { retry: opts.test ? false : 1 },
+      // One retry for a network blip or a 5xx; a 4xx answer (404 Recipe not
+      // found, say) would only be refused again, so it shows at once.
+      queries: {
+        retry: opts.test
+          ? false
+          : (failures, error) =>
+              !(error instanceof ApiError && error.status >= 400 && error.status < 500) &&
+              failures < 1,
+      },
       mutations: { retry: false },
     },
   });

@@ -70,6 +70,15 @@ describe("recipe tables", () => {
     await db.insert(recipes).values({ userId: user.id, title: "Ok", servings: 1 });
   });
 
+  it("design §6.1 REC-15: recipe_images has a plain index on recipe_id for listing every image of a recipe", async () => {
+    const rows = await db.execute<{ indexdef: string }>(
+      sql`select indexdef from pg_indexes where tablename = 'recipe_images' and indexname = 'recipe_images_recipe_idx'`,
+    );
+    expect([...rows].map((r) => r.indexdef)).toEqual([
+      expect.stringMatching(/USING btree \(recipe_id\)$/),
+    ]);
+  });
+
   it("design §6.1: tag names are unique", async () => {
     await db.insert(tags).values({ name: "dinner" });
     await expect(db.insert(tags).values({ name: "dinner" })).rejects.toSatisfy(

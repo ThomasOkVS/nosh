@@ -1,5 +1,10 @@
 # nosh restart: handover before building the recipes group (2026-11-25)
 
+> **Superseded (2026-11-26):** PR1 of the recipes group (plan Tasks 1 to 12) is
+> built. For what was decided while building it, see
+> [decisions.md](../decisions.md); for what is left, see
+> [backlog.md](../backlog.md).
+
 Start the next session here. This file replaces
 [2026-11-24-deploy-handover.md](2026-11-24-deploy-handover.md).
 

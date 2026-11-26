@@ -1,7 +1,7 @@
 import type { RecipeDto } from "@nosh/shared";
 import { screen, waitFor, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { deferred, owner, server } from "../../../test/msw";
 import { recipeDto } from "../../../test/recipes";
 import { renderApp } from "../../../test/render";
@@ -91,6 +91,27 @@ describe("library", () => {
       "vegetarian",
     ]);
     expect(within(chips).getByRole("link", { name: "all" })).toHaveAttribute("aria-current", "page");
+  });
+
+  it('REC-10: a tag named "all" is its own chip beside the "all" chip, without a duplicate React key', async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      signedIn([recipeDto({ id: 1, title: "Everything Bagel", tags: ["all", "bread"] })]);
+      const { router, user } = renderApp("/");
+
+      const chips = await screen.findByRole("navigation", { name: "Tags" });
+      const links = within(chips).getAllByRole("link");
+      expect(links.map((a) => a.textContent)).toEqual(["all", "all", "bread"]);
+      expect(links[0]).toHaveAttribute("aria-current", "page");
+      expect(links[1]).not.toHaveAttribute("aria-current");
+
+      await user.click(links[1]!);
+      await waitFor(() => expect(router.state.location.search).toEqual({ tag: "all" }));
+      expect(within(chips).getAllByRole("link").map((a) => a.textContent)).toEqual(["all", "all", "bread"]);
+      expect(errors.mock.calls.filter((call) => String(call[0]).includes("same key"))).toEqual([]);
+    } finally {
+      errors.mockRestore();
+    }
   });
 
   it('REC-10 REC-23: /?tag=Soup shows only soup recipes with the "soup" chip active; "all" clears it', async () => {

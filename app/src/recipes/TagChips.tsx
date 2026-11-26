@@ -24,7 +24,8 @@ export function TagChips({ tags, active }: TagChipsProps) {
         {chips.map(({ label, tag }) => {
           const isActive = tag === active;
           return (
-            <li key={label}>
+            // A tag can be named "all"; "" is never a tag (blank tags are refused).
+            <li key={tag ?? ""}>
               <Link
                 to="/"
                 search={tag === undefined ? {} : { tag }}

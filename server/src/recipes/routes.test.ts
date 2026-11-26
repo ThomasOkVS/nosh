@@ -1,7 +1,8 @@
+import { randomBytes } from "node:crypto";
 import { access, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { count, eq } from "drizzle-orm";
-import { RECIPE_MESSAGES, type RecipeDto } from "@nosh/shared";
+import { RECIPE_LIMITS, RECIPE_MESSAGES, type RecipeDto } from "@nosh/shared";
 import { describe, expect, it, vi } from "vitest";
 import { createRecipe, makeRecipeApp, signedInHeaders } from "../../test/recipes.js";
 import { ingredients, recipeImages, recipes, recipeTags, steps, tags } from "../db/schema.js";
@@ -178,6 +179,33 @@ describe("create", () => {
     const created = await json(await createRecipe(app, headers, { title: "a", tags: ["CRÈME", "crème", " Crème "] }));
     expect(created.tags).toEqual(["crème"]);
     expect(await db.select().from(tags)).toHaveLength(1);
+  });
+
+  it("REC-07 Review Focus 3: \"crème\" typed decomposed (e + combining grave) and precomposed make one tag", async () => {
+    const nfd = "crème";
+    const nfc = "crème";
+    expect(nfd).not.toBe(nfc);
+    const headers = await signedInHeaders(db);
+    const created = await json(await createRecipe(app, headers, { title: "a", tags: [nfd, nfc] }));
+    expect(created.tags).toEqual([nfc]);
+    expect(await db.select().from(tags)).toHaveLength(1);
+    const filtered = await json<RecipeDto[]>(
+      await get(`/api/recipes?tag=${encodeURIComponent(nfd)}`, headers),
+    );
+    expect(filtered.map((r) => r.id)).toEqual([created.id]);
+  });
+
+  it("REC-03 Review Focus 3: a tag over the cap is 400; 50 characters is fine", async () => {
+    const headers = await signedInHeaders(db);
+    // Random, so Postgres cannot compress it under the btree entry limit.
+    const huge = randomBytes(2250).toString("base64url");
+    expect(huge).toHaveLength(3000);
+    const res = await createRecipe(app, headers, { title: "x", tags: [huge] });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: RECIPE_MESSAGES.tagTooLong });
+    expect(await db.select().from(tags)).toHaveLength(0);
+    const fits = await createRecipe(app, headers, { title: "y", tags: ["a".repeat(RECIPE_LIMITS.tagLength)] });
+    expect(fits.status).toBe(201);
   });
 
   it("REC-11: no collectionId or null sits at Home; any given id is 404 \"Collection not found\" and creates nothing", async () => {

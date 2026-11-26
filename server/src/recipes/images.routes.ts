@@ -22,6 +22,11 @@ const REFUSAL: Record<Refused["reason"], string> = {
 /** design §6.2: a replaced image has a new id and so a new URL, so the bytes never change. */
 const CACHE_CONTROL = "private, max-age=31536000, immutable";
 
+/** The only types an original is served as; anything else in a row (a bad v1 import) is plain bytes. */
+const SERVED_TYPES: ReadonlySet<string> = new Set(["image/jpeg", "image/png", "image/webp"]);
+const servedType = (stored: string) =>
+  SERVED_TYPES.has(stored) ? stored : "application/octet-stream";
+
 /** Matches only the upload route; app.ts exempts it from the global 100 KiB limit (SEC-27). */
 export const IMAGE_UPLOAD_PATH = /^\/api\/recipes\/[^/]+\/images$/;
 
@@ -166,7 +171,7 @@ export function imageRoutes(deps: { db: Db; images: ImageStore }) {
         throw err;
       }
       const imageHeaders = {
-        "Content-Type": card ? "image/webp" : image.contentType,
+        "Content-Type": card ? "image/webp" : servedType(image.contentType),
         "Content-Length": String(size),
         "Cache-Control": CACHE_CONTROL,
       };

@@ -206,3 +206,14 @@ only after the host firewall covers `10.102.0.0/24` (Task 16).
 
 **Why:** the server will fetch user-supplied URLs; the guard is not enough
 while the container's network can still reach the host's internal ranges.
+
+## 2026-11-26: Tags are at most 50 characters
+
+**Decision:** a tag is at most 50 characters (`RECIPE_LIMITS.tagLength`). The
+API refuses a longer one with 400 "Tags must be at most 50 characters"; the
+tag field refuses to add it, shows that message and keeps the typed text.
+Tags are also stored in Unicode NFC, so a decomposed and a precomposed
+"crème" are one tag.
+
+**Why:** with no cap, a long random tag overflowed the btree entry limit of
+the unique index on `tags.name`, and the save failed as a 500.

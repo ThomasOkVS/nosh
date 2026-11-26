@@ -195,9 +195,12 @@ describe("recipe form", () => {
   });
 
   describe("auto-grow", () => {
+    // jsdom defines scrollHeight on Element.prototype, so the textarea stub is
+    // usually an own property that must be removed again, not restored.
     const original = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "scrollHeight");
     afterEach(() => {
       if (original) Object.defineProperty(HTMLTextAreaElement.prototype, "scrollHeight", original);
+      else Reflect.deleteProperty(HTMLTextAreaElement.prototype, "scrollHeight");
     });
 
     it("REC-28: description and step fields grow with their content", async () => {
@@ -339,6 +342,29 @@ describe("recipe form", () => {
     await waitFor(() => expect(banner).toHaveFocus());
     expect(screen.getByRole("textbox", { name: "Title" })).toHaveValue("Toast");
     expect(screen.getByRole("textbox", { name: "Ingredient 1" })).toHaveValue("bread");
+    expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
+  });
+
+  it("REC-30: a failed edit shows a focused banner with the server's message, stays on the form and keeps the input", async () => {
+    signedIn(stoverij);
+    server.use(
+      http.put("/api/recipes/5", () =>
+        HttpResponse.json({ error: RECIPE_MESSAGES.tagTooLong }, { status: 400 }),
+      ),
+    );
+    const { user, router } = await openEdit();
+    const title = screen.getByRole("textbox", { name: "Title" });
+    await user.clear(title);
+    await user.type(title, "Stoverij");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    const banner = await screen.findByRole("alert");
+    expect(banner).toHaveTextContent(RECIPE_MESSAGES.tagTooLong);
+    await waitFor(() => expect(banner).toHaveFocus());
+    expect(router.state.location.pathname).toBe("/recipes/5/edit");
+    expect(screen.getByRole("heading", { level: 1, name: "Edit recipe" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Title" })).toHaveValue("Stoverij");
+    expect(screen.getByRole("textbox", { name: "Ingredient 1" })).toHaveValue("beef cheek");
     expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
   });
 
@@ -485,8 +511,8 @@ describe("recipe form", () => {
     expect(await screen.findByText("Image must be 5 MB or smaller")).toBeInTheDocument();
     await waitFor(() => expect(onSaved).toHaveBeenCalledWith(42));
     expect(onCreated).toHaveBeenCalledWith(expect.objectContaining({ id: 42 }));
-    // Not the form's banner: the recipe is saved.
-    expect(screen.queryByRole("alert", { name: /Image/ })).not.toBeInTheDocument();
+    // Not the form's banner: the recipe is saved. (Sonner toasts are not role="alert".)
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("REC-30: a server banner goes away when the next save is refused by the form", async () => {

@@ -1,0 +1,1 @@
+CREATE INDEX "recipe_images_recipe_idx" ON "recipe_images" USING btree ("recipe_id");

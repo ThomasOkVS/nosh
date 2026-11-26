@@ -1,7 +1,6 @@
 import type { RecipeDto } from "@nosh/shared";
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
-import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 import { deferred, owner, server } from "../../test/msw";
 import { imageDto, recipeDto } from "../../test/recipes";
@@ -13,13 +12,20 @@ let realFetch: typeof fetch;
 let fetchSpy: MockInstance<typeof fetch>;
 let created: string[] = [];
 let revoked: string[] = [];
+// jsdom has no object URLs: these are put back (or removed again) after each test.
+const realCreateObjectURL = Object.getOwnPropertyDescriptor(URL, "createObjectURL");
+const realRevokeObjectURL = Object.getOwnPropertyDescriptor(URL, "revokeObjectURL");
+
+function restore(key: "createObjectURL" | "revokeObjectURL", original: PropertyDescriptor | undefined) {
+  if (original) Object.defineProperty(URL, key, original);
+  else Reflect.deleteProperty(URL, key);
+}
 
 beforeEach(() => {
   realFetch = globalThis.fetch;
   fetchSpy = vi.spyOn(globalThis, "fetch");
   created = [];
   revoked = [];
-  // jsdom has no object URLs.
   URL.createObjectURL = vi.fn((file: Blob) => {
     const url = `blob:${(file as File).name}`;
     created.push(url);
@@ -31,9 +37,12 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  // Sonner's toast store is global; clear it so a toast never leaks into the next test.
-  toast.dismiss();
+  // Unmount first (this hook runs before the global cleanup): a preview's
+  // effect cleanup still revokes its object URL through the stub.
+  cleanup();
   vi.restoreAllMocks();
+  restore("createObjectURL", realCreateObjectURL);
+  restore("revokeObjectURL", realRevokeObjectURL);
 });
 
 /** The recipe as the server holds it; tests change it as the server would. */
@@ -156,7 +165,7 @@ describe("form photo section", () => {
     expect(screen.getByRole("textbox", { name: "Title" })).toHaveValue("Edited but not saved");
   });
 
-  it("REC-33: while uploading the area shows Uploading… and is disabled", async () => {
+  it("REC-33: while uploading the area shows Uploading… in a polite live region and is disabled", async () => {
     const state = serve(plain);
     acceptUpload(state);
     // jsdom's FormData cannot be held mid-flight through msw, so hold the POST here.
@@ -173,7 +182,7 @@ describe("form photo section", () => {
 
     await user.upload(fileInput(), png("new.png"));
 
-    expect(await screen.findByText("Uploading…")).toBeInTheDocument();
+    expect(await screen.findByText("Uploading…")).toHaveAttribute("aria-live", "polite");
     expect(fileInput()).toBeDisabled();
     hold.resolve();
     await screen.findByRole("img", { name: "Cover photo" });

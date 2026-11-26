@@ -263,9 +263,9 @@ describe("recipe page", () => {
   });
 
   it("REC-24: after the delete the page goes to the library at once, never refetching the deleted recipe", async () => {
-    // Production retries a failed query once, so a refetch of the deleted
-    // recipe would hold the page for a 404 and its retry. Here such a refetch
-    // never answers: the navigation must not wait for it, and must not cause it.
+    // A refetch of the deleted recipe would hold the page for its 404. Here
+    // such a refetch never answers: the navigation must not wait for it, and
+    // must not cause it.
     let deleted = false;
     let getsAfterDelete = 0;
     const { user, router } = await openPage();
@@ -289,6 +289,8 @@ describe("recipe page", () => {
 
     await screen.findByRole("heading", { level: 1, name: "Library" });
     expect(router.state.location.pathname).toBe("/");
+    // A late refetch (an invalidation settling after the navigation) gets time to start.
+    await new Promise((resolve) => setTimeout(resolve, 100));
     expect(getsAfterDelete).toBe(0);
   });
 

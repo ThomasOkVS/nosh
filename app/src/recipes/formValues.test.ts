@@ -113,7 +113,7 @@ describe("form values", () => {
     expect(recipeFormSchema.parse(values({ servings: "2147483647" })).servings).toBe(2147483647);
   });
 
-  it("REC-28: an over-cap title or 101 ingredients is refused with the cap message", () => {
+  it("REC-28: an over-cap title, 101 ingredients or a 51-character tag is refused with the cap message", () => {
     const row = { quantity: "", unit: "", name: "salt" };
     expect(
       issues(
@@ -129,6 +129,11 @@ describe("form values", () => {
       steps: RECIPE_MESSAGES.tooManySteps,
     });
     expect(issues(values({ title: "   " }))).toEqual({ title: RECIPE_MESSAGES.titleRequired });
+    // A tag over the API's length cap (an import draft, say) is refused with its message.
+    expect(issues(values({ tags: ["soup", "a".repeat(51)] }))).toEqual({
+      tags: RECIPE_MESSAGES.tagTooLong,
+    });
+    expect(recipeFormSchema.safeParse(values({ tags: ["a".repeat(50)] })).success).toBe(true);
     // Blank rows don't count towards the cap.
     const fine = values({
       title: "x".repeat(200),

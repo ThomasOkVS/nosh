@@ -111,5 +111,9 @@ export const recipeFormSchema = z.object({
     .transform((rows) => rows.filter((row) => row.instruction !== ""))
     .pipe(z.array(z.object({ instruction: z.string() })).max(RECIPE_LIMITS.steps, M.tooManySteps)),
   // Tags are sent as entered; the tag field already trims, lower-cases and caps them (REC-35).
-  tags: z.array(z.string()).max(RECIPE_LIMITS.tags, M.tooManyTags),
+  // A loaded draft may still hold a longer tag, so its length is checked here too.
+  tags: z
+    .array(z.string())
+    .max(RECIPE_LIMITS.tags, M.tooManyTags)
+    .refine((tags) => tags.every((tag) => tag.length <= RECIPE_LIMITS.tagLength), M.tagTooLong),
 }) satisfies z.ZodType<RecipeFormOutput, RecipeFormValues>;

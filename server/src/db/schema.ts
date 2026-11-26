@@ -128,6 +128,8 @@ export const recipeImages = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
+    // Every image of a recipe (REC-15 list, REC-13 delete); the cover index is partial.
+    index("recipe_images_recipe_idx").on(table.recipeId),
     uniqueIndex("recipe_images_one_cover_idx")
       .on(table.recipeId)
       .where(sql`${table.isCover}`),

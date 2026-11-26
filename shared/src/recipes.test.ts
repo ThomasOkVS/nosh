@@ -177,4 +177,21 @@ describe("normaliseTag", () => {
   it("REC-07: trims and lower-cases", () => {
     expect(normaliseTag("  CRÈME ")).toBe("crème");
   });
+
+  it("REC-07 Review Focus 3: decomposed and precomposed \"crème\" normalise to the same precomposed tag", () => {
+    const nfd = "CRÈME";
+    const nfc = "crème";
+    expect(nfd.toLowerCase()).not.toBe(nfc);
+    expect(normaliseTag(nfd)).toBe(nfc);
+    expect(normaliseTag(` ${nfc} `)).toBe(nfc);
+  });
+});
+
+describe("recipeBody tag length", () => {
+  it("REC-03 Review Focus 3: a 50-character tag is fine, 51 is refused", () => {
+    expect(firstError({ title: "x", tags: ["a".repeat(RECIPE_LIMITS.tagLength)] })).toBeUndefined();
+    expect(firstError({ title: "x", tags: ["a".repeat(RECIPE_LIMITS.tagLength + 1)] })).toBe(
+      RECIPE_MESSAGES.tagTooLong,
+    );
+  });
 });

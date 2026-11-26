@@ -58,34 +58,63 @@ describe("query client", () => {
   it("AUTH-09: a 401 from a request marked authRequest does not trigger the redirect handler", async () => {
     const spy = vi.fn();
     const off = setOnUnauthorized(spy);
-    const client = createQueryClient({ test: true });
-    const fail = () => Promise.reject(new ApiError("Invalid username or password", 401));
-    const run = (meta?: { authRequest?: boolean }) =>
-      client.getMutationCache().build(client, { mutationFn: fail, meta }).execute(undefined).catch(() => {});
+    try {
+      const client = createQueryClient({ test: true });
+      const fail = () => Promise.reject(new ApiError("Invalid username or password", 401));
+      const run = (meta?: { authRequest?: boolean }) =>
+        client.getMutationCache().build(client, { mutationFn: fail, meta }).execute(undefined).catch(() => {});
 
-    await run({ authRequest: true });
-    expect(spy).not.toHaveBeenCalled();
+      await run({ authRequest: true });
+      expect(spy).not.toHaveBeenCalled();
 
-    await run();
-    expect(spy).toHaveBeenCalledTimes(1);
-    off();
+      await run();
+      expect(spy).toHaveBeenCalledTimes(1);
+    } finally {
+      off();
+    }
   });
 
   it("AUTH-12 AUTH-14: a 401 empties the recipe cache", async () => {
     const off = setOnUnauthorized(() => {});
-    const client = createQueryClient({ test: true });
-    client.setQueryData(["recipes"], [{ id: 1 }]);
+    try {
+      const client = createQueryClient({ test: true });
+      client.setQueryData(["recipes"], [{ id: 1 }]);
 
-    await client
-      .fetchQuery({
-        queryKey: ["other"],
-        queryFn: () => Promise.reject(new ApiError("Not authenticated", 401)),
-      })
-      .catch(() => {});
+      await client
+        .fetchQuery({
+          queryKey: ["other"],
+          queryFn: () => Promise.reject(new ApiError("Not authenticated", 401)),
+        })
+        .catch(() => {});
 
-    expect(client.getQueryData(["recipes"])).toBeUndefined();
-    expect(client.getQueryData(["session"])).toBeNull();
-    off();
+      expect(client.getQueryData(["recipes"])).toBeUndefined();
+      expect(client.getQueryData(["session"])).toBeNull();
+    } finally {
+      off();
+    }
+  });
+
+  it("REC-08 REC-27: outside tests a 4xx answer is not retried, so \"Recipe not found\" shows at once; a 5xx or a network failure is retried once", async () => {
+    const client = createQueryClient();
+    const callsFor = async (error: Error) => {
+      let calls = 0;
+      await client
+        .fetchQuery({
+          queryKey: ["retry", error.message, Math.random()],
+          queryFn: () => {
+            calls++;
+            return Promise.reject(error);
+          },
+          retryDelay: 0,
+        })
+        .catch(() => {});
+      return calls;
+    };
+
+    expect(await callsFor(new ApiError("Recipe not found", 404))).toBe(1);
+    expect(await callsFor(new ApiError("Invalid recipe id", 400))).toBe(1);
+    expect(await callsFor(new ApiError("Something went wrong", 500))).toBe(2);
+    expect(await callsFor(new TypeError("Failed to fetch"))).toBe(2);
   });
 
   it("AUTH-07 AUTH-14: a successful login empties what an earlier account left in the cache", async () => {

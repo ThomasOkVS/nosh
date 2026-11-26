@@ -159,11 +159,14 @@ export function PhotoField(props: PhotoFieldProps) {
           className="sr-only"
         />
         <ImagePlus aria-hidden className="size-6 text-muted-foreground" />
-        {upload.isPending ? (
-          <span>Uploading…</span>
-        ) : (
-          <span>{showsPhoto ? "Choose another photo or drop it here" : "Choose a photo or drop it here"}</span>
-        )}
+        {/* One live region, so "Uploading…" is announced when it appears. */}
+        <span aria-live="polite">
+          {upload.isPending
+            ? "Uploading…"
+            : showsPhoto
+              ? "Choose another photo or drop it here"
+              : "Choose a photo or drop it here"}
+        </span>
       </label>
       <p id={hintId} className="text-xs text-muted-foreground">
         JPEG, PNG, WEBP or HEIC

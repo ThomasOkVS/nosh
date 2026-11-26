@@ -1,3 +1,4 @@
+import { RECIPE_LIMITS, RECIPE_MESSAGES } from "@nosh/shared";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
@@ -68,6 +69,40 @@ describe("TagInput", () => {
     await user.type(field, "{Backspace}");
     expect(shown()).toHaveLength(29);
     expect(screen.queryByText("At most 30 tags")).not.toBeInTheDocument();
+  });
+
+  it("REC-35 REC-03: a tag over 50 characters is refused on Enter, comma or blur with its message, and the typed text stays", async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    const field = screen.getByRole("textbox", { name: "Tags" });
+    const long = "a".repeat(RECIPE_LIMITS.tagLength + 1);
+
+    await user.click(field);
+    await user.paste(long);
+    await user.keyboard("{Enter}");
+    expect(shown()).toEqual([]);
+    expect(field).toHaveValue(long);
+    expect(screen.getByText(RECIPE_MESSAGES.tagTooLong)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "elsewhere" }));
+    expect(shown()).toEqual([]);
+    expect(field).toHaveValue(long);
+    expect(screen.getByText(RECIPE_MESSAGES.tagTooLong)).toBeInTheDocument();
+
+    await user.clear(field);
+    expect(screen.queryByText(RECIPE_MESSAGES.tagTooLong)).not.toBeInTheDocument();
+    await user.paste(`soup,${long},`);
+    expect(shown()).toEqual([]);
+    expect(field).toHaveValue(`soup,${long},`);
+    expect(screen.getByText(RECIPE_MESSAGES.tagTooLong)).toBeInTheDocument();
+
+    // Exactly 50 is a tag.
+    await user.clear(field);
+    await user.paste("b".repeat(RECIPE_LIMITS.tagLength));
+    await user.keyboard("{Enter}");
+    expect(shown()).toEqual(["b".repeat(RECIPE_LIMITS.tagLength)]);
+    expect(field).toHaveValue("");
+    expect(screen.queryByText(RECIPE_MESSAGES.tagTooLong)).not.toBeInTheDocument();
   });
 
   it("REC-35: Enter in the tag field never submits the form", async () => {
