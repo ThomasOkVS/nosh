@@ -24,6 +24,8 @@ const blockedRanges: string[] = [
   "2001:db8::", "2001:db8::1", "2001:db8:ffff:ffff:ffff:ffff:ffff:ffff",
   "fc00::", "fd00::1", "fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
   "fe80::", "fe80::1", "febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+  "192.88.99.0", "192.88.99.1", "192.88.99.255", // SEC-31 hardening: 6to4 relay anycast
+  "64:ff9b:1::", "64:ff9b:1::808:808", "64:ff9b:1:ffff:ffff:ffff:ffff:ffff", // SEC-31 hardening: local-use NAT64
   "ff00::", "ff02::1", "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
 ];
 
@@ -38,6 +40,10 @@ describe("isBlockedAddress", () => {
     "172.32.0.1",
     "100.128.0.1",
     "2606:4700::1111",
+    // regression pins: outer neighbours of the blocked ranges
+    "9.255.255.255", "11.0.0.0", "126.255.255.255", "128.0.0.0",
+    "198.17.255.255", "198.20.0.0", "223.255.255.255",
+    "2001:1::", "2001:db9::", "fbff::",
   ])("SEC-32: allows %s", (ip) => {
     expect(isBlockedAddress(ip)).toBe(false);
   });
@@ -52,6 +58,9 @@ describe("isBlockedAddress", () => {
     "",
     "fe80::1%eth0",
     "999.1.1.1",
+    "::ffff:0:7f00:1", // SIIT, beyond the spec list (hardening)
+    "0:0:0:0:0:ffff:7f00:1", // regression pin
+    "::FFFF:7F00:1", // regression pin
   ])("SEC-33: blocks %s", (ip) => {
     expect(isBlockedAddress(ip)).toBe(true);
   });
@@ -61,6 +70,7 @@ describe("isBlockedAddress", () => {
     "::ffff:808:808",
     "64:ff9b::808:808",
     "2002:808:808::1",
+    "::ffff:0:808:808",
   ])("SEC-33: allows an embedded public IPv4 in %s", (ip) => {
     expect(isBlockedAddress(ip)).toBe(false);
   });
@@ -78,6 +88,14 @@ describe("checkUrl", () => {
     "http://localhost/",
     "http://foo.localhost/",
     "http://[::1]/",
+    "http://localhost../",
+    "http://[::ffff:0:7f00:1]/",
+    // regression pins
+    "http://0177.0.0.1/",
+    "http://127.1/",
+    "http://user@127.0.0.1:80/",
+    "http://[::ffff:7f00:1]/",
+    "http://LOCALHOST/",
   ])("SEC-34: rejects %s", (raw) => {
     expect(checkUrl(raw)).toEqual({ ok: false, error: "This URL cannot be imported" });
   });

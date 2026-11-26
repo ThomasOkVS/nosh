@@ -13,6 +13,7 @@ const v4Ranges: Array<[string, number]> = [
   ["192.0.0.0", 24],
   ["192.0.2.0", 24],
   ["192.168.0.0", 16],
+  ["192.88.99.0", 24], // beyond the spec list (security-review hardening): 6to4 relay anycast
   ["198.18.0.0", 15],
   ["198.51.100.0", 24],
   ["203.0.113.0", 24],
@@ -24,6 +25,7 @@ const v6Ranges: Array<[string, number]> = [
   ["100::", 64],
   ["2001::", 32],
   ["2001:db8::", 32],
+  ["64:ff9b:1::", 48], // beyond the spec list (security-review hardening): RFC 8215 local-use NAT64
   ["fc00::", 7],
   ["fe80::", 10],
   ["ff00::", 8],
@@ -66,11 +68,15 @@ export function isBlockedAddress(ip: string): boolean {
 
   const g = parseV6(ip);
   if (g.length !== 8 || g.some((x) => Number.isNaN(x))) return true;
-  const [g0, g1, g2, g3, g4, g5, g6 = 0, g7 = 0] = g as [
-    number, number, number, number, number, number, number?, number?,
+  const [g0, g1, g2, g3, g4, g5, g6, g7] = g as [
+    number, number, number, number, number, number, number, number,
   ];
   // IPv4-mapped ::ffff:a.b.c.d (dotted or hex)
   if (g0 === 0 && g1 === 0 && g2 === 0 && g3 === 0 && g4 === 0 && g5 === 0xffff) {
+    return blockList.check(v4FromGroups(g6, g7), "ipv4");
+  }
+  // SIIT ::ffff:0:a.b.c.d (beyond the spec list: security-review hardening)
+  if (g0 === 0 && g1 === 0 && g2 === 0 && g3 === 0 && g4 === 0xffff && g5 === 0) {
     return blockList.check(v4FromGroups(g6, g7), "ipv4");
   }
   // NAT64 64:ff9b::/96
@@ -107,7 +113,7 @@ export function checkUrl(raw: string): UrlCheck {
   }
   let host = url.hostname.toLowerCase();
   if (host.startsWith("[") && host.endsWith("]")) host = host.slice(1, -1);
-  if (host.endsWith(".")) host = host.slice(0, -1);
+  host = host.replace(/\.+$/, "");
   if (host === "localhost" || host.endsWith(".localhost")) {
     return { ok: false, error: "This URL cannot be imported" };
   }
