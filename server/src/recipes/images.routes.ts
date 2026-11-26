@@ -1,11 +1,17 @@
 import { open, type FileHandle } from "node:fs/promises";
 import { Readable } from "node:stream";
+import { imageFromUrlBody } from "@nosh/shared";
 import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
+import { createMiddleware } from "hono/factory";
 import type { Db } from "../db/client.js";
 import type { AppEnv } from "../http/context.js";
-import { MAX_IMAGE_BYTES, processImage, type Refused } from "../images/process.js";
+import { FixedWindowLimiter, tooMany } from "../http/rateLimit.js";
+import { jsonBody } from "../http/validate.js";
+import { MAX_IMAGE_BYTES, processImage, type Processed, type Refused } from "../images/process.js";
 import { UnsafeFileNameError, type ImageStore } from "../images/store.js";
+import { checkUrl } from "../net/addresses.js";
+import { safeFetch, type SafeFetchFailureKind } from "../net/safeFetch.js";
 import { parseImageId, parseRecipeId } from "./ids.js";
 import { createRecipeRepository } from "./repository.js";
 
@@ -19,6 +25,31 @@ const REFUSAL: Record<Refused["reason"], string> = {
   unreadable: "That image couldn't be read",
 };
 
+/** REC-19: a fetched photo that is not a JPEG, PNG or WEBP image of those bytes. */
+const NOT_SUPPORTED = "That URL isn't a supported image";
+const COULD_NOT_FETCH = "Couldn't fetch that image"; // SEC-40: never the raw error
+
+/** REC-19, SEC-39, SEC-40: the answer for each failed fetch; none is a 500. */
+const FETCH_FAILURE: Record<SafeFetchFailureKind, { status: 400 | 422 | 502; error: string }> = {
+  // A redirect to a blocked address is refused like the first URL (SEC-39).
+  blocked: { status: 400, error: "This URL cannot be imported" },
+  "too-many-redirects": { status: 502, error: "The image URL redirected too many times" },
+  "too-large": { status: 422, error: TOO_LARGE },
+  "no-location": { status: 502, error: COULD_NOT_FETCH },
+  timeout: { status: 502, error: COULD_NOT_FETCH },
+  network: { status: 502, error: COULD_NOT_FETCH },
+  http: { status: 502, error: COULD_NOT_FETCH },
+};
+
+/** REC-18, SEC-41: a photo fetch takes at most 10 seconds and 5 MB, following up to 5 redirects. */
+const FETCH_LIMITS = { timeoutMs: 10_000, maxBytes: MAX_IMAGE_BYTES, maxRedirects: 5 };
+
+/** SEC-22: photo-from-URL requests per user per hour. */
+const FROM_URL_LIMIT = { limit: 60, windowMs: 60 * 60 * 1000 };
+
+/** The declared type without parameters: `image/jpeg; charset=binary` is `image/jpeg`. */
+const bareType = (header: string | null) => header?.split(";")[0]?.trim().toLowerCase() ?? "";
+
 /** design §6.2: a replaced image has a new id and so a new URL, so the bytes never change. */
 const CACHE_CONTROL = "private, max-age=31536000, immutable";
 
@@ -27,8 +58,14 @@ const SERVED_TYPES: ReadonlySet<string> = new Set(["image/jpeg", "image/png", "i
 const servedType = (stored: string) =>
   SERVED_TYPES.has(stored) ? stored : "application/octet-stream";
 
+/** The guarded fetch the photo-from-URL route uses (REC-18); tests inject one. */
+export type FetchImage = typeof safeFetch;
+
 /** Matches only the upload route; app.ts exempts it from the global 100 KiB limit (SEC-27). */
 export const IMAGE_UPLOAD_PATH = /^\/api\/recipes\/[^/]+\/images$/;
+
+/** AppEnv plus the owned recipe's id, set once ownership is checked. */
+type OwnedRecipeEnv = AppEnv & { Variables: { recipeId: number } };
 
 /** The path's recipe id, or the 400/404 answer for it (REC-08). */
 function recipeIdOf(c: Context<AppEnv>): number | Response {
@@ -59,11 +96,14 @@ async function openStored(path: string): Promise<FileHandle | null> {
 }
 
 /**
- * Cover photo upload, serving and removal (REC-14 to REC-17, SEC-24, SEC-25).
- * Mounted inside recipeRoutes, behind requireAuth, which sets `user` (SEC-23).
+ * Cover photo upload, attach from a URL, serving and removal (REC-14 to REC-19,
+ * SEC-22, SEC-24, SEC-25). Mounted inside recipeRoutes, behind requireAuth,
+ * which sets `user` (SEC-23).
  */
-export function imageRoutes(deps: { db: Db; images: ImageStore }) {
+export function imageRoutes(deps: { db: Db; images: ImageStore; fetchImage?: FetchImage }) {
   const repo = createRecipeRepository(deps.db);
+  const fetchImage = deps.fetchImage ?? safeFetch;
+  const fromUrlPerUser = new FixedWindowLimiter(FROM_URL_LIMIT);
 
   /** Removes files whose rows are already gone; a failure is logged, never the answer. */
   async function removeQuietly(fileNames: string[], what: string) {
@@ -73,6 +113,61 @@ export function imageRoutes(deps: { db: Db; images: ImageStore }) {
       console.error(`${what}: image files remain`, err);
     }
   }
+
+  /**
+   * Saves both files and makes them the cover (REC-15), for an upload and a
+   * photo from a URL alike. Nothing is left on disk without a row: whatever was
+   * saved goes on any failure. Null when the recipe was deleted meanwhile.
+   */
+  async function storeCover(userId: string, recipeId: number, processed: Processed) {
+    const saved: string[] = [];
+    let added: Awaited<ReturnType<typeof repo.addCover>>;
+    try {
+      const fileName = await deps.images.save(processed.original, processed.ext);
+      saved.push(fileName);
+      const cardFileName = await deps.images.save(processed.card, "webp");
+      saved.push(cardFileName);
+      added = await repo.addCover(userId, recipeId, {
+        fileName,
+        cardFileName,
+        contentType: processed.contentType,
+      });
+    } catch (err) {
+      await removeQuietly(saved, `photo for recipe ${recipeId} failed`);
+      throw err;
+    }
+    if (!added) {
+      await removeQuietly(saved, `photo for deleted recipe ${recipeId}`);
+      return null;
+    }
+    // REC-15: the old cover's row is gone with the commit; now its files go too.
+    await removeQuietly(added.replaced, `cover of recipe ${recipeId} replaced`);
+    return added.image;
+  }
+
+  /**
+   * REC-18, SEC-22: the recipe must be the user's, then the user must be within
+   * the hourly limit, before the body is even read. A 404 never counts.
+   */
+  const ownedWithinLimit = createMiddleware<OwnedRecipeEnv>(async (c, next) => {
+    const user = c.get("user");
+    if (!user) return c.json({ error: "Not authenticated" }, 401);
+    // Answered inline rather than by recipeIdOf: an untyped Response would erase the
+    // route's response types for the typed client.
+    const parsed = parseRecipeId(c.req.param("id") ?? "");
+    if (!parsed.ok) {
+      return parsed.status === 400
+        ? c.json({ error: "Invalid recipe id" }, 400)
+        : c.json({ error: "Recipe not found" }, 404);
+    }
+    if (!(await repo.owns(user.id, parsed.id))) {
+      return c.json({ error: "Recipe not found" }, 404);
+    }
+    const hit = fromUrlPerUser.hit(user.id);
+    if (!hit.ok) return tooMany(c, hit.retryAfterSec);
+    c.set("recipeId", parsed.id);
+    await next();
+  });
 
   return new Hono<AppEnv>()
     .post(
@@ -107,34 +202,39 @@ export function imageRoutes(deps: { db: Db; images: ImageStore }) {
         });
         if (!processed.ok) return c.json({ error: REFUSAL[processed.reason] }, 400);
 
-        // Nothing is left on disk without a row: whatever this upload saved goes on any failure.
-        const saved: string[] = [];
-        let added: Awaited<ReturnType<typeof repo.addCover>>;
-        try {
-          const fileName = await deps.images.save(processed.original, processed.ext);
-          saved.push(fileName);
-          const cardFileName = await deps.images.save(processed.card, "webp");
-          saved.push(cardFileName);
-          added = await repo.addCover(user.id, recipeId, {
-            fileName,
-            cardFileName,
-            contentType: processed.contentType,
-          });
-        } catch (err) {
-          await removeQuietly(saved, `upload to recipe ${recipeId} failed`);
-          throw err;
-        }
-        if (!added) {
-          // The recipe was deleted while the photo was being processed.
-          await removeQuietly(saved, `upload to deleted recipe ${recipeId}`);
-          return c.json({ error: "Recipe not found" }, 404);
-        }
-
-        // REC-15: the old cover's row is gone with the commit; now its files go too.
-        await removeQuietly(added.replaced, `cover of recipe ${recipeId} replaced`);
-        return c.json(added.image, 201);
+        const image = await storeCover(user.id, recipeId, processed);
+        // The recipe was deleted while the photo was being processed.
+        if (!image) return c.json({ error: "Recipe not found" }, 404);
+        return c.json(image, 201);
       },
     )
+    // REC-18, REC-19: the server fetches the photo itself through the SSRF guard. The
+    // order is id, ownership and rate limit (ownedWithinLimit), then body, URL, fetch.
+    .post("/:id/images/from-url", ownedWithinLimit, jsonBody(imageFromUrlBody), async (c) => {
+      const user = c.get("user");
+      if (!user) return c.json({ error: "Not authenticated" }, 401);
+      const recipeId = c.get("recipeId");
+
+      // SEC-34: refused before any request. safeFetch checks again on every hop (SEC-39).
+      const { url } = c.req.valid("json");
+      const checked = checkUrl(url);
+      if (!checked.ok) return c.json({ error: checked.error }, 400);
+
+      const fetched = await fetchImage(url, FETCH_LIMITS);
+      if (!fetched.ok) {
+        const failure = FETCH_FAILURE[fetched.kind];
+        return c.json({ error: failure.error }, failure.status);
+      }
+
+      // The declared type decides and must match the bytes (SEC-25). No HEIC from a URL.
+      const type = bareType(fetched.headers.get("content-type"));
+      const processed = await processImage(fetched.body, type, { allowHeic: false });
+      if (!processed.ok) return c.json({ error: NOT_SUPPORTED }, 422);
+
+      const image = await storeCover(user.id, recipeId, processed);
+      if (!image) return c.json({ error: "Recipe not found" }, 404);
+      return c.json(image, 201);
+    })
     .get("/:id/images/:imageId", async (c) => {
       const user = c.get("user");
       if (!user) return c.json({ error: "Not authenticated" }, 401);

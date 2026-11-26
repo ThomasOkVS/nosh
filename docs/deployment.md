@@ -148,9 +148,20 @@ Never run `down -v` on either stack.
 
 ## Known gaps
 
-- The host firewall's egress sandbox (`SANDBOX_NETS` in `/opt/HOST.md`) covers
-  v1's subnets, not `10.102.0.0/24`. v2 makes no outbound fetches yet. This
-  must be handled before import jobs land (backlog).
+- **Egress sandbox, partial.** v2 fetches user-supplied photo URLs (PR2,
+  behind the app's SSRF guard). Since 2026-11-26 the host firewall's
+  `SANDBOX_NETS` (`/opt/HOST.md`) also covers v2's default network
+  `10.102.0.0/24`.
+  - Proven from inside `nosh-v2-nosh-1`: the router and the box's LAN IP are
+    refused (`EHOSTUNREACH`, logged as `homelab-sandbox:`), public HTTPS works.
+  - `compose.yml` pins the default route to that network (`gw_priority: 1`).
+    The box's copy picks this up only when `compose.yaml` is copied over and
+    the app recreated.
+  - **Gap:** traffic nosh starts towards `172.28.0.0/16` leaves from its
+    `proxy` address, outside the sandbox, so it can reach the host through
+    `172.28.0.1` (seen: AdGuard's UI on 3001). User URLs can't get there,
+    because the app guard refuses all of `172.16.0.0/12` (SEC-31). Close it
+    before anything fetches outside the guard, such as yt-dlp (backlog).
 - An iPhone that had v1 installed keeps v1's service worker (`/sw.js`, which v2
   answers with 404) until the home-screen app is deleted and Safari's website
   data for the host is cleared.

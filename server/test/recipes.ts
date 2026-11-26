@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeEach } from "vitest";
-import { createApp } from "../src/app.js";
+import { createApp, type AppDeps } from "../src/app.js";
 import { createAuthService } from "../src/auth/service.js";
 import { loadConfig } from "../src/config/env.js";
 import type { Db } from "../src/db/client.js";
@@ -34,8 +34,11 @@ export async function makeRecipeApp() {
   return { app, db, uploadsDir };
 }
 
-/** An app on `db` with the given image store; sessions from signedInHeaders work on it. */
-export function appWith(db: Db, images: ImageStore) {
+/**
+ * An app on `db` with the given image store; sessions from signedInHeaders work on it.
+ * `extra` overrides further deps, such as the photo fetch (REC-18).
+ */
+export function appWith(db: Db, images: ImageStore, extra: Pick<AppDeps, "fetchImage"> = {}) {
   return createApp({
     config: loadConfig({ DATABASE_URL: "postgres://unused" }),
     auth: createAuthService({ db, sessionSecret: SECRET }),
@@ -43,6 +46,7 @@ export function appWith(db: Db, images: ImageStore) {
     images,
     getPeer: () => "127.0.0.1",
     failureDelayMs: 0,
+    ...extra,
   });
 }
 

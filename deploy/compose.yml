@@ -33,7 +33,11 @@ services:
       # The image runs as `node` (uid 1000): the host directory must be 1000-owned.
       - /opt/nosh-v2/uploads:/data/uploads
     networks:
-      default: {}
+      default:
+        # Outbound traffic must leave via 10.102.0.0/24, the subnet the host
+        # firewall sandboxes (SANDBOX_NETS). Without this both networks tie at
+        # priority 0 and a recreate could move the default route to proxy.
+        gw_priority: 1
       proxy:
         # Caddy reaches it as nosh-v2. Never the bare service name, which
         # Compose also registers here and another stack could capture.

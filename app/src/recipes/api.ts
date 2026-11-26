@@ -135,6 +135,26 @@ export function useUploadNewCover() {
   });
 }
 
+/**
+ * REC-18: the server fetches the photo at `url` and makes it the cover. The
+ * server's reason is kept (REC-19). The cache refresh is awaited, like
+ * useUploadCover. IMP uses it for an import's discovered photo (REC-36).
+ */
+export function useAttachCoverFromUrl(recipeId: number) {
+  const invalidate = useInvalidateRecipes();
+  return useMutation({
+    mutationFn: async (url: string): Promise<RecipeImageDto> => {
+      const res = await api.api.recipes[":id"].images["from-url"].$post({
+        param: { id: String(recipeId) },
+        json: { url },
+      });
+      if (!res.ok) throw await toApiError(res);
+      return await res.json();
+    },
+    onSuccess: invalidate,
+  });
+}
+
 export function useDeleteImage(recipeId: number) {
   const invalidate = useInvalidateRecipes();
   return useMutation({

@@ -2,7 +2,6 @@
 
 ## Restart (in order, design §8 and §11)
 
-- [ ] Recipes PR2: photo from URL + SSRF guard (waits on the firewall)
 - [ ] Collections (incl. REC-31: collection choice on the recipe form and a
       back link to the folder, deferred with COL)
 - [ ] Search
@@ -23,13 +22,20 @@
 
 ## Fixes
 
-- [ ] Check Caddy's request body limit on the box allows ~5.1 MB photo
-      uploads.
 - [ ] On-device check: toast offset under the iPhone status bar
       (safe-area-inset-top).
-- [ ] Before import jobs land: add v2's subnet `10.102.0.0/24` to the host
-      firewall's `SANDBOX_NETS` (`/opt/HOST.md`), and check which network
-      the container's outbound traffic leaves through (it is also on `proxy`).
+- [ ] Close the egress sandbox's `proxy` gap before anything fetches outside
+      the app's SSRF guard (yt-dlp, import jobs). Traffic nosh starts on
+      `proxy` leaves from an unpinned `172.28.0.x`, outside `SANDBOX_NETS`,
+      and reaches the host via `172.28.0.1`. Likely fix: pin nosh-v2's
+      `proxy` address (e.g. `172.28.255.3`) and add that /32 to
+      `SANDBOX_NETS`. See `docs/deployment.md`, Known gaps.
+- [ ] After PR2 merges: copy `deploy/compose.yml` to
+      `/opt/nosh-v2/compose.yaml` and recreate the app, so `gw_priority`
+      pins outbound traffic to the sandboxed `10.102.0.0/24`.
+- [ ] SSRF guard hardening, optional: block `fec0::/10` (deprecated
+      site-local, not in SEC-31). The `safeFetch` tests bind `127.0.0.2`,
+      which fails on macOS.
 - [ ] Revisit the Watchtower label on `nosh-v2` before the v1 import brings
       real data (auto-update means unattended migrations).
 
@@ -68,3 +74,11 @@
   with card copies, tag filter (`docs/decisions.md`).
 - 2026-11-25: The empty state fix (owner, 2026-11-24): direction A, "Your
   library is empty", built.
+- 2026-11-26: Recipes PR2: photo from a URL behind the SSRF guard
+  (`server/src/net/`), REC-18/REC-19, SEC-31 to SEC-42.
+- 2026-11-26: Host firewall sandbox covers v2's `10.102.0.0/24`, proven from
+  the container. (`/opt` local commit `a982b6c`; the `proxy` gap is open
+  under Fixes.)
+- 2026-11-26: Caddy has no request body limit on the nosh route, and
+  `/opt/nosh-v2/uploads` is 1000:1000 and writable by the app (checked on
+  the box).

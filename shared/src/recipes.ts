@@ -98,6 +98,13 @@ export const recipeBody = z.object({
 export type RecipeBody = z.output<typeof recipeBody>;
 
 /**
+ * REC-18: the body of an attach-from-URL request. The URL itself is checked by
+ * the server's SSRF rules (SEC-34); anything that is not a string is not a URL.
+ */
+export const imageFromUrlBody = z.object({ url: z.string({ error: "Not a valid URL" }) });
+export type ImageFromUrlBody = z.output<typeof imageFromUrlBody>;
+
+/**
  * REC-07: a tag is stored trimmed and lower-cased, in Unicode NFC so a decomposed
  * "crème" (e + combining grave) and a precomposed one are the same tag.
  */
