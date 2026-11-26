@@ -2,6 +2,7 @@ import { count, eq } from "drizzle-orm";
 import { hc } from "hono/client";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { getTestDb, resetDb } from "../../test/db.js";
+import { unusedDeps } from "../../test/unusedDeps.js";
 import { createApp, type AppType } from "../app.js";
 import { loadConfig } from "../config/env.js";
 import { users } from "../db/schema.js";
@@ -32,6 +33,8 @@ function makeApp(opts: { allowSignup?: boolean; failureDelayMs?: number } = {}) 
   const app = createApp({
     config,
     auth: createAuthService({ db, sessionSecret: SECRET }),
+    db,
+    images: unusedDeps.images,
     getPeer: (c) => c.req.header("x-test-peer") ?? "127.0.0.1",
     failureDelayMs: opts.failureDelayMs ?? 0,
   });
@@ -241,6 +244,8 @@ describe("login", () => {
     const app = createApp({
       config: loadConfig({ DATABASE_URL: "postgres://unused", TRUSTED_PROXIES: PROXY }),
       auth: createAuthService({ db, sessionSecret: SECRET }),
+      db,
+      images: unusedDeps.images,
       getPeer: () => "127.0.0.1",
     });
     const started = performance.now();

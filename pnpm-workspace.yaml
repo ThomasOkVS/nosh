@@ -7,3 +7,5 @@ allowBuilds:
   # esbuild ships prebuilt binaries per platform; its postinstall only
   # verifies them, so it need not run.
   esbuild: false
+  # prebuilt @img/sharp-* optional packages do the work.
+  sharp: false

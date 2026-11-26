@@ -8,8 +8,9 @@ const floatShadow = "shadow-[0_10px_30px_-12px_rgb(0_0_0/0.35)]";
 /**
  * Design §7 app nav: a floating bottom pill in the recipe-tab style (icon +
  * label, ink active pill that springs in) next to a round bright-mustard "+".
- * AUTH-24: the Library is one tap away. The "+" gets its action from the
- * recipes and import plans. The recipe page hides this nav.
+ * AUTH-24: the Library is one tap away, and stays marked as current while a
+ * tag filter is on. The "+" opens the new-recipe form (design §6.4); the
+ * import plan turns it into a choice. The recipe page hides this nav.
  */
 export function AppNav() {
   return (
@@ -21,7 +22,7 @@ export function AppNav() {
         >
           <Link
             to="/"
-            activeOptions={{ exact: true }}
+            activeOptions={{ exact: true, includeSearch: false }}
             className="relative flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold text-muted-foreground transition-colors outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring data-[status=active]:text-primary-foreground"
           >
             {({ isActive }) => (
@@ -41,15 +42,19 @@ export function AppNav() {
             )}
           </Link>
         </nav>
-        <motion.button
-          type="button"
+        <Link
+          to="/recipes/new"
           aria-label="New recipe or import"
-          whileTap={{ scale: 0.92 }}
-          transition={spring}
-          className={`grid size-12 place-items-center rounded-full bg-accent text-accent-foreground outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground ${floatShadow}`}
+          className="block rounded-full outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground"
         >
-          <Plus aria-hidden className="size-5" />
-        </motion.button>
+          <motion.span
+            whileTap={{ scale: 0.92 }}
+            transition={spring}
+            className={`grid size-12 place-items-center rounded-full bg-accent text-accent-foreground ${floatShadow}`}
+          >
+            <Plus aria-hidden className="size-5" />
+          </motion.span>
+        </Link>
       </div>
     </div>
   );

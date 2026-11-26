@@ -107,7 +107,7 @@ describe("login screen", () => {
 
     await fillAndSubmit(user);
     await waitFor(() => expect(visited).toContain(target));
-    await screen.findByRole("heading", { name: "Library" });
+    await screen.findByRole("heading", { name: "New recipe" });
   });
 
   it("AUTH-16 lands on the home page when login was opened directly", async () => {

@@ -8,6 +8,20 @@
       "when": 1795544097658,
       "tag": "0000_round_fantastic_four",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1795598551552,
+      "tag": "0001_chilly_hellcat",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1795697821756,
+      "tag": "0002_optimal_vulture",
+      "breakpoints": true
     }
   ]
 }

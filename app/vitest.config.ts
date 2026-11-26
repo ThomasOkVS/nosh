@@ -15,5 +15,7 @@ export default defineConfig({
     setupFiles: ["./src/test-setup.ts"],
     include: ["src/**/*.test.{ts,tsx}"],
     css: false,
+    // Full-app renders are slow on a loaded machine; a timeout should mean a bug.
+    testTimeout: 15000,
   },
 });

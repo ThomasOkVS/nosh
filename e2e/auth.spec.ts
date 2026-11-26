@@ -24,7 +24,7 @@ test("AUTH-01 AUTH-07 AUTH-14: sign up, see the account, log out, log in case-in
   await page.getByLabel("Username").fill("owner");
   await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await page.getByRole("button", { name: "Create account" }).click();
-  await expect(page.getByRole("heading", { name: "Library" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Library", exact: true })).toBeVisible();
 
   await page.getByRole("link", { name: "Settings" }).click();
   await expect(page.getByText("owner", { exact: true })).toBeVisible();
@@ -33,7 +33,7 @@ test("AUTH-01 AUTH-07 AUTH-14: sign up, see the account, log out, log in case-in
   await expect(page).toHaveURL(/\/login/);
 
   await logIn(page, "OWNER");
-  await expect(page.getByRole("heading", { name: "Library" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Library", exact: true })).toBeVisible();
 });
 
 test("AUTH-16: logging in returns to the full address first asked for", async ({ page }) => {

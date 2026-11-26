@@ -5,6 +5,7 @@ import { createApp } from "./app.js";
 import { createAuthService } from "./auth/service.js";
 import { ConfigError, loadConfig } from "./config/env.js";
 import { createDb } from "./db/client.js";
+import { createImageStore } from "./images/store.js";
 
 // server/src/main.ts and server/dist/main.js sit at the same depth, so the
 // same relative paths work from source and from the build.
@@ -20,7 +21,13 @@ export async function start(
   try {
     await migrate(handle.db, { migrationsFolder });
     const auth = createAuthService({ db: handle.db, sessionSecret: config.sessionSecret });
-    const app = createApp({ config, auth, webDistDir });
+    const app = createApp({
+      config,
+      auth,
+      db: handle.db,
+      images: createImageStore(config.uploadsDir),
+      webDistDir,
+    });
 
     const server = await new Promise<ReturnType<typeof serve>>((resolve, reject) => {
       const s = serve({ fetch: app.fetch, port: config.port }, () => resolve(s));
