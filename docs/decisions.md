@@ -219,3 +219,31 @@ Tags are also stored in Unicode NFC, so a decomposed and a precomposed
 
 **Why:** with no cap, a long random tag overflowed the btree entry limit of
 the unique index on `tags.name`, and the save failed as a 500.
+
+## 2026-11-26: The SSRF guard (PR2)
+
+**Decision:** server-side fetches (photo from URL now, imports later) go
+through one guarded fetch built on `undici`, a new dependency chosen because
+its connector takes a `lookup`, so the address checked is the address
+connected to (SEC-38).
+
+- Each hop gets a fresh agent; no keep-alive connection is ever reused.
+- Every resolved address is checked and one blocked address refuses the name;
+  the connection goes to the first IPv4 address among them, because the
+  container has no IPv6 route.
+- Redirects are followed by hand, at most 5; every hop runs `checkUrl` and the
+  credential check again.
+- The byte cap counts the decompressed body.
+- Blocked beyond SEC-31: `192.88.99.0/24` (6to4 relay), `64:ff9b:1::/48`
+  (local-use NAT64), the SIIT form `::ffff:0:a.b.c.d` (unwrapped and judged
+  as IPv4) and any `*.localhost` name.
+- A URL with credentials (`user:pass@`) is refused with "This URL cannot be
+  imported".
+- A fetched photo that is not a JPEG, PNG or WEBP of those bytes is 422
+  "That URL isn't a supported image" (the plan's copy; the spec fixes only
+  the status).
+- PR2 merges only after the host firewall covers `10.102.0.0/24` (Task 16).
+
+**Why:** the app is public and its container can reach the host and its
+internal ranges; Node's built-in fetch has no public way to set the
+connector, and reused connections or automatic redirects would skip the check.

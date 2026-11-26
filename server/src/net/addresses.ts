@@ -1,6 +1,6 @@
 import { BlockList, isIP } from "node:net";
 
-// SEC-31: the complete blocklist. Embedded-IPv4 prefixes (mapped, NAT64,
+// SEC-31's list plus hardening (marked). Embedded-IPv4 prefixes (mapped, NAT64,
 // 6to4) are not blocked wholesale; they are unwrapped (SEC-33) and the
 // embedded IPv4 address is judged by these ranges.
 const v4Ranges: Array<[string, number]> = [

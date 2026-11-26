@@ -1,8 +1,24 @@
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { processImage, type Processed } from "./process.js";
+
+// file-type rethrows every error except end-of-stream; a test can make it throw (SEC-25).
+const sniff = vi.hoisted(() => ({ throws: false }));
+vi.mock("file-type", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("file-type")>();
+  return {
+    ...actual,
+    fileTypeFromBuffer: (...args: Parameters<typeof actual.fileTypeFromBuffer>) => {
+      if (sniff.throws) return Promise.reject(new Error("crafted bytes"));
+      return actual.fileTypeFromBuffer(...args);
+    },
+  };
+});
+afterEach(() => {
+  sniff.throws = false;
+});
 
 const fx = (name: string) =>
   readFile(fileURLToPath(new URL(`../../test/fixtures/images/${name}`, import.meta.url)));
@@ -57,6 +73,20 @@ describe("processImage", () => {
   it("REC-14: HEIC is refused when not allowed", async () => {
     const r = await processImage(await fx("photo.heic"), "image/heic", { allowHeic: false });
     expect(r).toEqual({ ok: false, reason: "type" });
+  });
+
+  it("SEC-25: bytes the type sniffer throws on are refused as a mismatch, never thrown", async () => {
+    sniff.throws = true;
+    for (const allowHeic of [true, false]) {
+      expect(await processImage(await fx("tiny.png"), "image/png", { allowHeic })).toEqual({
+        ok: false,
+        reason: "mismatch",
+      });
+    }
+    expect(await processImage(await fx("photo.heic"), "image/heic", { allowHeic: true })).toEqual({
+      ok: false,
+      reason: "mismatch",
+    });
   });
 
   it("SEC-25: refuses HTML declared as image/png", async () => {

@@ -1,4 +1,6 @@
 import { mkdir, readdir, readFile, rm, writeFile, type FileHandle } from "node:fs/promises";
+import http from "node:http";
+import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { MAX_INT4, type RecipeDto, type RecipeImageDto } from "@nosh/shared";
@@ -9,7 +11,7 @@ import { appWith, createRecipe, makeRecipeApp, signedInHeaders, type Headers } f
 import { recipeImages, recipes } from "../db/schema.js";
 import { MAX_IMAGE_BYTES } from "../images/process.js";
 import { createImageStore, type ImageStore } from "../images/store.js";
-import type { safeFetch, SafeFetchFailureKind, SafeFetchResult } from "../net/safeFetch.js";
+import { safeFetch, type SafeFetchFailureKind, type SafeFetchResult } from "../net/safeFetch.js";
 
 // Records every file the routes open, so a test can check each one was closed (REC-16 HEAD).
 const opened = vi.hoisted(() => [] as FileHandle[]);
@@ -25,10 +27,26 @@ vi.mock("node:fs/promises", async (importOriginal) => {
   };
 });
 
+// file-type rethrows every error except end-of-stream; a test can make it throw (SEC-25).
+const sniff = vi.hoisted(() => ({ throws: false }));
+vi.mock("file-type", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("file-type")>();
+  return {
+    ...actual,
+    fileTypeFromBuffer: (...args: Parameters<typeof actual.fileTypeFromBuffer>) => {
+      if (sniff.throws) return Promise.reject(new Error("crafted bytes"));
+      return actual.fileTypeFromBuffer(...args);
+    },
+  };
+});
+
 const { app, db, uploadsDir } = await makeRecipeApp();
 
 // makeRecipeApp resets the database, not the uploads dir: start every test with no files.
-beforeEach(() => rm(uploadsDir, { recursive: true, force: true }));
+beforeEach(async () => {
+  sniff.throws = false;
+  await rm(uploadsDir, { recursive: true, force: true });
+});
 
 const fx = (name: string) =>
   readFile(fileURLToPath(new URL(`../../test/fixtures/images/${name}`, import.meta.url)));
@@ -176,6 +194,17 @@ describe("upload", () => {
     });
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "Invalid request" });
+    expect(await filesOnDisk()).toEqual([]);
+  });
+
+  it("REC-14 SEC-25: bytes the type sniffer throws on are 400 \"The file's contents don't match its type\", not 500", async () => {
+    const headers = await signedInHeaders(db);
+    const recipe = await newRecipe(headers);
+    sniff.throws = true;
+    const res = await upload(recipe.id, headers, await tinyPng());
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "The file's contents don't match its type" });
+    expect(await imageRowCount()).toBe(0);
     expect(await filesOnDisk()).toEqual([]);
   });
 
@@ -620,7 +649,7 @@ describe("from a URL", () => {
     expect(spy).not.toHaveBeenCalled();
   });
 
-  it("REC-18 REC-15: fetches, stores and makes the cover; replaces an existing cover", async () => {
+  it("REC-18 REC-15 SEC-41: fetches, stores and makes the cover; replaces an existing cover", async () => {
     const png = await fx("tiny.png");
     const jpg = await fx("tiny.jpg");
     const { spy, fromUrlApp } = appFetching(async (url) =>
@@ -708,7 +737,7 @@ describe("from a URL", () => {
     expect(await imageRowCount()).toBe(0);
   });
 
-  it("REC-19 SEC-25: a type that isn't JPEG, PNG or WEBP, mismatched bytes or over 5 MB is 422; a non-2xx, a network failure, a timeout, a redirect with no target or too many redirects is 502; never 500; no photo added", async () => {
+  it("REC-19 SEC-25 SEC-36 SEC-39 SEC-40: a type that isn't JPEG, PNG or WEBP, mismatched bytes or over 5 MB is 422; a non-2xx, a network failure, a timeout, a redirect with no target or too many redirects is 502; never 500; no photo added", async () => {
     const png = await fx("tiny.png");
     const html = await fx("not-an-image.html");
     const bomb = await sharp({ create: { width: 9000, height: 9000, channels: 3, background: "#000" } })
@@ -774,8 +803,59 @@ describe("from a URL", () => {
     expect(await limited.json()).toEqual({ error: "Too many attempts — try again later" });
     expect(Number(limited.headers.get("retry-after"))).toBeGreaterThanOrEqual(1);
     expect(spy).toHaveBeenCalledTimes(60);
+    // Over the limit, another user's recipe is still 404: ownership comes first.
+    const notMine = await attach(fromUrlApp, bobs.id, alice);
+    expect(notMine.status).toBe(404);
+    expect(await notMine.json()).toEqual({ error: "Recipe not found" });
     // Another user's allowance is their own.
     expect((await attach(fromUrlApp, bobs.id, bob)).status).toBe(502);
+  });
+
+  it("REC-19 SEC-25: bytes the type sniffer throws on are 422 \"That URL isn't a supported image\", not 500", async () => {
+    const png = await fx("tiny.png");
+    const { fromUrlApp } = appFetching(async () => fetched(png, "image/png"));
+    const headers = await signedInHeaders(db);
+    const recipe = await newRecipe(headers);
+    sniff.throws = true;
+    const res = await attach(fromUrlApp, recipe.id, headers);
+    expect(res.status).toBe(422);
+    expect(await res.json()).toEqual({ error: NOT_SUPPORTED });
+    expect(await imageRowCount()).toBe(0);
+    expect(await filesOnDisk()).toEqual([]);
+  });
+
+  it("REC-18 SEC-36: with the real guarded fetch, a hostname resolving to a blocked address is 400 and nothing reaches it", async () => {
+    const png = await fx("tiny.png");
+    const hits: string[] = [];
+    const target = http.createServer((req, res) => {
+      hits.push(req.url ?? "");
+      res.writeHead(200, { "content-type": "image/png" }).end(png);
+    });
+    await new Promise<void>((resolve) => target.listen(0, "127.0.0.1", resolve));
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      const { port } = target.address() as AddressInfo;
+      // The name passes checkUrl; its address is judged by the real isBlockedAddress.
+      const lookup = async (hostname: string) => {
+        if (hostname !== "photos.test") throw new Error(`unexpected lookup ${hostname}`);
+        return [{ address: "127.0.0.1", family: 4 }];
+      };
+      const fromUrlApp = appWith(db, createImageStore(uploadsDir), {
+        fetchImage: (u, o) => safeFetch(u, { ...o, lookup }),
+      });
+      const headers = await signedInHeaders(db);
+      const recipe = await newRecipe(headers);
+      const res = await attach(fromUrlApp, recipe.id, headers, {
+        url: `http://photos.test:${port}/soup.png`,
+      });
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ error: "This URL cannot be imported" });
+      expect(hits).toEqual([]);
+      expect(await imageRowCount()).toBe(0);
+    } finally {
+      quiet.mockRestore();
+      await new Promise<void>((resolve) => target.close(() => resolve()));
+    }
   });
 });
 

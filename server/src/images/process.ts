@@ -44,7 +44,13 @@ export async function processImage(
   const heic = HEIC_TYPES.has(declared);
   if (!isStored(declared) && !(heic && opts.allowHeic)) return { ok: false, reason: "type" };
 
-  const sniffed = (await fileTypeFromBuffer(bytes))?.mime;
+  // file-type rethrows every error but end-of-stream: bytes it chokes on are not that type.
+  let sniffed: string | undefined;
+  try {
+    sniffed = (await fileTypeFromBuffer(bytes))?.mime;
+  } catch {
+    return { ok: false, reason: "mismatch" };
+  }
   const matches = heic ? sniffed !== undefined && HEIC_TYPES.has(sniffed) : sniffed === declared;
   if (!matches) return { ok: false, reason: "mismatch" };
 
