@@ -13,7 +13,7 @@ interface Target {
 
 const servers: http.Server[] = [];
 
-async function serve(handler: Handler, host = "127.0.0.1"): Promise<Target> {
+async function serve(handler: Handler, host = "127.0.0.1", port = 0): Promise<Target> {
   const hits: string[] = [];
   const remotes: string[] = [];
   const server = http.createServer((req, res) => {
@@ -22,7 +22,7 @@ async function serve(handler: Handler, host = "127.0.0.1"): Promise<Target> {
     handler(req, res);
   });
   servers.push(server);
-  await new Promise<void>((resolve) => server.listen(0, host, resolve));
+  await new Promise<void>((resolve) => server.listen(port, host, resolve));
   return { port: (server.address() as AddressInfo).port, hits, remotes };
 }
 
@@ -46,7 +46,6 @@ function opts(extra: Partial<SafeFetchOptions> = {}): SafeFetchOptions {
     timeoutMs: 5_000,
     maxBytes: 1_000_000,
     maxRedirects: 5,
-    tooManyRedirectsMessage: "The image URL redirected too many times",
     isBlocked: allowAll,
     ...extra,
   };
@@ -106,13 +105,13 @@ describe("safeFetch", () => {
     expect(t.hits).toHaveLength(0);
   });
 
-  it("SEC-38: checks the exact answer it connects with", async () => {
+  it("SEC-38: checks the exact answer it connects with, and connects to the first IPv4 answer", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const first = await serve((_req, res) => res.end("first"), "127.0.0.1");
-    // A second listener on the same port number is not guaranteed, so the
-    // second answer is a different loopback address with its own server.
-    const second = await serve((_req, res) => res.end("second"), "127.0.0.2");
-    const isBlocked = (ip: string) => ip !== "127.0.0.1" && ip !== "127.0.0.2";
+    // Same port on a second loopback address, so a connection to the second
+    // answer would land here instead of failing.
+    const second = await serve((_req, res) => res.end("second"), "127.0.0.2", first.port);
+    const isBlocked = (ip: string) => ip !== "127.0.0.1" && ip !== "127.0.0.2" && ip !== "::1";
 
     // Several allowed answers: the connection goes to the first one only.
     const multi = stubLookup({ "multi.test": ["127.0.0.1", "127.0.0.2"] });
@@ -121,6 +120,13 @@ describe("safeFetch", () => {
     expect(multi.calls).toEqual(["multi.test"]);
     expect(first.remotes).toEqual(["127.0.0.1"]);
     expect(second.hits).toHaveLength(0);
+
+    // IPv6 listed first: the first IPv4 answer is still the one used.
+    const v6first = stubLookup({ "v6first.test": ["::1", "127.0.0.1"] });
+    const b = await safeFetch(`http://v6first.test:${first.port}/`, opts({ lookup: v6first.lookup, isBlocked }));
+    expect(b.ok && b.body.toString()).toBe("first");
+    expect(v6first.calls).toEqual(["v6first.test"]);
+    expect(first.hits).toHaveLength(2);
 
     // DNS rebinding: public the first time, private the second.
     let n = 0;
@@ -132,16 +138,23 @@ describe("safeFetch", () => {
     const r2 = await safeFetch(`http://rebind.test:${first.port}/`, opts({ lookup: rebind.lookup, isBlocked: onlyLoopback1 }));
     expect(r2).toEqual({ ok: false, kind: "blocked" });
     expect(rebind.calls).toHaveLength(2);
-    expect(first.hits).toHaveLength(2); // one from the multi case, one from r1
+    expect(first.hits).toHaveLength(3); // multi, v6first and r1
   });
 
   it("SEC-36 SEC-38: an IP-literal host is checked at connect time too, with no lookup", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const { lookup, calls } = stubLookup({});
-    // 8.8.8.8 passes checkUrl; the injected predicate blocks it, so only the
-    // connect-time check can refuse it. Nothing is sent.
-    const result = await safeFetch("http://8.8.8.8:8080/", opts({ lookup, isBlocked: () => true, timeoutMs: 2_000 }));
+    // 3fff::/20 (RFC 9637 documentation space) passes checkUrl but is never
+    // routed, so even a broken guard dials nothing real. The injected
+    // predicate blocks it; only the connect-time check can refuse it.
+    const seen: string[] = [];
+    const isBlocked = (ip: string) => {
+      seen.push(ip);
+      return ip === "3fff::1";
+    };
+    const result = await safeFetch("http://[3fff::1]:8080/", opts({ lookup, isBlocked, timeoutMs: 2_000 }));
     expect(result).toEqual({ ok: false, kind: "blocked" });
+    expect(seen).toEqual(["3fff::1"]);
     expect(calls).toHaveLength(0);
 
     // A blocked literal is refused by checkUrl before any request.
@@ -150,7 +163,7 @@ describe("safeFetch", () => {
     expect(t.hits).toHaveLength(0);
   });
 
-  it("SEC-39: rejects a redirect to a private literal or a privately resolving name; the internal target is never contacted; 6 hops fail with the given message", async () => {
+  it("SEC-39: rejects a redirect to a private literal or a privately resolving name; the internal target is never contacted; one hop over maxRedirects is kind \"too-many-redirects\"", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const internal = await serve((_req, res) => res.end("secret"), "127.0.0.2");
     const isBlocked = (ip: string) => ip === "127.0.0.2";
@@ -236,12 +249,13 @@ describe("safeFetch", () => {
       kind: "timeout",
     });
 
-    // Declared too large: refused from the header.
+    // Declared too large: refused from the header alone. The body never
+    // comes, so without the precheck this would end as a timeout.
     const declared = await serve((_req, res) => {
       res.writeHead(200, { "content-length": "1000" });
-      res.end(Buffer.alloc(1000));
+      res.flushHeaders();
     });
-    expect(await safeFetch(`http://public.test:${declared.port}/`, opts({ lookup, maxBytes: 100 }))).toEqual({
+    expect(await safeFetch(`http://public.test:${declared.port}/`, opts({ lookup, maxBytes: 100, timeoutMs: 500 }))).toEqual({
       ok: false,
       kind: "too-large",
     });
@@ -298,6 +312,32 @@ describe("safeFetch", () => {
       const result = await safeFetch(`http://public.test:${t.port}/`, opts({ lookup }));
       expect(result.ok && result.body.toString()).toBe(text);
     }
+  });
+
+  it("SEC-40 SEC-39: refuses credentials in the URL or a redirect Location, and never logs them", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { lookup } = stubLookup({ "public.test": ["127.0.0.1"] });
+    const t = await serve((_req, res) => res.end("ok"));
+    expect(await safeFetch(`http://user:hunter2@public.test:${t.port}/`, opts({ lookup }))).toEqual({
+      ok: false,
+      kind: "blocked",
+    });
+    expect(t.hits).toHaveLength(0);
+
+    const redirector = await serve((req, res) => {
+      if (req.url === "/") {
+        res.writeHead(302, { location: `http://user:hunter2@public.test:${t.port}/` });
+        return void res.end();
+      }
+      res.end("never");
+    });
+    expect(await safeFetch(`http://public.test:${redirector.port}/`, opts({ lookup }))).toEqual({
+      ok: false,
+      kind: "blocked",
+    });
+    expect(redirector.hits).toEqual(["/"]);
+    expect(t.hits).toHaveLength(0);
+    expect(JSON.stringify(logged.mock.calls.map((c) => c.map(String)))).not.toContain("hunter2");
   });
 
   it("SEC-40: failure results carry no address, port or socket text", async () => {

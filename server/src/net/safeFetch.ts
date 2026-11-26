@@ -10,8 +10,6 @@ export interface SafeFetchOptions {
   timeoutMs: number;
   maxBytes: number;
   maxRedirects: number;
-  /** Kept for the caller's interface; callers map `kind` to their own copy. */
-  tooManyRedirectsMessage: string;
   lookup?: LookupFn;
   /** Test-only: overrides the address predicate. Production uses `isBlockedAddress`. */
   isBlocked?: (ip: string) => boolean;
@@ -50,23 +48,27 @@ class BlockedAddressError extends Error {
  * One agent per hop, so no connection is ever reused without a fresh check
  * (SEC-38). Its connector checks IP-literal hosts, which `net.connect` never
  * passes to `lookup`; its lookup resolves all addresses, refuses the name if
- * any is blocked (SEC-36, SEC-37), and hands back exactly the one it uses.
+ * any is blocked (SEC-36, SEC-37), and hands back exactly the one it uses:
+ * the first IPv4 answer, else the first answer. Happy-eyeballs stays off.
  */
 function guardedAgent(lookupAll: LookupFn, isBlocked: (ip: string) => boolean, onBlocked: () => void): Agent {
   const lookup = (hostname: string, options: LookupOptions, callback: NetLookupCallback): void => {
-    lookupAll(hostname).then(
-      (addresses) => {
-        const chosen = addresses[0];
-        if (chosen === undefined || addresses.some((a) => isBlocked(a.address))) {
-          onBlocked();
-          callback(new BlockedAddressError(), "", 0);
-          return;
-        }
-        if (options.all === true) callback(null, [chosen]);
-        else callback(null, chosen.address, chosen.family);
-      },
-      (err: NodeJS.ErrnoException) => callback(err, "", 0),
-    );
+    // Promise.resolve().then(...) so a synchronous throw still reaches the callback.
+    Promise.resolve()
+      .then(() => lookupAll(hostname))
+      .then(
+        (addresses) => {
+          const chosen = addresses.find((a) => a.family === 4) ?? addresses[0];
+          if (chosen === undefined || addresses.some((a) => isBlocked(a.address))) {
+            onBlocked();
+            callback(new BlockedAddressError(), "", 0);
+            return;
+          }
+          if (options.all === true) callback(null, [chosen]);
+          else callback(null, chosen.address, chosen.family);
+        },
+        (err: NodeJS.ErrnoException) => callback(err, "", 0),
+      );
   };
   const base = buildConnector({ lookup, autoSelectFamily: false });
   return new Agent({
@@ -121,6 +123,8 @@ export async function safeFetch(url: string, opts: SafeFetchOptions): Promise<Sa
     for (let redirects = 0; ; redirects++) {
       const checked = checkUrl(current);
       if (!checked.ok) return { ok: false, kind: "blocked" };
+      // Credentials are refused before fetch, which would echo them in its error (SEC-40).
+      if (checked.url.username !== "" || checked.url.password !== "") return { ok: false, kind: "blocked" };
 
       const agent = guardedAgent(lookupAll, isBlocked, onBlocked);
       agents.push(agent);
