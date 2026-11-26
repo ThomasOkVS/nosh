@@ -106,6 +106,75 @@ describe("processImage", () => {
     expect(r).toEqual({ ok: false, reason: "too-many-pixels" });
   }, 60_000);
 
+  const gpsExif = { IFD3: { GPSLatitudeRef: "N", GPSLatitude: "51/1 0/1 0/1" } };
+  const withGps = async (format: "jpeg" | "png" | "webp") => {
+    const base = sharp({ create: { width: 64, height: 48, channels: 3, background: "#c80" } });
+    const src = await base[format]().withExif(gpsExif).toBuffer();
+    expect((await sharp(src).metadata()).exif).toBeDefined();
+    return src;
+  };
+
+  it.each([
+    ["JPEG", "jpeg", "image/jpeg"],
+    ["PNG", "png", "image/png"],
+    ["WebP", "webp", "image/webp"],
+  ] as const)(
+    "SEC-24 design §6.2: a %s's GPS and EXIF are not kept in the stored original",
+    async (_name, format, type) => {
+      const src = await withGps(format);
+      const r = expectOk(await processImage(src, type, { allowHeic: false }));
+      const meta = await sharp(r.original).metadata();
+      expect(meta.format).toBe(format);
+      expect(meta.exif).toBeUndefined();
+      expect([meta.width, meta.height]).toEqual([64, 48]);
+    },
+  );
+
+  it("SEC-24 design §6.2: the stored original has the orientation baked in and no tag", async () => {
+    const src = await sharp({
+      create: { width: 200, height: 100, channels: 3, background: "#c80" },
+    })
+      .jpeg()
+      .withMetadata({ orientation: 6 })
+      .toBuffer();
+    expect((await sharp(src).metadata()).orientation).toBe(6);
+    const r = expectOk(await processImage(src, "image/jpeg", { allowHeic: false }));
+    const meta = await sharp(r.original).metadata();
+    expect(meta.width).toBeLessThan(meta.height ?? 0);
+    expect(meta.orientation).toBeUndefined();
+    expect(meta.exif).toBeUndefined();
+  });
+
+  it("SEC-24 design §6.2: the stored original keeps its ICC colour profile but no EXIF", async () => {
+    const src = await sharp({
+      create: { width: 64, height: 48, channels: 3, background: "#c80" },
+    })
+      .jpeg()
+      .withIccProfile("p3")
+      .withExif(gpsExif)
+      .toBuffer();
+    const inMeta = await sharp(src).metadata();
+    expect(inMeta.icc).toBeDefined();
+    expect(inMeta.exif).toBeDefined();
+    const r = expectOk(await processImage(src, "image/jpeg", { allowHeic: false }));
+    const meta = await sharp(r.original).metadata();
+    expect(meta.icc).toBeDefined();
+    expect(meta.exif).toBeUndefined();
+  });
+
+  it("SEC-24 design §6.2: the HEIC original has no EXIF", async () => {
+    const r = expectOk(await processImage(await fx("photo.heic"), "image/heic", { allowHeic: true }));
+    const meta = await sharp(r.original).metadata();
+    expect(meta.exif).toBeUndefined();
+  }, 60_000);
+
+  it("SEC-24: a corrupt JPEG body is refused as unreadable", async () => {
+    const src = Buffer.from(await fx("tiny.jpg"));
+    const broken = Buffer.concat([src.subarray(0, 20), Buffer.alloc(40, 0)]);
+    const r = await processImage(broken, "image/jpeg", { allowHeic: false });
+    expect(r).toEqual({ ok: false, reason: "unreadable" });
+  });
+
   it("design §6.2: applies EXIF orientation to the card", async () => {
     const src = await sharp({
       create: { width: 200, height: 100, channels: 3, background: "#c80" },

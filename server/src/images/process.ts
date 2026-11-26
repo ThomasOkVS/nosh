@@ -58,6 +58,9 @@ export async function processImage(
     }
     const input = sharp(original, { limitInputPixels: MAX_INPUT_PIXELS });
     await input.metadata();
+    // A fresh encode drops EXIF, GPS and every other tag (SEC-24). rotate()
+    // first bakes the orientation into the pixels. HEIC is already fresh.
+    if (!heic) original = await reencode(original, contentType);
     const card = await input
       .rotate()
       .resize({ width: 800, height: 800, fit: "inside", withoutEnlargement: true })
@@ -66,6 +69,18 @@ export async function processImage(
     return { ok: true, contentType, ext: STORED[contentType], original, card };
   } catch (err) {
     return { ok: false, reason: isPixelLimit(err) ? "too-many-pixels" : "unreadable" };
+  }
+}
+
+function reencode(bytes: Buffer, type: StoredType): Promise<Buffer> {
+  const pipeline = sharp(bytes, { limitInputPixels: MAX_INPUT_PIXELS }).rotate().keepIccProfile();
+  switch (type) {
+    case "image/jpeg":
+      return pipeline.jpeg({ quality: 90 }).toBuffer();
+    case "image/webp":
+      return pipeline.webp({ quality: 90 }).toBuffer();
+    case "image/png":
+      return pipeline.png().toBuffer();
   }
 }
 

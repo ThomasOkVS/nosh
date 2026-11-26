@@ -141,14 +141,16 @@ improvement.
 read width × height first and refuse anything over 60 MP without decoding it,
 which closes a decompression bomb. It was also lighter and faster.
 
-## 2026-11-25: Stored originals keep their EXIF
+## 2026-11-26: Stored originals carry no EXIF or GPS
 
-**Decision:** JPEG, PNG and WebP uploads are stored byte for byte, so any GPS
-data in them stays. Only the owner can fetch them (owner-checked route,
-`Cache-Control: private`).
+**Decision:** stored originals are re-encoded through sharp without metadata
+(orientation is baked into the pixels first; the ICC colour profile is
+kept), so GPS is never stored. HEIC
+originals were already fresh JPEGs. This replaces the 2026-11-25 decision to
+keep EXIF (SEC-24).
 
-**Why:** stripping means re-encoding, with some quality loss. Re-encoding is
-the fix if this ever changes.
+**Why:** this was the owner's decision. The cost is a light re-encode: JPEG
+and WebP at quality 90, PNG lossless.
 
 ## 2026-11-25: react-hook-form, the zod resolver and Sonner
 
