@@ -14,7 +14,7 @@ import { requestLog } from "./http/requestLog.js";
 import { securityHeaders } from "./http/securityHeaders.js";
 import { mountSpa } from "./http/spa.js";
 import type { ImageStore } from "./images/store.js";
-import { IMAGE_UPLOAD_PATH } from "./recipes/images.routes.js";
+import { IMAGE_UPLOAD_PATH, type FetchImage } from "./recipes/images.routes.js";
 import { recipeRoutes } from "./recipes/routes.js";
 
 export interface AppDeps {
@@ -26,6 +26,8 @@ export interface AppDeps {
   getPeer?: (c: Context) => string;
   /** Delay before answering a failed login; 1 s unless a test sets it (SEC-19). */
   failureDelayMs?: number;
+  /** The photo-from-URL fetch (REC-18); tests inject one so no network is used. */
+  fetchImage?: FetchImage;
   /** Built web app to serve; absent in API-only tests. */
   webDistDir?: string;
 }
@@ -76,7 +78,10 @@ export function createApp(deps: AppDeps) {
       authRoutes({ auth: deps.auth, config: deps.config, failureDelayMs: deps.failureDelayMs }),
     )
     .use("/api/*", requireAuth({ auth: deps.auth, config: deps.config }))
-    .route("/api/recipes", recipeRoutes({ db: deps.db, images: deps.images }));
+    .route(
+      "/api/recipes",
+      recipeRoutes({ db: deps.db, images: deps.images, fetchImage: deps.fetchImage }),
+    );
 
   if (deps.webDistDir) mountSpa(app, deps.webDistDir);
   app.onError(onError);
